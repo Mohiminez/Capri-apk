@@ -1,0 +1,72 @@
+{
+ "idle": {
+  "frames": 60,
+  "fps": 24,
+  "w": 93,
+  "h": 307,
+  "cols": 44
+ },
+ "idle_blink": {
+  "frames": 8,
+  "fps": 24,
+  "w": 93,
+  "h": 307,
+  "cols": 44
+ },
+ "idle_mouth": {
+  "frames": 5,
+  "fps": 12,
+  "w": 93,
+  "h": 307,
+  "cols": 44
+ },
+ "glitch": {
+  "frames": 10,
+  "fps": 15,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "grin": {
+  "frames": 16,
+  "fps": 8,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "sleep": {
+  "frames": 16,
+  "fps": 6,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "wake": {
+  "frames": 13,
+  "fps": 15,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "arrive": {
+  "frames": 14,
+  "fps": 15,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "leave": {
+  "frames": 12,
+  "fps": 15,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ },
+ "dangle": {
+  "frames": 24,
+  "fps": 10,
+  "w": 192,
+  "h": 307,
+  "cols": 21
+ }
+}
