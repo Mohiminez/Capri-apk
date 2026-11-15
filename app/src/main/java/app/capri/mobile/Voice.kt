@@ -1,0 +1,206 @@
+package app.capri.mobile
+
+import android.content.Context
+import android.media.AudioAttributes
+import android.media.AudioFormat
+import android.media.AudioTrack
+import android.media.MediaPlayer
+import android.util.Base64
+import org.json.JSONArray
+import org.json.JSONObject
+import java.io.File
+import java.net.HttpURLConnection
+import java.net.URL
+import java.util.concurrent.CountDownLatch
+import java.util.concurrent.TimeUnit
+
+class VoiceOpt(val id: String, val label: String)
+
+// Better voices than the stock phone one: Gemini (uses a Gemini key, free tier), ElevenLabs (what the Windows version uses),
+// or any OpenAI-style /audio/speech server (OpenAI itself, or your own Kokoro-FastAPI).
+object Voice {
+    const val PHONE = 0
+    const val GEMINI = 1
+    const val ELEVEN = 2
+    const val OPENAI = 3
+
+    val engines get() = listOf(
+        L.t("Phone voice (basic)", "صوت الجوال (عادي)"),
+        L.t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"),
+        L.t("ElevenLabs (like the Windows version)", "ElevenLabs (مثل نسخة الويندوز)"),
+        L.t("OpenAI-style or Kokoro server", "OpenAI أو سيرفر Kokoro")
+    )
+
+    val geminiVoices = listOf("Kore", "Zephyr", "Leda", "Aoede", "Puck", "Charon", "Fenrir", "Callirrhoe", "Autonoe", "Despina")
+
+    @Volatile private var gen = 0
+    private var player: MediaPlayer? = null
+    private var track: AudioTrack? = null
+
+    fun stop() {
+        gen++
+        try { player?.stop() } catch (e: Exception) { }
+        try { player?.release() } catch (e: Exception) { }
+        player = null
+        try { track?.stop() } catch (e: Exception) { }
+        try { track?.release() } catch (e: Exception) { }
+        track = null
+    }
+
+    // Blocks until she has finished talking. Returns null on success or an error text.
+    // onStart runs right before the sound starts, so her mouth can move with it.
+    fun speak(ctx: Context, prefs: Prefs, text: String, onStart: () -> Unit): String? {
+        stop()
+        val my = gen
+        return try {
+            when (prefs.getI("ttsEngine", PHONE)) {
+                GEMINI -> playPcm(gemini(prefs, text), 24000, my, onStart)
+                ELEVEN -> playMp3(ctx, eleven(prefs, text), my, onStart)
+                OPENAI -> playMp3(ctx, openai(prefs, text), my, onStart)
+                else -> return "phone"
+            }
+            null
+        } catch (e: Throwable) {
+            e.message ?: "voice failed"
+        }
+    }
+
+    private fun voiceKey(prefs: Prefs): String {
+        val own = prefs.getS("voiceKey", "").trim()
+        return if (own.isNotEmpty()) own else prefs.getS("key", "").trim()
+    }
+
+    private fun post(url: String, headers: Map<String, String>, body: JSONObject): ByteArray {
+        val c = URL(url).openConnection() as HttpURLConnection
+        c.requestMethod = "POST"
+        c.connectTimeout = 20000
+        c.readTimeout = 60000
+        c.doOutput = true
+        c.setRequestProperty("Content-Type", "application/json")
+        for ((k, v) in headers) c.setRequestProperty(k, v)
+        c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
+        val code = c.responseCode
+        if (code !in 200..299) {
+            val err = c.errorStream?.bufferedReader()?.use { it.readText() } ?: ""
+            var d = err.take(120)
+            try { d = JSONObject(err).getJSONObject("error").getString("message").take(120) } catch (e: Exception) { }
+            try { d = JSONObject(err).getJSONObject("detail").getString("message").take(120) } catch (e: Exception) { }
+            throw Exception("voice HTTP $code: $d")
+        }
+        return c.inputStream.use { it.readBytes() }
+    }
+
+    private fun gemini(prefs: Prefs, text: String): ByteArray {
+        val key = voiceKey(prefs)
+        var model = prefs.getS("voiceModel", "").trim()
+        if (model.isEmpty() || !model.contains("tts", true)) {
+            model = geminiTtsModel(key)
+            prefs.putS("voiceModel", model)
+        }
+        val name = prefs.getS("voiceName", "Kore").ifBlank { "Kore" }
+        val body = JSONObject()
+            .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", text)))))
+            .put("generationConfig", JSONObject()
+                .put("responseModalities", JSONArray().put("AUDIO"))
+                .put("speechConfig", JSONObject().put("voiceConfig", JSONObject()
+                    .put("prebuiltVoiceConfig", JSONObject().put("voiceName", name)))))
+        val raw = post("https://generativelanguage.googleapis.com/v1beta/models/$model:generateContent",
+            mapOf("x-goog-api-key" to key), body)
+        val data = JSONObject(String(raw, Charsets.UTF_8)).getJSONArray("candidates").getJSONObject(0)
+            .getJSONObject("content").getJSONArray("parts").getJSONObject(0).getJSONObject("inlineData").getString("data")
+        return Base64.decode(data, Base64.DEFAULT)
+    }
+
+    // The preview names change, so ask Google which speech model this key can use.
+    private fun geminiTtsModel(key: String): String {
+        val c = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200").openConnection() as HttpURLConnection
+        c.setRequestProperty("x-goog-api-key", key)
+        c.connectTimeout = 15000
+        val txt = c.inputStream.bufferedReader().use { it.readText() }
+        val arr = JSONObject(txt).getJSONArray("models")
+        val names = ArrayList<String>()
+        for (i in 0 until arr.length()) {
+            val n = arr.getJSONObject(i).optString("name").removePrefix("models/")
+            if (n.contains("tts", true)) names.add(n)
+        }
+        return names.firstOrNull { it.contains("flash") } ?: names.firstOrNull() ?: "gemini-2.5-flash-preview-tts"
+    }
+
+    private fun eleven(prefs: Prefs, text: String): ByteArray {
+        val id = prefs.getS("voiceId", "").trim()
+        if (id.isEmpty()) throw Exception("pick an ElevenLabs voice first")
+        val model = prefs.getS("voiceModel", "").ifBlank { "eleven_multilingual_v2" }
+            .let { if (it.startsWith("eleven")) it else "eleven_multilingual_v2" }
+        val body = JSONObject().put("text", text).put("model_id", model)
+        return post("https://api.elevenlabs.io/v1/text-to-speech/$id?output_format=mp3_44100_128",
+            mapOf("xi-api-key" to voiceKey(prefs)), body)
+    }
+
+    private fun openai(prefs: Prefs, text: String): ByteArray {
+        val base = prefs.getS("voiceUrl", "").trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+        val body = JSONObject()
+            .put("model", prefs.getS("voiceModel", "").ifBlank { "tts-1" })
+            .put("input", text)
+            .put("voice", prefs.getS("voiceName", "").ifBlank { "nova" })
+            .put("response_format", "mp3")
+        val key = voiceKey(prefs)
+        return post("$base/audio/speech", if (key.isEmpty()) emptyMap() else mapOf("Authorization" to "Bearer $key"), body)
+    }
+
+    // ElevenLabs voices the key can use, for the picker.
+    fun elevenVoices(key: String): List<VoiceOpt> {
+        val c = URL("https://api.elevenlabs.io/v1/voices").openConnection() as HttpURLConnection
+        c.setRequestProperty("xi-api-key", key.trim())
+        c.connectTimeout = 15000
+        if (c.responseCode !in 200..299) throw Exception("ElevenLabs refused the key")
+        val arr = JSONObject(c.inputStream.bufferedReader().use { it.readText() }).getJSONArray("voices")
+        val out = ArrayList<VoiceOpt>()
+        for (i in 0 until arr.length()) {
+            val v = arr.getJSONObject(i)
+            out.add(VoiceOpt(v.getString("voice_id"), v.optString("name")))
+        }
+        return out
+    }
+
+    private fun playMp3(ctx: Context, bytes: ByteArray, my: Int, onStart: () -> Unit) {
+        if (my != gen) return
+        val f = File(ctx.cacheDir, "capri_voice.mp3")
+        f.writeBytes(bytes)
+        val done = CountDownLatch(1)
+        val mp = MediaPlayer()
+        player = mp
+        mp.setAudioAttributes(AudioAttributes.Builder()
+            .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+        mp.setDataSource(f.path)
+        mp.setOnCompletionListener { done.countDown() }
+        mp.setOnErrorListener { _, _, _ -> done.countDown(); true }
+        mp.prepare()
+        if (my != gen) { mp.release(); return }
+        onStart()
+        mp.start()
+        done.await(90, TimeUnit.SECONDS)
+        try { mp.release() } catch (e: Exception) { }
+        if (player === mp) player = null
+    }
+
+    private fun playPcm(pcm: ByteArray, rate: Int, my: Int, onStart: () -> Unit) {
+        if (my != gen) return
+        val t = AudioTrack.Builder()
+            .setAudioAttributes(AudioAttributes.Builder()
+                .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
+            .setAudioFormat(AudioFormat.Builder()
+                .setEncoding(AudioFormat.ENCODING_PCM_16BIT).setSampleRate(rate).setChannelMask(AudioFormat.CHANNEL_OUT_MONO).build())
+            .setBufferSizeInBytes(pcm.size)
+            .setTransferMode(AudioTrack.MODE_STATIC)
+            .build()
+        track = t
+        t.write(pcm, 0, pcm.size)
+        onStart()
+        t.play()
+        val ms = pcm.size / 2L * 1000L / rate
+        var waited = 0L
+        while (waited < ms + 300 && my == gen) { Thread.sleep(50); waited += 50 }
+        try { t.release() } catch (e: Exception) { }
+        if (track === t) track = null
+    }
+}

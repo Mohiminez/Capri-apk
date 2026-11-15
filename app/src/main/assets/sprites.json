@@ -2,71 +2,92 @@
  "idle": {
   "frames": 60,
   "fps": 24,
-  "w": 93,
-  "h": 307,
-  "cols": 44
+  "w": 116,
+  "h": 384,
+  "cols": 35
  },
  "idle_blink": {
   "frames": 8,
   "fps": 24,
-  "w": 93,
-  "h": 307,
-  "cols": 44
+  "w": 116,
+  "h": 384,
+  "cols": 35
  },
  "idle_mouth": {
   "frames": 5,
   "fps": 12,
-  "w": 93,
-  "h": 307,
-  "cols": 44
+  "w": 116,
+  "h": 384,
+  "cols": 35
  },
  "glitch": {
   "frames": 10,
   "fps": 15,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "grin": {
   "frames": 16,
   "fps": 8,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "sleep": {
   "frames": 16,
   "fps": 6,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "wake": {
   "frames": 13,
   "fps": 15,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "arrive": {
   "frames": 14,
   "fps": 15,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "leave": {
   "frames": 12,
   "fps": 15,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
  },
  "dangle": {
   "frames": 24,
   "fps": 10,
-  "w": 192,
-  "h": 307,
-  "cols": 21
+  "w": 240,
+  "h": 384,
+  "cols": 17
+ },
+ "walk": {
+  "frames": 12,
+  "fps": 12,
+  "w": 240,
+  "h": 384,
+  "cols": 17
+ },
+ "dance": {
+  "frames": 16,
+  "fps": 10,
+  "w": 240,
+  "h": 384,
+  "cols": 17
+ },
+ "click": {
+  "frames": 8,
+  "fps": 20,
+  "w": 360,
+  "h": 144,
+  "cols": 11
  }
 }

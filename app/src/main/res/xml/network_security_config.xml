@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<network-security-config>
+    <!-- Lets her talk to a server running on this phone (Termux/Ollama) or on your home network. -->
+    <base-config cleartextTrafficPermitted="true" />
+</network-security-config>

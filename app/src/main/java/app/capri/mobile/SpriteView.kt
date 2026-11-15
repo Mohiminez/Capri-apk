@@ -29,6 +29,10 @@ class SpriteView(ctx: Context) : View(ctx) {
     var current = ""
         private set
 
+    // Mirrors her so she can face left; her walk is a drift, so one sheet does both ways.
+    var flip = false
+        set(v) { field = v; invalidate() }
+
     private fun load(name: String): Clip? {
         clips[name]?.let { return it }
         return try {
@@ -74,7 +78,9 @@ class SpriteView(ctx: Context) : View(ctx) {
         val dw = c.w * scale
         val left = (width - dw) / 2f
         dst.set(left, 0f, left + dw, height.toFloat())
+        if (flip) { canvas.save(); canvas.scale(-1f, 1f, width / 2f, height / 2f) }
         canvas.drawBitmap(c.bmp, src, dst, paint)
+        if (flip) canvas.restore()
         if (!finished) postInvalidateDelayed(maxOf(16L, 1000L / c.fps))
     }
 }

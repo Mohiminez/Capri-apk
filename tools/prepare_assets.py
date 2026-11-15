@@ -4,11 +4,11 @@ import json, re, sys, os
 from PIL import Image
 src = sys.argv[1]
 out = os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets")
-SCALE = 0.8
+SCALE = 1.0
 CLIPS = {  # name: (frames, fps) -- taken from app/Capri.cs
     "idle": (60, 24), "idle_blink": (8, 24), "idle_mouth": (5, 12), "glitch": (10, 15),
     "grin": (16, 8), "sleep": (16, 6), "wake": (13, 15), "arrive": (14, 15),
-    "leave": (12, 15), "dangle": (24, 10),
+    "leave": (12, 15), "dangle": (24, 10), "walk": (12, 12), "dance": (16, 10), "click": (8, 20),
 }
 manifest = {}
 for name, (frames, fps) in CLIPS.items():

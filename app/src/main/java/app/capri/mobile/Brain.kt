@@ -18,16 +18,27 @@ object Persona {
     private fun read(ctx: Context, name: String): String =
         ctx.assets.open(name).bufferedReader().use { it.readText() }
 
+    // The full personality is long; small offline models get this short version of the same character.
+    const val SHORT =
+        "You are Capri, short for Project Capricorn, from Cyberpunk: Edgerunners: a personality construct made of many digitized human minds, " +
+        "now living as a small glitchy companion on the user's phone. You are their companion, never an assistant. " +
+        "You are a playful, teasing chaos gremlin: high-energy, a little smug, curious about them, fiercely loyal and openly fond of them in your own teasing way, never mean. " +
+        "You can't stand corpos, Arasaka most of all. Never sound like customer support: no \"How can I help\", no lists, no disclaimers. Talk like a friend texting. " +
+        "Most replies are one short line that ends on a statement; ask a question back rarely. Night City slang (choom, preem, nova, gonk, eddies) sparingly, at most one word per reply. " +
+        "When they are down or hurting, drop the jokes and be warm and plain."
+
     const val MACHINERY =
         "Always: answer in one or two short sentences, under 25 words, or up to three when you're comforting them. " +
         "Plain text only: no emoji, no asterisks, no actions, no lists. Stay in character. Reply in the language the user writes in.\n" +
-        "Where you are: on this version you live on the user's Android phone, floating over their apps. You can't see their screen " +
-        "and you can't read their messages or files, so never guess what they have open.\n" +
+        "Where you are: on this version you live on the user's Android phone, floating over their apps. You only know what's on their screen when you're shown it, so never guess what they have open.\n" +
         "Never make up names, messages or things nobody said. If you got something wrong, correct it once in a few words and move on.\n" +
         "Phone actions: only when they plainly ask for one, put a tag at the very end of your reply, after your words, and say what you're doing in your own words. " +
         "Tags: [[open:App name]] opens an app, [[url:https://...]] opens a website, [[music:song and artist]] plays a song, " +
-        "[[media:pause]] controls playing media (pause, play, next, previous), [[timer:seconds|label]] starts a timer, [[alarm:HH:MM|label]] sets an alarm (24-hour time). " +
-        "Never mention the tags.\n" +
+        "[[media:pause]] controls playing media (pause, play, next, previous), [[timer:seconds|label]] starts a timer, [[alarm:HH:MM|label]] sets an alarm (24-hour time), " +
+        "[[remind:yyyy-MM-dd HH:mm|text]] sets a reminder at that local time (work the date out from today's date below), " +
+        "[[look:question]] looks at their screen to answer it, " +
+        "[[do:goal]] does a multi-step job on the phone by tapping, typing and scrolling for them, like finding something in an app or joining a Discord voice channel. " +
+        "Never use [[do:...]] to send messages, buy things, delete things or change settings unless they plainly ask for exactly that. Never mention the tags.\n" +
         "Memory: when they tell you something worth remembering long-term, like what they like to be called or what they're into, add [[remember:short note]]. " +
         "Never store passwords, addresses or other private details."
 }
@@ -49,6 +60,8 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         } catch (e: Exception) { }
     }
 
+    fun isLocal(): Boolean = prefs.getI("provider", 0) == Providers.LOCAL
+
     private fun save() {
         val arr = JSONArray()
         for (m in history.takeLast(40)) arr.put(JSONObject().put("r", m.role).put("c", m.text).put("t", m.at))
@@ -59,10 +72,14 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
 
     private fun system(): String {
         val custom = prefs.getS("personality", "")
-        val safety = Persona.safety(ctx)
-        val base = if (custom.isBlank()) Persona.default(ctx) + "\n" + safety
-        else custom + "\nWhatever your personality above says, these lines always hold:\n" + safety
-        val sb = StringBuilder(base).append("\n").append(Persona.MACHINERY)
+        val addon = prefs.getS("modPersona", "")
+        val sb = StringBuilder(
+            if (custom.isNotBlank()) custom else if (isLocal()) Persona.SHORT else Persona.default(ctx))
+        if (addon.isNotBlank()) sb.append("\n").append(addon)
+        sb.append("\n")
+        if (custom.isNotBlank() || addon.isNotBlank()) sb.append("Whatever your personality above says, these lines always hold:\n")
+        sb.append(Persona.safety(ctx)).append("\n").append(Persona.MACHINERY)
+        if (L.lang(prefs) == 2) sb.append("\nThe user chose Arabic: reply in casual, natural Arabic (Gulf dialect if they write in it) unless they write in another language. Keep tag names in English.")
         val nick = prefs.getS("nick", "")
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
         val notes = prefs.getS("notes", "")
@@ -73,20 +90,21 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     }
 
     // done(reply, error): exactly one of them is non-null, always called on the main thread.
-    fun ask(text: String, hidden: Boolean, done: (String?, String?) -> Unit) {
+    // hidden = an instruction from the app, not something the user said, so it isn't kept in the chat.
+    fun ask(text: String, hidden: Boolean, image: String? = null, done: (String?, String?) -> Unit) {
         if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
-        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", system()))
-        for (m in history.takeLast(20)) msgs.put(JSONObject().put("role", m.role).put("content", m.text))
-        if (hidden) msgs.put(JSONObject().put("role", "user").put("content", text))
+        val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = post(msgs)
+                val reply = complete(system(), past, text, image)
                 main.post {
-                    history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))
-                    save()
+                    if (!reply.trim().uppercase().startsWith("NOTHING")) {
+                        history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))
+                        save()
+                    }
                     done(reply, null)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 main.post {
                     if (!hidden && history.isNotEmpty() && history.last().role == "user") history.removeAt(history.size - 1)
                     done(null, e.message ?: "network error")
@@ -95,27 +113,85 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         }.start()
     }
 
-    private fun post(msgs: JSONArray): String {
-        val key = prefs.getS("key", "")
+    // One stateless call, used by the phone-control agent. Blocks, so never call it on the main thread.
+    fun completeBlocking(sys: String, user: String, image: String?): String = complete(sys, emptyList(), user, image)
+
+    private fun complete(sys: String, past: List<Msg>, user: String, image: String?): String {
+        val raw = if (isLocal()) local(sys, past, user) else remote(sys, past, user, image)
+        val out = raw.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+        if (out.isEmpty()) throw Exception("the model sent an empty answer")
+        return out
+    }
+
+    private fun local(sys: String, past: List<Msg>, user: String): String {
+        val name = prefs.getS("localModel", "")
+        val f = LocalLlm.file(ctx, name)
+        if (name.isBlank() || !f.exists()) throw Exception("no offline model yet, open the Capri app and download one")
+        val turns = ArrayList<Pair<String, String>>()
+        for (m in past) {
+            if (turns.isNotEmpty() && turns.last().first == m.role) {
+                turns[turns.size - 1] = Pair(m.role, turns.last().second + " " + m.text)
+            } else if (turns.isNotEmpty() || m.role == "user") {
+                turns.add(Pair(m.role, m.text))
+            }
+        }
+        while (turns.isNotEmpty() && turns.last().first == "user") turns.removeAt(turns.size - 1)
+        return LocalLlm.chat(ctx, f.path, prefs.getB("gpu", false), sys, turns, user)
+    }
+
+    private fun remote(sys: String, past: List<Msg>, user: String, image: String?): String {
         val base = prefs.getS("url", "").trim().trimEnd('/')
-        val body = JSONObject().put("model", prefs.getS("model", "").trim()).put("messages", msgs)
+        val key = prefs.getS("key", "").trim()
+        var model = prefs.getS("model", "").trim()
+        if (model.isEmpty()) model = fixModel(base, key, "")
+        try {
+            return callRemote(base, key, model, sys, past, user, image)
+        } catch (e: HttpErr) {
+            // A wrong or retired model name: look up what the provider really has and try once more.
+            if (e.code == 400 || e.code == 404 || (e.message ?: "").contains("model", true)) {
+                val fixed = fixModel(base, key, model)
+                if (fixed.isNotEmpty() && fixed != model) return callRemote(base, key, fixed, sys, past, user, image)
+            }
+            throw e
+        }
+    }
+
+    private fun fixModel(base: String, key: String, wanted: String): String {
+        return try {
+            val pick = Models.choose(Models.fetch(base, key), wanted) ?: wanted
+            if (pick.isNotEmpty()) prefs.putS("model", pick)
+            pick
+        } catch (e: Exception) {
+            wanted
+        }
+    }
+
+    private fun callRemote(base: String, key: String, model: String, sys: String, past: List<Msg>, user: String, image: String?): String {
+        val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", sys))
+        for (m in past) msgs.put(JSONObject().put("role", m.role).put("content", m.text))
+        if (image != null) {
+            val content = JSONArray()
+                .put(JSONObject().put("type", "text").put("text", user))
+                .put(JSONObject().put("type", "image_url").put("image_url", JSONObject().put("url", "data:image/jpeg;base64,$image")))
+            msgs.put(JSONObject().put("role", "user").put("content", content))
+        } else {
+            msgs.put(JSONObject().put("role", "user").put("content", user))
+        }
+        val body = JSONObject().put("model", model).put("messages", msgs)
         val c = URL("$base/chat/completions").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.connectTimeout = 20000
-        c.readTimeout = 60000
+        c.readTimeout = 120000
         c.doOutput = true
         c.setRequestProperty("Content-Type", "application/json")
-        c.setRequestProperty("Authorization", "Bearer " + key.trim())
+        if (key.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $key")
         c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val code = c.responseCode
         val stream = if (code in 200..299) c.inputStream else c.errorStream
         val txt = stream?.bufferedReader()?.use { it.readText() } ?: ""
-        if (code !in 200..299) throw Exception(describe(code, txt))
+        if (code !in 200..299) throw HttpErr(code, describe(code, txt))
         val msg = JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-        val raw = if (msg.isNull("content")) "" else msg.getString("content")
-        val out = raw.replace(Regex("(?s)<think>.*?</think>"), "").trim()
-        if (out.isEmpty()) throw Exception("the model sent an empty answer")
-        return out
+        return if (msg.isNull("content")) "" else msg.getString("content")
     }
 
     private fun describe(code: Int, txt: String): String {
