@@ -28,12 +28,15 @@ object Voice {
         L.t("Phone voice (basic)", "صوت الجوال (عادي)"),
         L.t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"),
         L.t("ElevenLabs (like the Windows version)", "ElevenLabs (مثل نسخة الويندوز)"),
-        L.t("OpenAI-style or Kokoro server", "OpenAI أو سيرفر Kokoro")
+        L.t("Groq / OpenAI / Kokoro server", "Groq أو OpenAI أو سيرفر Kokoro")
     )
+
+    val groqVoices get() = if (L.ar) listOf("noura", "lulwa", "aisha", "fahad", "sultan", "abdullah") else listOf("hannah", "diana", "autumn", "austin", "daniel", "troy")
 
     val geminiVoices = listOf("Kore", "Zephyr", "Leda", "Aoede", "Puck", "Charon", "Fenrir", "Callirrhoe", "Autonoe", "Despina")
 
     @Volatile private var gen = 0
+    @Volatile private var prefsRef: Prefs? = null
     private var player: MediaPlayer? = null
     private var track: AudioTrack? = null
 
@@ -51,6 +54,7 @@ object Voice {
     // onStart runs right before the sound starts, so her mouth can move with it.
     fun speak(ctx: Context, prefs: Prefs, text: String, onStart: () -> Unit): String? {
         stop()
+        prefsRef = prefs
         val my = gen
         return try {
             when (prefs.getI("ttsEngine", PHONE)) {
@@ -138,12 +142,20 @@ object Voice {
 
     private fun openai(prefs: Prefs, text: String): ByteArray {
         val base = prefs.getS("voiceUrl", "").trim().trimEnd('/').ifBlank { "https://api.openai.com/v1" }
+        val groq = base.contains("groq.com")
+        // Groq's Orpheus voices: one model for English, one for Saudi Arabic.
+        val model = prefs.getS("voiceModel", "").ifBlank {
+            if (groq) (if (L.ar) "canopylabs/orpheus-arabic-saudi" else "canopylabs/orpheus-v1-english") else "tts-1"
+        }
+        val voice = prefs.getS("voiceName", "").ifBlank {
+            if (groq) (if (L.ar) "noura" else "hannah") else "nova"
+        }
         val body = JSONObject()
-            .put("model", prefs.getS("voiceModel", "").ifBlank { "tts-1" })
+            .put("model", model)
             .put("input", text)
-            .put("voice", prefs.getS("voiceName", "").ifBlank { "nova" })
-            .put("response_format", "mp3")
-        val key = voiceKey(prefs)
+            .put("voice", voice)
+            .put("response_format", if (groq) "wav" else "mp3")
+        val key = voiceKey(prefs).let { if (it.isEmpty() && groq) prefs.key(Providers.GROQ) else it }
         return post("$base/audio/speech", if (key.isEmpty()) emptyMap() else mapOf("Authorization" to "Bearer $key"), body)
     }
 
@@ -178,6 +190,12 @@ object Voice {
         if (my != gen) { mp.release(); return }
         onStart()
         mp.start()
+        // Her voice sliders (50 to 200 percent). Set after start(): some versions begin playing when params are set.
+        try {
+            val speed = (prefsRef?.getI("ttsSpeed", 100) ?: 100) / 100f
+            val pitch = (prefsRef?.getI("ttsPitch", 100) ?: 100) / 100f
+            if (speed != 1f || pitch != 1f) mp.playbackParams = android.media.PlaybackParams().setSpeed(speed).setPitch(pitch)
+        } catch (e: Exception) { }
         done.await(90, TimeUnit.SECONDS)
         try { mp.release() } catch (e: Exception) { }
         if (player === mp) player = null

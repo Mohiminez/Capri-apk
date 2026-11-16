@@ -11,7 +11,7 @@ object Models {
     private val skip = Regex("embed|whisper|tts|image|imagen|veo|moderation|dall-e|audio|realtime|transcribe|rerank|guard|vision-preview|aqa|learnlm", RegexOption.IGNORE_CASE)
     private val favourites = listOf(
         "gemini-2\\.5-flash$", "gemini-flash-latest$", "gemini-[0-9.]+-flash$", "gemini.*flash",
-        "llama-3\\.3-70b", "llama-3\\.1-70b", "llama-3\\.1-405b",
+        "llama-3\\.3-70b", "llama-3\\.1-70b", "llama-3\\.1-405b", "gpt-oss-120b", "grok-3-mini", "mistral-small",
         "gpt-4o-mini$", "gpt-4\\.1-mini$", "gpt-[0-9.]+-mini",
         "deepseek-chat", "claude.*sonnet", "claude.*haiku", "qwen.*instruct", "mistral"
     )
@@ -29,7 +29,8 @@ object Models {
         val code = c.responseCode
         val txt = (if (code in 200..299) c.inputStream else c.errorStream)?.bufferedReader()?.use { it.readText() } ?: ""
         if (code !in 200..299) throw HttpErr(code, if (code == 401 || code == 403) "the key was refused" else "HTTP $code")
-        val data = JSONObject(txt).getJSONArray("data")
+        // OpenAI-style lists come as {"data":[...]}; Together sends the bare array.
+        val data = if (txt.trimStart().startsWith("[")) org.json.JSONArray(txt) else JSONObject(txt).getJSONArray("data")
         val ids = ArrayList<String>()
         for (i in 0 until data.length()) {
             val id = data.getJSONObject(i).optString("id").removePrefix("models/")

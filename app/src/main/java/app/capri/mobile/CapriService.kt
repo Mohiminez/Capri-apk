@@ -12,6 +12,12 @@ import android.content.pm.ServiceInfo
 import android.graphics.Color
 import android.graphics.PixelFormat
 import android.graphics.drawable.GradientDrawable
+import android.content.BroadcastReceiver
+import android.content.Context
+import android.content.IntentFilter
+import android.text.SpannableString
+import android.text.Spanned
+import android.text.style.ForegroundColorSpan
 import android.media.AudioManager
 import android.os.Build
 import android.os.Bundle
@@ -47,6 +53,9 @@ class CapriService : Service(), Actions.Hooks {
         @Volatile var running = false
         const val ACT_HIDE = "app.capri.mobile.HIDE"
         const val ACT_STOP = "app.capri.mobile.STOP"
+        const val ACT_ASK = "app.capri.mobile.ASK"
+        const val ACT_QUIET = "app.capri.mobile.QUIET"
+        @Volatile var notifier: ((String) -> Unit)? = null
         private const val NOTE_ID = 1
         private const val OVERLAY = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
     }
@@ -78,6 +87,19 @@ class CapriService : Service(), Actions.Hooks {
     private var hidden = false
     private var dragging = false
     private var dancing = false
+    private var screenOn = true
+    private var convoActive = false
+    private var dictating = false
+    private var cloudListening = false
+    private var missCount = 0
+    private var pendingConfirm: (() -> Unit)? = null
+    private var typingFull = ""
+    private var typingPos = 0
+    private var menu: LinearLayout? = null
+    private var lastWater = System.currentTimeMillis()
+    private var lastStretch = System.currentTimeMillis()
+    private var lastLate = 0L
+    private val quiet get() = prefs.getB("quiet", false)
 
     // movement: 0 resting, 1 thrown (gravity and bounces), 2 walking somewhere
     private var mode = 0
@@ -118,6 +140,14 @@ class CapriService : Service(), Actions.Hooks {
         }
         if (sprite == null) setup()
         if (intent?.action == ACT_HIDE) toggleHidden()
+        if (intent?.action == ACT_QUIET) toggleQuiet()
+        if (intent?.action == ACT_ASK) {
+            val t = intent.getStringExtra("text") ?: ""
+            if (t.isNotBlank()) h.postDelayed({
+                if (hidden) toggleHidden()
+                ask("(They selected this text in another app: \"$t\"\nIn one or two short lines: translate it if it isn't in their language, otherwise explain or sum it up.)", true)
+            }, 700)
+        }
         return START_STICKY
     }
 
@@ -126,6 +156,10 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
+        notifier = null
+        try { unregisterReceiver(events) } catch (e: Exception) { }
+        Ears.cancel()
+        hideMenu()
         if (::agent.isInitialized) agent.cancel()
         Voice.stop()
         try { if (panelShown) wm.removeView(panel) } catch (e: Exception) { }
@@ -163,6 +197,7 @@ class CapriService : Service(), Actions.Hooks {
             .setContentIntent(open)
             .setOngoing(true)
             .addAction(0, if (hidden) L.t("Show", "إظهار") else L.t("Hide", "إخفاء"), act(ACT_HIDE, 1))
+            .addAction(0, if (quiet) L.t("Unmute", "فك الصمت") else L.t("Quiet", "صمت"), act(ACT_QUIET, 3))
             .addAction(0, L.t("Stop", "إيقاف"), act(ACT_STOP, 2))
             .build()
     }
@@ -174,7 +209,12 @@ class CapriService : Service(), Actions.Hooks {
             if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
                 type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
             }
-            startForeground(NOTE_ID, n, type)
+            try {
+                startForeground(NOTE_ID, n, type)
+            } catch (e: Exception) {
+                // e.g. started at boot, when the microphone type isn't allowed yet
+                startForeground(NOTE_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+            }
         } else {
             startForeground(NOTE_ID, n)
         }
@@ -182,10 +222,7 @@ class CapriService : Service(), Actions.Hooks {
 
     // ---- setting her up ----
 
-    private fun brainReady(): Boolean = when {
-        prefs.getI("provider", 0) == Providers.LOCAL -> prefs.getS("localModel", "").isNotBlank()
-        else -> prefs.getS("key", "").isNotBlank() || prefs.getS("url", "").startsWith("http://")
-    }
+    private fun brainReady(): Boolean = brain.anyReady()
 
     private fun setup() {
         val hPx = dp(prefs.getI("size", 140))
@@ -193,15 +230,20 @@ class CapriService : Service(), Actions.Hooks {
         val s = SpriteView(this)
         sprite = s
         spriteLp = WindowManager.LayoutParams(wPx, hPx, OVERLAY,
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT).apply {
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP or Gravity.START
             x = prefs.getI("x", screenW - wPx)
             y = prefs.getI("y", screenH * 45 / 100)
         }
         fx = spriteLp.x.toFloat()
         fy = spriteLp.y.toFloat()
+        s.glowColor = Themes.accent(prefs)
+        s.lowPower = prefs.getB("lowPower", false)
+        s.bob = !s.lowPower
         s.setOnTouchListener(touch)
+        s.alpha = 0f
         wm.addView(s, spriteLp)
+        s.animate().alpha(1f).setDuration(400).start()
 
         val b = TextView(this)
         b.setTextColor(Color.parseColor("#F2F2F2"))
@@ -213,7 +255,7 @@ class CapriService : Service(), Actions.Hooks {
             setStroke(dp(2), Themes.accent(prefs))
             cornerRadius = dp(14).toFloat()
         }
-        b.setOnClickListener { hideBubble() }
+        b.setOnClickListener { bubbleTapped() }
         bubble = b
         bubbleLp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             OVERLAY, WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE, PixelFormat.TRANSLUCENT).apply {
@@ -224,6 +266,12 @@ class CapriService : Service(), Actions.Hooks {
             { line -> h.post { say(line, false) } },
             { line -> h.post { busy = false; say(line); settle() } })
         ReminderReceiver.speaker = { t -> h.post { say(t) } }
+        notifier = { line -> h.post { if (!quiet && !hidden && !busy) say(line) } }
+        val filter = IntentFilter().apply {
+            addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
+            addAction(Intent.ACTION_BATTERY_LOW); addAction(Intent.ACTION_POWER_CONNECTED)
+        }
+        if (Build.VERSION.SDK_INT >= 33) registerReceiver(events, filter, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(events, filter)
 
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
@@ -234,13 +282,13 @@ class CapriService : Service(), Actions.Hooks {
                     val best = tts?.voices?.filter { it.locale.language == loc.language && !it.features.contains("notInstalled") }?.maxByOrNull { it.quality }
                     if (best != null) tts?.voice = best
                 } catch (e: Exception) { }
-                tts?.setSpeechRate(1.08f)
-                tts?.setPitch(1.12f)
+                tts?.setSpeechRate(1.08f * prefs.getI("ttsSpeed", 100) / 100f)
+                tts?.setPitch(1.12f * prefs.getI("ttsPitch", 100) / 100f)
                 tts?.setOnUtteranceProgressListener(object : UtteranceProgressListener() {
                     override fun onStart(id: String?) {}
-                    override fun onDone(id: String?) { h.post { talking = false; settle() } }
+                    override fun onDone(id: String?) { h.post { talkDone() } }
                     @Deprecated("Deprecated in Java")
-                    override fun onError(id: String?) { h.post { talking = false; settle() } }
+                    override fun onError(id: String?) { h.post { talkDone() } }
                 })
                 ttsReady = true
             }
@@ -253,6 +301,9 @@ class CapriService : Service(), Actions.Hooks {
         h.postDelayed(musicTask, 5000)
         h.postDelayed(watchTask, 60_000L)
         h.postDelayed(checkInTask, 20 * 60_000L)
+        h.postDelayed(careTask, 5 * 60_000L)
+        h.postDelayed(mischiefTask, 30 * 60_000L)
+        h.postDelayed(charmTask, 10 * 60_000L)
         h.postDelayed({
             if (!brainReady()) say(L.t("Hi. Open the Capri app and give me a brain first.", "هلا. افتح تطبيق كابري وأعطني دماغ أول."), false)
             else ask("(You just booted up on the user's phone. Say hi in one short line.)", true)
@@ -263,6 +314,8 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun settle() {
         val s = sprite ?: return
+        s.glow = talking && !s.lowPower
+        s.glitchFx = busy || mode == 1
         when {
             dragging || mode == 1 -> s.play("dangle")
             mode == 2 -> s.play("walk")
@@ -303,25 +356,82 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
+    private fun idleOk() = !hidden && !busy && !asleep && !panelShown && !talking && screenOn && !quiet && !agent.running
+
     private val checkInTask = object : Runnable {
         override fun run() {
-            if (prefs.getB("checkin", false) && !hidden && !busy && !asleep && !panelShown) {
+            if (prefs.getB("checkin", false) && idleOk()) {
                 ask("(They haven't spoken to you in a while. Pop in with one short line of your own. Don't ask what's up.)", true)
             }
             h.postDelayed(this, Random.nextLong(20 * 60_000L, 45 * 60_000L))
         }
     }
 
+    // Wellbeing nudges, with canned lines so they cost nothing.
+    private val careTask = object : Runnable {
+        override fun run() {
+            val now = System.currentTimeMillis()
+            if (idleOk()) {
+                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+                if (prefs.getB("careWater", false) && now - lastWater > 90 * 60_000L) {
+                    lastWater = now
+                    say(listOf(L.t("Drink some water, choom. Your brain runs on it.", "اشرب شوية موية يا خوي، مخك يشتغل عليها."),
+                        L.t("Hydrate. I mean it.", "اشرب موية. جاد.")).random())
+                } else if (prefs.getB("careStretch", false) && now - lastStretch > 60 * 60_000L) {
+                    lastStretch = now
+                    say(listOf(L.t("You've been staring for a while. Stretch, blink, breathe.", "صار لك مدة تطالع بالشاشة. تمطّط وغمّض وتنفّس."),
+                        L.t("Look at something far away for ten seconds.", "طالع شي بعيد عشر ثواني.")).random())
+                } else if (prefs.getB("careLate", false) && hour in 1..4 && now - lastLate > 2 * 3600_000L) {
+                    lastLate = now
+                    say(L.t("It's very late. Sleep exists, you know.", "الوقت متأخر مرة. النوم موجود تدري."))
+                }
+            }
+            h.postDelayed(this, 5 * 60_000L)
+        }
+    }
+
+    // Mischief mode: a harmless fake glitch now and then.
+    private val mischiefTask = object : Runnable {
+        override fun run() {
+            if (prefs.getB("mischief", false) && idleOk() && Random.nextInt(100) < 60) chaos()
+            h.postDelayed(this, Random.nextLong(30 * 60_000L, 90 * 60_000L))
+        }
+    }
+
+    private val charmTask = object : Runnable {
+        override fun run() {
+            if (screenOn && !hidden) Charm.add(prefs, 1)
+            h.postDelayed(this, 10 * 60_000L)
+        }
+    }
+
+    // Screen state, battery and charger.
+    private val events = object : BroadcastReceiver() {
+        override fun onReceive(c: Context, i: Intent) {
+            when (i.action) {
+                Intent.ACTION_SCREEN_OFF -> { screenOn = false; Voice.stop(); tts?.stop() }
+                Intent.ACTION_SCREEN_ON -> screenOn = true
+                Intent.ACTION_BATTERY_LOW -> if (prefs.getB("events", true) && idleOk())
+                    say(L.t("You're nearly out of battery. Find a charger, gonk.", "البطارية تخلص. دوّر شاحن يا خوي."))
+                Intent.ACTION_POWER_CONNECTED -> if (prefs.getB("events", true) && idleOk() && Random.nextInt(100) < 40)
+                    say(L.t("Charging. Good.", "الشحن اشتغل. زين."), false)
+            }
+        }
+    }
+
     private val watchTask = object : Runnable {
         override fun run() {
             val acc = CapriAccess.instance
-            val pm = getSystemService(POWER_SERVICE) as PowerManager
-            if (prefs.getB("watch", false) && acc != null && pm.isInteractive && !hidden && !busy && !asleep && !panelShown && !agent.running) {
+            val game = prefs.getB("gameMode", false)
+            val allowed = prefs.getB("watch", false) || (game && acc?.foregroundIsGame() == true)
+            if (acc != null && allowed && screenOn && !hidden && !busy && !asleep && !panelShown && !quiet && !agent.running) {
                 Thread {
                     val txt = acc.dump(if (brain.isLocal()) 2000 else 3000)
                     val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
                     h.post {
-                        if (!busy) ask("(You glance at their screen. What's on it:\n$txt\nIf something stands out, like a big play, a funny moment or something they're stuck on, react in one short line. If nothing stands out, reply with just NOTHING.)", true, img, true)
+                        if (!busy && (img != null || txt.lines().size > 3)) {
+                            ask("(You glance at their screen. What's on it:\n$txt\nIf something stands out, like a big play, a funny moment or something they're stuck on, react in one short line. If nothing stands out, reply with just NOTHING.)", true, img, true)
+                        }
                     }
                 }.start()
             }
@@ -447,6 +557,7 @@ class CapriService : Service(), Actions.Hooks {
         val longPress = Runnable {
             if (!moved) {
                 wasLong = true
+                convoActive = prefs.getB("convo", false)
                 startListening()
             }
         }
@@ -494,6 +605,7 @@ class CapriService : Service(), Actions.Hooks {
                             settle()
                         }
                     } else if (!wasLong && e.action == MotionEvent.ACTION_UP) {
+                        sprite?.ripple(e.x, e.y)
                         tapped()
                     }
                     tracker?.recycle()
@@ -505,12 +617,22 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun tapped() {
+        if (cloudListening) {
+            Ears.cancel()
+            return
+        }
         if (agent.running) {
             agent.cancel()
             say(L.t("Okay, stopping.", "تمام، وقفت."), false)
             return
         }
-        sprite?.play("grin", false) { settle() }
+        convoActive = false
+        sprite?.let { s ->
+            s.animate().scaleX(1.07f).scaleY(0.93f).setDuration(70).withEndAction {
+                s.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
+            }.start()
+            s.play("grin", false) { settle() }
+        }
         if (panelShown) hidePanel() else showPanel()
     }
 
@@ -539,25 +661,65 @@ class CapriService : Service(), Actions.Hooks {
         if (bubbleShown) try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
     }
 
-    private val hideBubbleTask = Runnable { hideBubble() }
+    private val hideBubbleTask = Runnable { pendingConfirm = null; hideBubble() }
 
-    private fun showBubble(text: String, ms: Long) {
+    // Her words appear letter by letter; the layout is fixed from the start so the bubble doesn't jump.
+    private val typeTask = object : Runnable {
+        override fun run() {
+            typingPos = minOf(typingFull.length, typingPos + 2)
+            renderTyped()
+            if (typingPos < typingFull.length) h.postDelayed(this, 28)
+        }
+    }
+
+    private fun renderTyped() {
+        val b = bubble ?: return
+        val sp = SpannableString(typingFull)
+        if (typingPos < typingFull.length) sp.setSpan(ForegroundColorSpan(Color.TRANSPARENT), typingPos, typingFull.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        b.text = sp
+    }
+
+    private fun bubbleTapped() {
+        val yes = pendingConfirm
+        if (yes != null) {
+            pendingConfirm = null
+            hideBubble()
+            yes()
+        } else if (typingPos < typingFull.length) {
+            h.removeCallbacks(typeTask)
+            typingPos = typingFull.length
+            renderTyped()
+        } else {
+            hideBubble()
+        }
+    }
+
+    private fun showBubble(text: String, ms: Long, typed: Boolean = true) {
         val b = bubble ?: return
         if (hidden) return
-        b.text = text
+        h.removeCallbacks(typeTask)
+        typingFull = text
+        typingPos = if (typed && !(sprite?.lowPower ?: false)) 0 else text.length
+        renderTyped()
         placeBubble()
         if (!bubbleShown) {
+            b.alpha = 0f
+            b.scaleX = 0.92f
+            b.scaleY = 0.92f
             wm.addView(b, bubbleLp)
             bubbleShown = true
+            b.animate().alpha(1f).scaleX(1f).scaleY(1f).setDuration(140).start()
         } else {
             wm.updateViewLayout(b, bubbleLp)
         }
+        if (typingPos < typingFull.length) h.postDelayed(typeTask, 28)
         h.removeCallbacks(hideBubbleTask)
         h.postDelayed(hideBubbleTask, ms)
     }
 
     private fun hideBubble() {
         h.removeCallbacks(hideBubbleTask)
+        h.removeCallbacks(typeTask)
         if (bubbleShown) {
             try { wm.removeView(bubble) } catch (e: Exception) { }
             bubbleShown = false
@@ -570,12 +732,21 @@ class CapriService : Service(), Actions.Hooks {
         if (hidden || text.isBlank()) return
         showBubble(text, (text.length * 80L).coerceIn(5000L, 15000L))
         talking = false
-        if (speak && prefs.getB("voice", true)) {
+        if (speak && !quiet && prefs.getB("voice", true)) {
             speakText(text)
         } else {
             talking = true
             settle()
-            h.postDelayed({ talking = false; settle() }, (text.length * 55L).coerceIn(1200L, 4500L))
+            h.postDelayed({ talkDone() }, (text.length * 55L).coerceIn(1200L, 4500L))
+        }
+    }
+
+    // After she finishes: back to idle, and in conversation mode straight back to listening.
+    private fun talkDone() {
+        talking = false
+        settle()
+        if (convoActive && !busy && !hidden && !dictating) {
+            h.postDelayed({ if (convoActive && !talking && !busy && !cloudListening) startListening() }, 450)
         }
     }
 
@@ -585,7 +756,7 @@ class CapriService : Service(), Actions.Hooks {
         if (ttsReady) {
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, null, "capri")
         } else {
-            h.postDelayed({ talking = false; settle() }, (text.length * 55L).coerceIn(1200L, 4500L))
+            h.postDelayed({ talkDone() }, (text.length * 55L).coerceIn(1200L, 4500L))
         }
     }
 
@@ -602,8 +773,7 @@ class CapriService : Service(), Actions.Hooks {
             h.post {
                 if (id != speakId) return@post
                 if (err == null) {
-                    talking = false
-                    settle()
+                    talkDone()
                 } else {
                     Toast.makeText(this, L.t("Voice problem, using the phone voice: ", "مشكلة بالصوت، استخدم صوت الجوال: ") + err, Toast.LENGTH_LONG).show()
                     phoneSpeak(text)
@@ -615,6 +785,7 @@ class CapriService : Service(), Actions.Hooks {
     private fun ask(text: String, hiddenPrompt: Boolean = false, image: String? = null, skipNothing: Boolean = false) {
         poke()
         if (!hiddenPrompt) {
+            Charm.add(prefs, 2)
             val quick = QuickAsks.match(text)
             if (quick != null) {
                 say(Actions.run(this, prefs, quick, this))
@@ -628,7 +799,7 @@ class CapriService : Service(), Actions.Hooks {
         busy = true
         talking = false
         settle()
-        if (!skipNothing) showBubble("...", 90_000L)
+        if (!skipNothing) showBubble("...", 90_000L, false)
         brain.ask(text, hiddenPrompt, image) { reply, err ->
             busy = false
             when {
@@ -640,7 +811,7 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
-    // ---- jobs and sight (Actions.Hooks) ----
+    // ---- jobs, sight, lookups (Actions.Hooks) ----
 
     override fun startJob(goal: String) {
         if (agent.running) return
@@ -657,7 +828,7 @@ class CapriService : Service(), Actions.Hooks {
         }
         busy = true
         settle()
-        showBubble("...", 90_000L)
+        showBubble("...", 90_000L, false)
         Thread {
             val txt = acc.dump(if (brain.isLocal()) 2500 else 4000)
             val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
@@ -666,6 +837,108 @@ class CapriService : Service(), Actions.Hooks {
                 ask("(You are looking at their screen right now. What's on it:\n$txt\nThey asked: $question\nAnswer from what you can see, in one or two short lines. Never read private messages out word for word.)", true, img)
             }
         }.start()
+    }
+
+    // Weather, Wikipedia and "what's playing": she fetches it, then tells you in her own words.
+    override fun tool(name: String, arg: String) {
+        busy = true
+        settle()
+        showBubble("...", 90_000L, false)
+        Thread {
+            val result = try {
+                when (name) {
+                    "weather" -> Tools.weather(arg)
+                    "wiki" -> Tools.wiki(arg)
+                    else -> Tools.nowPlaying(this)
+                }
+            } catch (e: Exception) {
+                "The lookup failed: " + (e.message ?: "no connection")
+            }
+            h.post {
+                busy = false
+                ask("(Result of your lookup \"$name $arg\": $result\nTell them the answer in your own words, one or two short lines, in their language.)", true)
+            }
+        }.start()
+    }
+
+    // In Guarded mode she asks first: a bubble you tap to allow.
+    override fun confirm(text: String, yes: () -> Unit) {
+        pendingConfirm = yes
+        showBubble(text + "\n\u2714 " + L.t("tap here to allow", "اضغط هنا للسماح"), 12_000L, false)
+    }
+
+    override fun chaos() {
+        if (hidden) return
+        val v = ChaosView(this, Themes.accent(prefs))
+        val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_HARDWARE_ACCELERATED, PixelFormat.TRANSLUCENT)
+        try { wm.addView(v, lp) } catch (e: Exception) { return }
+        h.postDelayed({ try { wm.removeView(v) } catch (e: Exception) { }; say(L.t("Gotcha.", "ضحكت عليك."), false) }, 1900)
+    }
+
+    override fun dictate() { startListening(true) }
+
+    // ---- small menu next to her ----
+
+    private fun hideMenu() {
+        menu?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        menu = null
+    }
+
+    private fun showMenu(items: List<Pair<String, () -> Unit>>) {
+        hideMenu()
+        val m = LinearLayout(this)
+        m.orientation = LinearLayout.VERTICAL
+        m.layoutDirection = if (L.ar) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+        m.background = GradientDrawable().apply {
+            setColor(Color.parseColor("#F010141B"))
+            setStroke(dp(2), Themes.accent(prefs))
+            cornerRadius = dp(14).toFloat()
+        }
+        for ((label, action) in items) {
+            val t = TextView(this)
+            t.text = label
+            t.textSize = 15f
+            t.setTextColor(Color.WHITE)
+            t.setPadding(dp(16), dp(11), dp(16), dp(11))
+            t.setOnClickListener { hideMenu(); action() }
+            m.addView(t)
+        }
+        m.measure(View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT)
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.x = (spriteLp.x - m.measuredWidth / 2).coerceIn(dp(8), maxOf(dp(8), screenW - m.measuredWidth - dp(8)))
+        var y = spriteLp.y - m.measuredHeight
+        if (y < dp(40)) y = spriteLp.y + spriteLp.height
+        lp.y = y
+        m.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_OUTSIDE) hideMenu(); false }
+        try { wm.addView(m, lp) } catch (e: Exception) { return }
+        menu = m
+        h.postDelayed({ if (menu === m) hideMenu() }, 12_000L)
+    }
+
+    private fun gamesMenu() {
+        fun play(name: String, how: String) = Pair(name, { ask("(Start a quick game with the user: $how Keep it going turn by turn in this chat, one short message at a time. Begin now.)", true) })
+        showMenu(listOf(
+            play(L.t("\uD83E\uDDE0 Trivia", "\uD83E\uDDE0 أسئلة"), "trivia. Ask one question at a time with four options A to D, keep score."),
+            play(L.t("\uD83D\uDD75 20 questions", "\uD83D\uDD75 ٢٠ سؤال"), "twenty questions. You secretly think of something and they guess by asking yes or no questions."),
+            play(L.t("\u2702 Rock paper scissors", "\u2702 حجر ورقة مقص"), "rock paper scissors, best of five. Pick your move secretly each round and reveal it after theirs."),
+            play(L.t("\uD83E\uDD14 Would you rather", "\uD83E\uDD14 تفضل ولا"), "would you rather, with funny cyberpunk dilemmas."),
+            play(L.t("\uD83E\uDDE9 Riddles", "\uD83E\uDDE9 ألغاز"), "riddles. Give one riddle at a time and react to their answers.")
+        ))
+    }
+
+    private fun mainMenu() {
+        showMenu(listOf(
+            L.t("\uD83C\uDFAE Play a game", "\uD83C\uDFAE العب لعبة") to { gamesMenu() },
+            L.t("\u2328 Dictate into a text box", "\u2328 أملي على خانة نص") to { startListening(true) },
+            L.t("\uD83D\uDDE3 Conversation mode", "\uD83D\uDDE3 وضع المحادثة") to { convoActive = true; startListening() },
+            (if (quiet) L.t("\uD83D\uDD0A Unmute", "\uD83D\uDD0A فك الصمت") else L.t("\uD83E\uDD2B Quiet mode", "\uD83E\uDD2B وضع الصمت")) to { toggleQuiet() },
+            L.t("\u26A1 Prank me", "\u26A1 مقلب") to { chaos() }
+        ))
     }
 
     // ---- typing ----
@@ -696,14 +969,15 @@ class CapriService : Service(), Actions.Hooks {
         fun button(label: String, click: () -> Unit) {
             val t = TextView(this)
             t.text = label
-            t.textSize = 22f
+            t.textSize = 21f
             t.setTextColor(Color.WHITE)
-            t.setPadding(dp(12), dp(8), dp(12), dp(8))
+            t.setPadding(dp(10), dp(8), dp(10), dp(8))
             t.setOnClickListener { click() }
             p.addView(t)
         }
-        button("\uD83C\uDFA4") { hidePanel(); startListening() }
+        button("\uD83C\uDFA4") { hidePanel(); convoActive = prefs.getB("convo", false); startListening() }
         button("\u27A4") { sendTyped() }
+        button("\u2630") { hidePanel(); mainMenu() }
         button("\u2715") { hidePanel() }
 
         panel = p
@@ -745,20 +1019,72 @@ class CapriService : Service(), Actions.Hooks {
 
     // ---- voice in ----
 
-    private fun startListening() {
+    private fun heard(t: String?) {
+        cloudListening = false
+        if (t.isNullOrBlank()) { missed(); return }
+        missCount = 0
+        if (dictating) {
+            dictating = false
+            val ok = CapriAccess.instance?.typeText(t) == true
+            say(if (ok) L.t("Typed it.", "كتبتها.") else L.t("There's no text box open to type into.", "ما فيه خانة نص مفتوحة أكتب فيها."), false)
+            return
+        }
+        if (Regex("^(bye|goodbye|stop|stop listening|that's all|مع السلامة|باي|وقف|بس)[ .!]*$", RegexOption.IGNORE_CASE).matches(t.trim())) {
+            convoActive = false
+            say(L.t("Later.", "مع السلامة."))
+            return
+        }
+        ask(t)
+    }
+
+    private fun missed() {
+        dictating = false
+        missCount++
+        if (convoActive && missCount >= 2) {
+            convoActive = false
+            missCount = 0
+            say(L.t("I'll stop listening.", "بوقف أسمع."), false)
+        } else if (convoActive) {
+            h.postDelayed({ startListening() }, 300)
+        } else {
+            say(L.t("Didn't catch that.", "ما سمعتك زين."), false)
+        }
+    }
+
+    private fun startListening(dictate: Boolean = false) {
         poke()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say(L.t("I need the microphone permission. Open the Capri app.", "أحتاج صلاحية المايك. افتح تطبيق كابري."), false)
-            return
-        }
-        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
-            say(L.t("This phone has no speech recognizer.", "الجوال ما فيه تعرف على الصوت."), false)
             return
         }
         speakId++
         Voice.stop()
         tts?.stop()
         talking = false
+        dictating = dictate
+        if (dictate) showBubble(L.t("Dictating... say what to type.", "أسمعك... قل وش أكتب."), 12_000L, false)
+        else showBubble(L.t("Listening...", "أسمعك..."), 12_000L, false)
+        settle()
+
+        // Her own ears (Whisper-style server) when chosen: better for Arabic dialects.
+        if (prefs.getI("sttEngine", 0) == 1) {
+            if (cloudListening) return
+            cloudListening = true
+            Thread {
+                try {
+                    val txt = Ears.listen(this, prefs) { }
+                    h.post { heard(txt) }
+                } catch (e: Throwable) {
+                    h.post { cloudListening = false; convoActive = false; say(L.t("Hearing problem: ", "مشكلة بالسمع: ") + (e.message ?: ""), false) }
+                }
+            }.start()
+            return
+        }
+
+        if (!SpeechRecognizer.isRecognitionAvailable(this)) {
+            say(L.t("This phone has no speech recognizer. Pick her own ears in the Capri app.", "الجوال ما فيه تعرف على الصوت. اختر أذنها الخاصة من التطبيق."), false)
+            return
+        }
         recognizer?.destroy()
         val r = SpeechRecognizer.createSpeechRecognizer(this)
         r.setRecognitionListener(object : RecognitionListener {
@@ -769,14 +1095,12 @@ class CapriService : Service(), Actions.Hooks {
             override fun onEndOfSpeech() {}
             override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onError(error: Int) { say(L.t("Didn't catch that.", "ما سمعتك زين."), false) }
+            override fun onError(error: Int) { missed() }
             override fun onResults(results: Bundle?) {
-                val t = results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull()
-                if (t.isNullOrBlank()) say(L.t("Didn't catch that.", "ما سمعتك زين."), false) else ask(t)
+                heard(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull())
             }
         })
         recognizer = r
-        showBubble(L.t("Listening...", "أسمعك..."), 10_000L)
         r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
@@ -795,6 +1119,13 @@ class CapriService : Service(), Actions.Hooks {
             s.visibility = View.VISIBLE
             s.play("arrive", false) { settle() }
         }
+        (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTE_ID, notification())
+    }
+
+    private fun toggleQuiet() {
+        prefs.putB("quiet", !quiet)
+        if (quiet) { speakId++; Voice.stop(); tts?.stop() }
+        say(if (quiet) L.t("Quiet mode. I'll only type.", "وضع الصمت. بس أكتب.") else L.t("Voice is back.", "رجع الصوت."), false)
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTE_ID, notification())
     }
 }

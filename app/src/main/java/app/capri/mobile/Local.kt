@@ -84,6 +84,8 @@ object LocalLlm {
 
     private var engine: Engine? = null
     private var loaded = ""
+    private val idle = android.os.Handler(android.os.Looper.getMainLooper())
+    private val unload = Runnable { close() }
 
     @Synchronized
     private fun engineFor(ctx: Context, path: String, gpu: Boolean): Engine {
@@ -113,6 +115,7 @@ object LocalLlm {
     // turns: alternating ("user"|"assistant", text) pairs that end on an assistant turn; user is the new message.
     @Synchronized
     fun chat(ctx: Context, path: String, gpu: Boolean, system: String, turns: List<Pair<String, String>>, user: String): String {
+        idle.removeCallbacks(unload)
         val e = engineFor(ctx, path, gpu)
         val initial = ArrayList<Message>()
         for (t in turns) initial.add(if (t.first == "user") Message.user(t.second) else Message.model(t.second))
@@ -121,10 +124,12 @@ object LocalLlm {
             initialMessages = initial,
             samplerConfig = SamplerConfig(topK = 40, topP = 0.95, temperature = 0.9)
         )
-        return e.createConversation(cfg).use { c ->
-            val m = c.sendMessage(user, extraContext = mapOf("enable_thinking" to false))
-            val t: String? = m.text
-            (t ?: m.toString()).trim()
+        val answer = e.createConversation(cfg).use { c ->
+            // Message.toString() is the reply text in every release (the .text property only exists in newer ones).
+            c.sendMessage(user, extraContext = mapOf("enable_thinking" to false)).toString().trim()
         }
+        // Frees about a gigabyte of RAM when she hasn't needed the model for two minutes.
+        idle.postDelayed(unload, 120_000L)
+        return answer
     }
 }

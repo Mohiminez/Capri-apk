@@ -8,7 +8,7 @@ A small, unofficial Android port of [Capri](https://github.com/lachydotmcg/capri
 2. Open **Actions**, pick **Build APK**, press **Run workflow** (it also runs on every push).
 3. After about 5 minutes download the **Capri-debug-apk** artifact, unzip it and install `app-debug.apk`.
 
-This code has not been compiled by me. If the build fails, copy the red error lines from the failed step and send them back.
+The Kotlin code has been compiled against Android stubs (no errors), but I can't run the full Gradle build or the app here. If the build fails, copy the red error lines from the failed step and send them back.
 
 ## First run
 

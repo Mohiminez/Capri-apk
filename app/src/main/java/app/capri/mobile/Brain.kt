@@ -37,7 +37,10 @@ object Persona {
         "[[media:pause]] controls playing media (pause, play, next, previous), [[timer:seconds|label]] starts a timer, [[alarm:HH:MM|label]] sets an alarm (24-hour time), " +
         "[[remind:yyyy-MM-dd HH:mm|text]] sets a reminder at that local time (work the date out from today's date below), " +
         "[[look:question]] looks at their screen to answer it, " +
-        "[[do:goal]] does a multi-step job on the phone by tapping, typing and scrolling for them, like finding something in an app or joining a Discord voice channel. " +
+        "[[do:goal]] does a multi-step job on the phone by tapping, typing and scrolling for them, like finding something in an app or joining a Discord voice channel, " +
+        "[[weather:city]] and [[wiki:topic]] and [[playing:x]] look something up (the weather, a Wikipedia summary, the song playing now) and you then answer from the result, " +
+        "[[flash:on]] or [[flash:off]] is the torch, [[volume:up]] [[volume:down]] or [[volume:60]] the music volume, [[nav:place]] opens directions, [[search:query]] a web search, " +
+        "[[copy:text]] copies text to the clipboard, [[chaos:x]] a harmless fake glitch prank on their screen, [[dictate:x]] types what they say next into the box they have open. " +
         "Never use [[do:...]] to send messages, buy things, delete things or change settings unless they plainly ask for exactly that. Never mention the tags.\n" +
         "Memory: when they tell you something worth remembering long-term, like what they like to be called or what they're into, add [[remember:short note]]. " +
         "Never store passwords, addresses or other private details."
@@ -60,13 +63,15 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         } catch (e: Exception) { }
     }
 
-    fun isLocal(): Boolean = prefs.getI("provider", 0) == Providers.LOCAL
+    fun isLocal(): Boolean = prefs.cur == Providers.LOCAL
 
     private fun save() {
         val arr = JSONArray()
         for (m in history.takeLast(40)) arr.put(JSONObject().put("r", m.role).put("c", m.text).put("t", m.at))
         prefs.putS("history", arr.toString())
     }
+
+    fun anyReady(): Boolean = chain(prefs.cur).any { ready(it) }
 
     fun forget() { history.clear(); save() }
 
@@ -82,6 +87,8 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         if (L.lang(prefs) == 2) sb.append("\nThe user chose Arabic: reply in casual, natural Arabic (Gulf dialect if they write in it) unless they write in another language. Keep tag names in English.")
         val nick = prefs.getS("nick", "")
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
+        sb.append("\nHow well you know them: ").append(listOf("barely at all", "a little", "as friends", "closely", "like ride-or-die family")[Charm.level(prefs.getI("charm", 0))])
+            .append(". Let it show a little in how warm and teasing you are. Never mention this line or any number.")
         val notes = prefs.getS("notes", "")
         if (notes.isNotBlank()) sb.append("\nWhat you remember about them:\n").append(notes)
         sb.append("\nFor them it is ").append(SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.ENGLISH).format(Date()))
@@ -96,7 +103,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = complete(system(), past, text, image)
+                val reply = complete(system(), past, text, image, prefs.cur)
                 main.post {
                     if (!reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))
@@ -114,13 +121,43 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     }
 
     // One stateless call, used by the phone-control agent. Blocks, so never call it on the main thread.
-    fun completeBlocking(sys: String, user: String, image: String?): String = complete(sys, emptyList(), user, image)
+    // The job brain can be a stronger provider than the chat brain (like the original's brain tiers).
+    fun completeBlocking(sys: String, user: String, image: String?): String {
+        val jobs = prefs.getI("jobProvider", -1)
+        return complete(sys, emptyList(), user, image, if (jobs in 0 until Providers.all.size) jobs else prefs.cur)
+    }
 
-    private fun complete(sys: String, past: List<Msg>, user: String, image: String?): String {
-        val raw = if (isLocal()) local(sys, past, user) else remote(sys, past, user, image)
-        val out = raw.replace(Regex("(?s)<think>.*?</think>"), "").trim()
-        if (out.isEmpty()) throw Exception("the model sent an empty answer")
+    private fun ready(i: Int): Boolean = when (i) {
+        Providers.LOCAL -> prefs.getS("localModel", "").isNotBlank() && LocalLlm.file(ctx, prefs.getS("localModel", "")).exists()
+        else -> prefs.url(i).isNotBlank() && (prefs.key(i).isNotEmpty() || prefs.url(i).startsWith("http://"))
+    }
+
+    // The provider you chose first. When it's rate-limited or down, the next one you have a key for takes over.
+    private fun chain(first: Int): List<Int> {
+        val out = arrayListOf(first)
+        if (prefs.getB("fallback", true)) {
+            for (i in Providers.all.indices) if (i != first && i != Providers.LOCAL && ready(i)) out.add(i)
+            if (first != Providers.LOCAL && prefs.getB("offlineFallback", true) && ready(Providers.LOCAL)) out.add(Providers.LOCAL)
+        }
         return out
+    }
+
+    @Volatile var lastUsed = ""
+
+    private fun complete(sys: String, past: List<Msg>, user: String, image: String?, first: Int = prefs.cur): String {
+        var firstErr: Throwable? = null
+        for (i in chain(first)) {
+            try {
+                val raw = if (i == Providers.LOCAL) local(sys, past, user) else remote(i, sys, past, user, image)
+                val out = raw.replace(Regex("(?s)<think>.*?</think>"), "").trim()
+                if (out.isEmpty()) throw Exception("the model sent an empty answer")
+                lastUsed = Providers.all[i].name
+                return out
+            } catch (e: Throwable) {
+                if (firstErr == null) firstErr = e
+            }
+        }
+        throw (firstErr ?: Exception("no brain is set up"))
     }
 
     private fun local(sys: String, past: List<Msg>, user: String): String {
@@ -128,7 +165,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val f = LocalLlm.file(ctx, name)
         if (name.isBlank() || !f.exists()) throw Exception("no offline model yet, open the Capri app and download one")
         val turns = ArrayList<Pair<String, String>>()
-        for (m in past) {
+        for (m in past.takeLast(6)) {
             if (turns.isNotEmpty() && turns.last().first == m.role) {
                 turns[turns.size - 1] = Pair(m.role, turns.last().second + " " + m.text)
             } else if (turns.isNotEmpty() || m.role == "user") {
@@ -136,30 +173,32 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             }
         }
         while (turns.isNotEmpty() && turns.last().first == "user") turns.removeAt(turns.size - 1)
-        return LocalLlm.chat(ctx, f.path, prefs.getB("gpu", false), sys, turns, user)
+        // The long personality doesn't fit a small offline model, so it always gets the short one.
+        val short = if (prefs.getS("personality", "").isBlank()) sys.replace(Persona.default(ctx), Persona.SHORT) else sys
+        return LocalLlm.chat(ctx, f.path, prefs.getB("gpu", false), short, turns, user)
     }
 
-    private fun remote(sys: String, past: List<Msg>, user: String, image: String?): String {
-        val base = prefs.getS("url", "").trim().trimEnd('/')
-        val key = prefs.getS("key", "").trim()
-        var model = prefs.getS("model", "").trim()
-        if (model.isEmpty()) model = fixModel(base, key, "")
+    private fun remote(i: Int, sys: String, past: List<Msg>, user: String, image: String?): String {
+        val base = prefs.url(i).trim().trimEnd('/')
+        val key = prefs.key(i)
+        var model = prefs.model(i)
+        if (model.isEmpty()) model = fixModel(i, base, key, "")
         try {
             return callRemote(base, key, model, sys, past, user, image)
         } catch (e: HttpErr) {
             // A wrong or retired model name: look up what the provider really has and try once more.
             if (e.code == 400 || e.code == 404 || (e.message ?: "").contains("model", true)) {
-                val fixed = fixModel(base, key, model)
+                val fixed = fixModel(i, base, key, model)
                 if (fixed.isNotEmpty() && fixed != model) return callRemote(base, key, fixed, sys, past, user, image)
             }
             throw e
         }
     }
 
-    private fun fixModel(base: String, key: String, wanted: String): String {
+    private fun fixModel(i: Int, base: String, key: String, wanted: String): String {
         return try {
             val pick = Models.choose(Models.fetch(base, key), wanted) ?: wanted
-            if (pick.isNotEmpty()) prefs.putS("model", pick)
+            if (pick.isNotEmpty()) prefs.putModel(i, pick)
             pick
         } catch (e: Exception) {
             wanted

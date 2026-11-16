@@ -30,6 +30,7 @@ class ScreenNode(val label: String, val kind: String, val x: Int, val y: Int, va
 class CapriAccess : AccessibilityService() {
     companion object {
         @Volatile var instance: CapriAccess? = null
+        @Volatile var foreground: String = ""
     }
 
     @Volatile private var nodes: List<ScreenNode> = emptyList()
@@ -40,7 +41,19 @@ class CapriAccess : AccessibilityService() {
 
     override fun onServiceConnected() { instance = this }
     override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
-    override fun onAccessibilityEvent(event: AccessibilityEvent?) {}
+    override fun onAccessibilityEvent(event: AccessibilityEvent?) {
+        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+            val pkg = event.packageName?.toString() ?: return
+            // Her own windows and the system UI aren't "the app they're in".
+            if (pkg != packageName && pkg != "com.android.systemui") foreground = pkg
+        }
+    }
+
+    fun foregroundIsGame(): Boolean {
+        val pkg = foreground
+        if (pkg.isEmpty()) return false
+        return try { packageManager.getApplicationInfo(pkg, 0).category == android.content.pm.ApplicationInfo.CATEGORY_GAME } catch (e: Exception) { false }
+    }
     override fun onInterrupt() {}
 
     // ---- eyes ----
