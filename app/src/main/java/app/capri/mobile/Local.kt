@@ -39,7 +39,8 @@ object LocalLlm {
                 conn.connectTimeout = 20000
                 conn.readTimeout = 60000
                 // Only the Hugging Face host gets the token, never the file CDN it redirects to.
-                if (token.isNotBlank() && URL(u).host.endsWith("huggingface.co")) {
+                val host = URL(u).host.lowercase()
+                if (token.isNotBlank() && URL(u).protocol == "https" && (host == "huggingface.co" || host.endsWith(".huggingface.co"))) {
                     conn.setRequestProperty("Authorization", "Bearer " + token.trim())
                 }
                 val code = conn.responseCode
@@ -72,6 +73,8 @@ object LocalLlm {
                     }
                 }
             }
+            if (total > 0 && done != total) { part.delete(); return "the download was cut short, try again" }
+            if (done < 5_000_000L) { part.delete(); return "that file is too small to be a model" }
             val out = file(ctx, name)
             if (out.exists()) out.delete()
             if (!part.renameTo(out)) return "couldn't save the file"

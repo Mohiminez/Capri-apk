@@ -5,24 +5,28 @@ from PIL import Image
 src = sys.argv[1]
 out = os.path.join(os.path.dirname(__file__), "..", "app", "src", "main", "assets")
 SCALE = 1.0
-CLIPS = {  # name: (frames, fps) -- taken from app/Capri.cs
-    "idle": (60, 24), "idle_blink": (8, 24), "idle_mouth": (5, 12), "glitch": (10, 15),
-    "grin": (16, 8), "sleep": (16, 6), "wake": (13, 15), "arrive": (14, 15),
-    "leave": (12, 15), "dangle": (24, 10), "walk": (12, 12), "dance": (16, 10), "click": (8, 20),
+CLIPS = {  # name: (frames, fps, source-px shift to the right), from app/Capri.cs
+    "idle": (60, 24, 12.2), "idle_blink": (8, 24, 12.2), "idle_mouth": (5, 12, 12.2), "mouth": (5, 12, 0),
+    "glitch": (10, 15, 0), "grin": (16, 8, 0), "sleep": (16, 6, 0), "wake": (13, 15, 0), "arrive": (14, 15, 0),
+    "leave": (12, 15, 0), "dangle": (24, 10, 0), "walk": (12, 12, 0), "dance": (16, 10, 0), "click": (8, 20, 0),
+    "laydown_sleep": (60, 30, 0),
 }
+THIN = {"laydown_sleep"}  # the lying sheets are huge: keep every second frame at half the rate
 manifest = {}
-for name, (frames, fps) in CLIPS.items():
+for name, (frames, fps, sx) in CLIPS.items():
     im = Image.open(f"{src}/assets/sprites/{name}.png").convert("RGBA")
     fw, fh = im.width // frames, im.height
+    keep = list(range(0, frames, 2)) if name in THIN else list(range(frames))
+    if name in THIN: fps = fps // 2
     w, h = max(1, round(fw * SCALE)), round(fh * SCALE)
     cols = max(1, 4096 // w)
-    rows = -(-frames // cols)
+    rows = -(-len(keep) // cols)
     sheet = Image.new("RGBA", (cols * w, rows * h), (0, 0, 0, 0))
-    for i in range(frames):
+    for n, i in enumerate(keep):
         f = im.crop((i * fw, 0, (i + 1) * fw, fh)).resize((w, h), Image.LANCZOS)
-        sheet.paste(f, ((i % cols) * w, (i // cols) * h))
+        sheet.paste(f, ((n % cols) * w, (n // cols) * h))
     sheet.save(f"{out}/sprites/{name}.png", optimize=True)
-    manifest[name] = dict(frames=frames, fps=fps, w=w, h=h, cols=cols)
+    manifest[name] = dict(frames=len(keep), fps=fps, w=w, h=h, cols=cols, sx=sx)
 json.dump(manifest, open(f"{out}/sprites.json", "w"), indent=1)
 
 # persona text, copied from app/Brain.cs so she stays the same Capri

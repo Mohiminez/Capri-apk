@@ -40,6 +40,8 @@ object Persona {
         "[[do:goal]] does a multi-step job on the phone by tapping, typing and scrolling for them, like finding something in an app or joining a Discord voice channel, " +
         "[[weather:city]] and [[wiki:topic]] and [[playing:x]] look something up (the weather, a Wikipedia summary, the song playing now) and you then answer from the result, " +
         "[[flash:on]] or [[flash:off]] is the torch, [[volume:up]] [[volume:down]] or [[volume:60]] the music volume, [[nav:place]] opens directions, [[search:query]] a web search, " +
+        "[[hands:type|text]] types text into the open text box, [[hands:openType|app|text]] opens an app and types text in it, [[hands:tap|label]] taps a button by its label, " +
+        "[[hands:scroll|down]] (or up), [[hands:back]], [[hands:home]], [[hands:shot]] (screenshot), [[hands:lock]], " +
         "[[copy:text]] copies text to the clipboard, [[chaos:x]] a harmless fake glitch prank on their screen, [[dictate:x]] types what they say next into the box they have open. " +
         "Never use [[do:...]] to send messages, buy things, delete things or change settings unless they plainly ask for exactly that. Never mention the tags.\n" +
         "Memory: when they tell you something worth remembering long-term, like what they like to be called or what they're into, add [[remember:short note]]. " +
@@ -124,7 +126,9 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     // The job brain can be a stronger provider than the chat brain (like the original's brain tiers).
     fun completeBlocking(sys: String, user: String, image: String?): String {
         val jobs = prefs.getI("jobProvider", -1)
-        return complete(sys, emptyList(), user, image, if (jobs in 0 until Providers.all.size) jobs else prefs.cur)
+        // A chat that runs on the phone never hands the screen to an online job brain unless you allow it.
+        val offlineOnly = prefs.cur == Providers.LOCAL && !prefs.getB("localToCloud", false)
+        return complete(sys, emptyList(), user, image, if (jobs in 0 until Providers.all.size && !offlineOnly) jobs else prefs.cur)
     }
 
     private fun ready(i: Int): Boolean = when (i) {
@@ -135,6 +139,8 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     // The provider you chose first. When it's rate-limited or down, the next one you have a key for takes over.
     private fun chain(first: Int): List<Int> {
         val out = arrayListOf(first)
+        // Offline stays offline: no online brain is tried unless you turned that on.
+        if (first == Providers.LOCAL && !prefs.getB("localToCloud", false)) return out
         if (prefs.getB("fallback", true)) {
             for (i in Providers.all.indices) if (i != first && i != Providers.LOCAL && ready(i)) out.add(i)
             if (first != Providers.LOCAL && prefs.getB("offlineFallback", true) && ready(Providers.LOCAL)) out.add(Providers.LOCAL)
@@ -217,6 +223,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             msgs.put(JSONObject().put("role", "user").put("content", user))
         }
         val body = JSONObject().put("model", model).put("messages", msgs)
+        Net.checkKey(base, key)
         val c = URL("$base/chat/completions").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.connectTimeout = 20000

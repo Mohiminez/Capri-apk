@@ -42,11 +42,53 @@ class Prefs(ctx: Context) {
     // Every provider keeps its own key, model and address, so several can be filled in at once.
     val cur: Int get() = getI("provider", 0).coerceIn(0, Providers.all.size - 1)
     fun url(i: Int): String = getS("u$i", Providers.all[i].url).ifBlank { Providers.all[i].url }
-    fun key(i: Int): String = getS("k$i", "").trim()
+    fun key(i: Int): String = Secret.dec(getS("k$i", "")).trim()
     fun model(i: Int): String = getS("m$i", Providers.all[i].model).trim()
     fun putUrl(i: Int, v: String) = putS("u$i", v.trim())
-    fun putKey(i: Int, v: String) = putS("k$i", v.trim())
+    fun putKey(i: Int, v: String) = putS("k$i", Secret.enc(v.trim()))
+
+    // Other secrets (voice key, ears key, Hugging Face token) are encrypted the same way.
+    fun getSecret(k: String): String = Secret.dec(getS(k, "")).trim()
+    fun putSecret(k: String, v: String) = putS(k, Secret.enc(v.trim()))
+
+    // The key you saved for whichever provider lives at this address (so Gemini voice can reuse the Gemini brain key).
+    fun keyForUrl(url: String): String {
+        val host = Net.hostOf(url)
+        if (host.isEmpty()) return ""
+        for (i in Providers.all.indices) {
+            if (i == Providers.LOCAL) continue
+            if (Net.hostOf(url(i)) == host && key(i).isNotEmpty()) return key(i)
+        }
+        return ""
+    }
     fun putModel(i: Int, v: String) = putS("m$i", v.trim())
+
+    // Settings backup. Keys and tokens only go in when asked.
+    fun dump(includeSecrets: Boolean): String {
+        val o = org.json.JSONObject()
+        val secret = Regex("^(k\\d+|voiceKey|sttKey|hfToken)$")
+        for ((k, v) in p.all) {
+            if (k == "history" || (!includeSecrets && secret.matches(k))) continue
+            if (secret.matches(k) && v is String) o.put(k, Secret.dec(v))
+            else if (v is Boolean || v is Int || v is String || v is Long) o.put(k, v)
+        }
+        return o.toString()
+    }
+
+    fun restore(json: String) {
+        val o = org.json.JSONObject(json)
+        val e = p.edit()
+        val secret = Regex("^(k\\d+|voiceKey|sttKey|hfToken)$")
+        for (k in o.keys()) {
+            when (val v = o.get(k)) {
+                is String -> e.putString(k, if (secret.matches(k)) Secret.enc(v) else v)
+                is Boolean -> e.putBoolean(k, v)
+                is Int -> e.putInt(k, v)
+                is Long -> e.putLong(k, v)
+            }
+        }
+        e.apply()
+    }
 
     fun addNote(note: String) {
         val clean = note.trim().take(200)

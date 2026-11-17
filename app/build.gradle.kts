@@ -14,8 +14,21 @@ android {
         versionCode = 1
         versionName = "0.1.0"
     }
+    // One fixed key for every build, so a new APK installs over the old one (a fresh random key each build would say "App not installed").
+    signingConfigs {
+        create("capri") {
+            storeFile = file("capri.keystore")
+            storePassword = "capri-mobile"
+            keyAlias = "capri"
+            keyPassword = "capri-mobile"
+        }
+    }
     buildTypes {
-        release { isMinifyEnabled = false }
+        debug { signingConfig = signingConfigs.getByName("capri") }
+        release {
+            isMinifyEnabled = false
+            signingConfig = signingConfigs.getByName("capri")
+        }
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
@@ -24,6 +37,7 @@ android {
 }
 
 dependencies {
+    testImplementation("junit:junit:4.13.2")
     // On-device models (.litertlm files), Google's LiteRT-LM runtime
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.0")
     // The runtime's bytecode needs a newer coroutines than its POM says

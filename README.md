@@ -8,7 +8,7 @@ A small, unofficial Android port of [Capri](https://github.com/lachydotmcg/capri
 2. Open **Actions**, pick **Build APK**, press **Run workflow** (it also runs on every push).
 3. After about 5 minutes download the **Capri-debug-apk** artifact, unzip it and install `app-debug.apk`.
 
-The Kotlin code has been compiled against Android stubs (no errors), but I can't run the full Gradle build or the app here. If the build fails, copy the red error lines from the failed step and send them back.
+The Kotlin code has been compiled against Android stubs (no errors) and the command patterns were run on sample sentences, but I can't run the full Gradle build or the app here. CI also runs a few unit tests. If the build fails, copy the red error lines from the failed step and send them back.
 
 ## First run
 
@@ -19,17 +19,31 @@ The Kotlin code has been compiled against Android stubs (no errors), but I can't
 4. **Voice**: the stock phone voice is basic. Choose *Gemini voice* (free, uses your Gemini key), *ElevenLabs* (what the Windows version uses) or an *OpenAI-style / Kokoro server*, then press *Test the voice*.
 5. Press **Start Capri**. Drag or throw her, tap to type, hold to talk, tap while she works to stop a job.
 
+## Updating
+
+Every build is now signed with the same key (`app/capri.keystore`), so a new APK installs over the old one. **Uninstall the old Capri once** (it was signed with a random key); after that, updates just install. The key is public in this repo on purpose: this is a personal sideload, not a store release.
+
 ## What she does
 
-- Her real animations: idle, blinking, talking mouth, thinking glitch, napping, waking, grin, dancing to music, dangling when held, drifting around (walk), arriving and leaving
-- Gravity: throw her and she bounces off the edges and the floor
-- Chat with Gemini, NVIDIA, OpenRouter, OpenAI, DeepSeek, Claude, any OpenAI-compatible server, or the offline model
-- Her personality and safety rules from the desktop version; editable; Arabic replies
-- Memory (notes about you, a week of chat), reminders on dates, timers, alarms
-- Open apps and sites, play music, pause and skip
-- Looks at your screen on request, or comments while you play (optional)
-- Does jobs by tapping, typing and scrolling with her own cursor, for example opening an app and finding something, or joining a Discord voice channel
-- Themes and simple data-only mods (`{"name","accent","personality","nickname"}` in a `.json` file)
+- Her real animations, played the way the desktop does it: the body keeps moving while the mouth overlay flaps, she lies down to sleep on the floor, drifts with easing, glitch-teleports with her arrive and leave clips, dances to music, dangles when held and bounces when thrown
+- Effects: a soft glow while she talks, an RGB split while she thinks, a gentle float, a ripple where you tap, a letter-by-letter speech bubble in the desktop's cut-corner glass style
+- Her colors: recolor hair, accents, eyes, edges and body (ported from the desktop)
+- The settings screen is styled like the desktop Mainframe (red edge, mono labels, numbered setup, NORMAL / HIGHER / MAX brain tiers)
+- Hands: say or type "open WhatsApp and type hi", "scroll down", "tap Send", "go back", "take a screenshot" and she does it with accessibility. No AI needed for those. "Test her hands" on the Home tab checks it works
+- Chat with Gemini, Groq, NVIDIA, OpenRouter, Cerebras, Mistral, OpenAI, Claude, DeepSeek, xAI, Together, SambaNova, Fireworks, Hugging Face, any OpenAI-compatible server, or an offline model on the phone. Each provider keeps its own key; if one fails she switches to another
+- Voice: Groq Orpheus (Saudi Arabic), Gemini, ElevenLabs, OpenAI/Kokoro; ears: phone recogniser or Whisper; conversation mode and dictation
+- Memory, reminders (they survive a restart), timers, alarms, weather, Wikipedia, what's playing, torch, volume, directions, search, clipboard
+- Looks at your screen on request, or comments while you play; game mode; mini games; mischief mode; care nudges; bond meter
+- "Ask Capri" in the text-selection menu and Share sheet, a quick settings tile, notification reading, start with the phone
+
+## Privacy and safety
+
+- API keys and tokens are stored encrypted with the Android Keystore
+- A key is never sent over plain `http` to a public address; only to this phone or your own network
+- Offline mode stays offline: it never falls back to an online brain, and an online "job brain" is never used for a chat that runs on the phone, unless you turn that on
+- Security levels: Lockdown, Guarded (she asks before her own ideas; your direct orders just run) and Trusted
+- Jobs refuse taps on risky labels (pay, delete, send...) and sending unless your request asked for it, and treat text on the screen as untrusted
+- Downloaded models are checked for size; the Hugging Face token only goes to huggingface.co
 
 ## What isn't possible on a phone
 

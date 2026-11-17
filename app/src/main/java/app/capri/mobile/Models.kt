@@ -18,6 +18,7 @@ object Models {
 
     // Chat models the key can use, best guesses first. Throws on network or key trouble.
     fun fetch(base: String, key: String): List<String> {
+        Net.checkKey(base, key)
         val c = URL(base.trim().trimEnd('/') + "/models").openConnection() as HttpURLConnection
         c.connectTimeout = 15000
         c.readTimeout = 30000

@@ -89,6 +89,7 @@ class CapriNotifListener : NotificationListenerService() {
 class BootReceiver : BroadcastReceiver() {
     override fun onReceive(ctx: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_BOOT_COMPLETED) return
+        try { Reminders.rescheduleAll(ctx) } catch (e: Throwable) { }
         if (!Prefs(ctx).getB("autostart", false) || !Settings.canDrawOverlays(ctx)) return
         try { ctx.startForegroundService(Intent(ctx, CapriService::class.java)) } catch (e: Throwable) { }
     }

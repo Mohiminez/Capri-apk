@@ -59,7 +59,15 @@ class CapriAccess : AccessibilityService() {
     // ---- eyes ----
 
     fun dump(maxChars: Int = 3500): String {
-        val root = rootInActiveWindow ?: return "(nothing readable on screen)"
+        var root = rootInActiveWindow
+        var tries = 0
+        // Right after an app opens the window can take a moment; wait a little (only off the main thread).
+        while (root == null && tries < 5 && Looper.myLooper() != Looper.getMainLooper()) {
+            try { Thread.sleep(300) } catch (e: InterruptedException) { }
+            root = rootInActiveWindow
+            tries++
+        }
+        if (root == null) return "(nothing readable on screen)"
         val list = ArrayList<ScreenNode>()
         walk(root, list, 0)
         nodes = list
@@ -122,6 +130,8 @@ class CapriAccess : AccessibilityService() {
 
     // ---- hands (call these from a background thread: they wait for her cursor to arrive) ----
 
+    fun labelOf(i: Int): String = nodes.getOrNull(i)?.label ?: ""
+
     fun clickIndex(i: Int): Boolean {
         val n = nodes.getOrNull(i) ?: return false
         return clickNode(n)
@@ -165,15 +175,29 @@ class CapriAccess : AccessibilityService() {
         return if (down) swipe(w / 2, h * 72 / 100, w / 2, h * 30 / 100) else swipe(w / 2, h * 30 / 100, w / 2, h * 72 / 100)
     }
 
-    fun typeText(text: String): Boolean {
+    // Types into the box that has focus, or the first text box on screen. append = keep what's already written.
+    fun typeText(text: String, append: Boolean = true): Boolean {
         var target: AccessibilityNodeInfo? = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT)
+        var spot: ScreenNode? = null
         if (target == null || !target.isEditable) {
             dump()
-            target = nodes.firstOrNull { it.kind == "input" }?.node
+            spot = nodes.firstOrNull { it.kind == "input" }
+            target = spot?.node
         }
         if (target == null) return false
-        val args = Bundle().putCharSequenceArg(text)
-        return target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)
+        if (spot != null) point(spot.x, spot.y)
+        if (!target.isFocused) {
+            target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
+            target.performAction(AccessibilityNodeInfo.ACTION_CLICK)
+            try { Thread.sleep(250) } catch (e: InterruptedException) { }
+        }
+        val old = if (append && !target.isShowingHintText) (target.text?.toString() ?: "") else ""
+        val args = Bundle().putCharSequenceArg(old + text)
+        if (target.performAction(AccessibilityNodeInfo.ACTION_SET_TEXT, args)) return true
+        // Some apps refuse direct text: paste it instead.
+        (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager)
+            .setPrimaryClip(android.content.ClipData.newPlainText("Capri", text))
+        return target.performAction(AccessibilityNodeInfo.ACTION_PASTE)
     }
 
     private fun Bundle.putCharSequenceArg(text: String): Bundle {
@@ -185,6 +209,27 @@ class CapriAccess : AccessibilityService() {
         if (Build.VERSION.SDK_INT < 30) return false
         val f = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return false
         return f.performAction(AccessibilityNodeInfo.AccessibilityAction.ACTION_IME_ENTER.id)
+    }
+
+    fun global(name: String): Boolean = when (name) {
+        "back" -> performGlobalAction(GLOBAL_ACTION_BACK)
+        "home" -> performGlobalAction(GLOBAL_ACTION_HOME)
+        "recents" -> performGlobalAction(GLOBAL_ACTION_RECENTS)
+        "notifs" -> performGlobalAction(GLOBAL_ACTION_NOTIFICATIONS)
+        "settings" -> performGlobalAction(GLOBAL_ACTION_QUICK_SETTINGS)
+        "shot" -> Build.VERSION.SDK_INT >= 28 && performGlobalAction(GLOBAL_ACTION_TAKE_SCREENSHOT)
+        "lock" -> Build.VERSION.SDK_INT >= 28 && performGlobalAction(GLOBAL_ACTION_LOCK_SCREEN)
+        else -> false
+    }
+
+    // Waits until the given app is the one on screen.
+    fun waitFor(pkg: String, ms: Long): Boolean {
+        val end = System.currentTimeMillis() + ms
+        while (System.currentTimeMillis() < end) {
+            if (foreground == pkg || rootInActiveWindow?.packageName?.toString() == pkg) return true
+            try { Thread.sleep(200) } catch (e: InterruptedException) { return false }
+        }
+        return false
     }
 
     fun back() = performGlobalAction(GLOBAL_ACTION_BACK)

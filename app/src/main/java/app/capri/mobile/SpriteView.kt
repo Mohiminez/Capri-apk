@@ -17,18 +17,19 @@ import android.view.View
 import org.json.JSONObject
 import kotlin.math.sin
 
-// Plays her animations and a few effects: a soft glow while she talks, a cyberpunk RGB-split while she thinks, a gentle float, and a ripple where you tap.
-// Memory: only a few animation sheets stay loaded at a time.
+// Plays her animations like the desktop: the body keeps moving while the mouth overlay flaps, every clip is drawn at one scale
+// and sits on the bottom of the window, plus a soft glow while she talks, an RGB split while she thinks and a ripple where you tap.
 class SpriteView(ctx: Context) : View(ctx) {
-    private class Clip(val frames: Int, val fps: Int, val w: Int, val h: Int, val cols: Int, val bmp: Bitmap) {
+    private class Clip(val frames: Int, val fps: Int, val w: Int, val h: Int, val cols: Int, val sx: Float, val bmp: Bitmap) {
         val bytes get() = bmp.byteCount
     }
 
+    private val prefs = Prefs(ctx)
     private val meta = JSONObject(ctx.assets.open("sprites.json").bufferedReader().use { it.readText() })
     private val clips = LinkedHashMap<String, Clip>(8, 0.75f, true)
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
-    private val ghostA = Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 120 }
-    private val ghostB = Paint(Paint.FILTER_BITMAP_FLAG).apply { alpha = 120 }
+    private val ghostA = Paint(Paint.FILTER_BITMAP_FLAG)
+    private val ghostB = Paint(Paint.FILTER_BITMAP_FLAG)
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val src = Rect()
     private val dst = RectF()
@@ -41,16 +42,17 @@ class SpriteView(ctx: Context) : View(ctx) {
     private var rippleAt = 0L
     private var rx = 0f
     private var ry = 0f
+    private val floaty = setOf("idle", "idle_mouth", "idle_blink", "dance")
 
     var current = ""
         private set
-
-    private val floaty = setOf("idle", "idle_mouth", "idle_blink", "dance")
 
     // Mirrors her so she can face left; her walk is a drift, so one sheet does both ways.
     var flip = false
         set(v) { field = v; invalidate() }
 
+    var unit = 0f             // screen pixels per source pixel; 0 = the view height is one full 384px frame
+    var talk = false          // mouth overlay on top of whatever she is doing
     var glowColor = Color.parseColor("#FF2A6D")
     var glow = false          // soft aura while she talks
     var glitchFx = false      // RGB split while she thinks or is thrown
@@ -59,23 +61,28 @@ class SpriteView(ctx: Context) : View(ctx) {
 
     init {
         ghostA.colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
-            0f, 0f, 0f, 0f, 0f,
-            0f, 0f, 0f, 0f, 229f,
-            0f, 0f, 0f, 0f, 255f,
-            0f, 0f, 0f, 1f, 0f)))
+            0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 0f, 229f, 0f, 0f, 0f, 0f, 255f, 0f, 0f, 0f, 0.5f, 0f)))
         ghostB.colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
-            0f, 0f, 0f, 0f, 255f,
-            0f, 0f, 0f, 0f, 40f,
-            0f, 0f, 0f, 0f, 160f,
-            0f, 0f, 0f, 1f, 0f)))
+            0f, 0f, 0f, 0f, 255f, 0f, 0f, 0f, 0f, 40f, 0f, 0f, 0f, 0f, 160f, 0f, 0f, 0f, 0.5f, 0f)))
+    }
+
+    private fun u(): Float = if (unit > 0f) unit else height / 384f
+
+    // The window size this clip needs: never narrower than a standing frame, as tall as the clip itself.
+    fun sizeFor(name: String): Pair<Int, Int> {
+        val o = meta.optJSONObject(name) ?: return Pair(width, height)
+        val k = u()
+        return Pair((maxOf(o.getInt("w"), 240) * k).toInt(), (o.getInt("h") * k).toInt())
     }
 
     private fun load(name: String): Clip? {
         clips[name]?.let { return it }
         return try {
             val o = meta.getJSONObject(name)
-            val bmp = context.assets.open("sprites/$name.png").use { BitmapFactory.decodeStream(it) }
-            val c = Clip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), bmp)
+            val opts = BitmapFactory.Options().apply { inMutable = true }
+            val bmp = context.assets.open("sprites/$name.png").use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
+            Recolor.apply(prefs, bmp)
+            val c = Clip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), o.optDouble("sx", 0.0).toFloat(), bmp)
             clips[name] = c
             trim(c)
             c
@@ -84,11 +91,11 @@ class SpriteView(ctx: Context) : View(ctx) {
         }
     }
 
-    // Keep the sheets in memory under about 24 MB, dropping the least recently used.
+    // Keep the sheets in memory under about 30 MB, dropping the least recently used.
     private fun trim(keep: Clip) {
         var total = clips.values.sumOf { it.bytes.toLong() }
         val it = clips.entries.iterator()
-        while (total > 24_000_000L && it.hasNext()) {
+        while (total > 30_000_000L && it.hasNext()) {
             val e = it.next()
             if (e.value === keep || e.value === clip) continue
             total -= e.value.bytes
@@ -117,6 +124,16 @@ class SpriteView(ctx: Context) : View(ctx) {
         invalidate()
     }
 
+    private fun frameRect(c: Clip, i: Int) = src.set((i % c.cols) * c.w, (i / c.cols) * c.h, (i % c.cols + 1) * c.w, (i / c.cols + 1) * c.h)
+
+    private fun place(c: Clip, k: Float, floatY: Float) {
+        val dw = c.w * k
+        val dh = c.h * k
+        val left = (width - dw) / 2f + c.sx * k
+        val top = height - dh + floatY
+        dst.set(left, top, left + dw, top + dh)
+    }
+
     override fun onDraw(canvas: Canvas) {
         val c = clip ?: return
         val now = SystemClock.uptimeMillis()
@@ -133,33 +150,38 @@ class SpriteView(ctx: Context) : View(ctx) {
                 }
             }
         }
-        val col = i % c.cols
-        val row = i / c.cols
-        src.set(col * c.w, row * c.h, (col + 1) * c.w, (row + 1) * c.h)
-        val scale = height.toFloat() / c.h
-        val dw = c.w * scale
-        val left = (width - dw) / 2f
-        val floatY = if (bob && current in floaty) (sin(now / 900.0) * height * 0.012).toFloat() else 0f
-        dst.set(left, floatY, left + dw, height.toFloat() + floatY)
+        val k = u()
+        val floatY = if (bob && current in floaty) (sin(now / 900.0) * 384 * k * 0.012).toFloat() else 0f
+        frameRect(c, i)
+        place(c, k, floatY)
 
         if (glow) {
             val pulse = 0.55f + 0.25f * sin(now / 220.0).toFloat()
-            val r = height * 0.55f
-            glowPaint.shader = RadialGradient(width / 2f, height * 0.42f, r,
+            val r = 384 * k * 0.5f
+            glowPaint.shader = RadialGradient(width / 2f, height - 384 * k * 0.55f, r,
                 Color.argb((70 * pulse).toInt(), Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor)),
                 Color.TRANSPARENT, Shader.TileMode.CLAMP)
-            canvas.drawCircle(width / 2f, height * 0.42f, r, glowPaint)
+            canvas.drawCircle(width / 2f, height - 384 * k * 0.55f, r, glowPaint)
         }
 
         if (flip) { canvas.save(); canvas.scale(-1f, 1f, width / 2f, height / 2f) }
         if (glitchFx) {
-            // chromatic split that jumps around, like a bad signal
-            val k = (now / 70) % 9
-            val dx = (k - 4) * height * 0.006f
+            val step = (now / 70) % 9
+            val dx = (step - 4) * 384 * k * 0.006f
             canvas.save(); canvas.translate(-dx, 0f); canvas.drawBitmap(c.bmp, src, dst, ghostA); canvas.restore()
             canvas.save(); canvas.translate(dx, 0f); canvas.drawBitmap(c.bmp, src, dst, ghostB); canvas.restore()
         }
         canvas.drawBitmap(c.bmp, src, dst, paint)
+
+        // her mouth moves on top, so the body keeps living while she talks
+        if (talk) {
+            val ov = load(if (c.w == 116) "idle_mouth" else if (c.w == 240) "mouth" else "")
+            if (ov != null) {
+                frameRect(ov, ((now * ov.fps / 1000) % ov.frames).toInt())
+                place(ov, k, floatY)
+                canvas.drawBitmap(ov.bmp, src, dst, paint)
+            }
+        }
         if (flip) canvas.restore()
 
         val rp = ripple
@@ -177,10 +199,7 @@ class SpriteView(ctx: Context) : View(ctx) {
             }
         }
 
-        val animating = !finished || glow || glitchFx || bob || rippling
-        if (animating) {
-            val step = if (lowPower) 83L else maxOf(16L, 1000L / c.fps)
-            postInvalidateDelayed(if (glow || glitchFx || rippling) 33L else step)
-        }
+        val step = if (lowPower) 83L else maxOf(16L, 1000L / c.fps)
+        postInvalidateDelayed(if (glow || glitchFx || rippling || talk) 33L else step)
     }
 }

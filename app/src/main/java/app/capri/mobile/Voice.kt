@@ -69,12 +69,16 @@ object Voice {
         }
     }
 
-    private fun voiceKey(prefs: Prefs): String {
-        val own = prefs.getS("voiceKey", "").trim()
-        return if (own.isNotEmpty()) own else prefs.getS("key", "").trim()
+    // Your voice key if you set one, else the key you saved for the provider at that address, else the brain key.
+    private fun voiceKey(prefs: Prefs, url: String = ""): String {
+        val own = prefs.getSecret("voiceKey")
+        if (own.isNotEmpty()) return own
+        if (url.isNotEmpty()) prefs.keyForUrl(url).let { if (it.isNotEmpty()) return it }
+        return prefs.key(prefs.cur)
     }
 
     private fun post(url: String, headers: Map<String, String>, body: JSONObject): ByteArray {
+        Net.checkKey(url, if (headers.isEmpty()) "" else "x")
         val c = URL(url).openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.connectTimeout = 20000
@@ -95,7 +99,7 @@ object Voice {
     }
 
     private fun gemini(prefs: Prefs, text: String): ByteArray {
-        val key = voiceKey(prefs)
+        val key = voiceKey(prefs, "https://generativelanguage.googleapis.com/")
         var model = prefs.getS("voiceModel", "").trim()
         if (model.isEmpty() || !model.contains("tts", true)) {
             model = geminiTtsModel(key)
@@ -136,8 +140,11 @@ object Voice {
         val model = prefs.getS("voiceModel", "").ifBlank { "eleven_multilingual_v2" }
             .let { if (it.startsWith("eleven")) it else "eleven_multilingual_v2" }
         val body = JSONObject().put("text", text).put("model_id", model)
+        // ElevenLabs is its own service: only a key you pasted for it will work.
+        val key = prefs.getSecret("voiceKey")
+        if (key.isEmpty()) throw Exception("paste your ElevenLabs key in the Voice tab")
         return post("https://api.elevenlabs.io/v1/text-to-speech/$id?output_format=mp3_44100_128",
-            mapOf("xi-api-key" to voiceKey(prefs)), body)
+            mapOf("xi-api-key" to key), body)
     }
 
     private fun openai(prefs: Prefs, text: String): ByteArray {
@@ -155,7 +162,7 @@ object Voice {
             .put("input", text)
             .put("voice", voice)
             .put("response_format", if (groq) "wav" else "mp3")
-        val key = voiceKey(prefs).let { if (it.isEmpty() && groq) prefs.key(Providers.GROQ) else it }
+        val key = voiceKey(prefs, base)
         return post("$base/audio/speech", if (key.isEmpty()) emptyMap() else mapOf("Authorization" to "Bearer $key"), body)
     }
 

@@ -55,6 +55,7 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_STOP = "app.capri.mobile.STOP"
         const val ACT_ASK = "app.capri.mobile.ASK"
         const val ACT_QUIET = "app.capri.mobile.QUIET"
+        const val ACT_TEST = "app.capri.mobile.TEST"
         @Volatile var notifier: ((String) -> Unit)? = null
         private const val NOTE_ID = 1
         private const val OVERLAY = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -68,7 +69,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private var sprite: SpriteView? = null
     private lateinit var spriteLp: WindowManager.LayoutParams
-    private var bubble: TextView? = null
+    private var bubble: LinearLayout? = null
     private lateinit var bubbleLp: WindowManager.LayoutParams
     private var panel: LinearLayout? = null
     private lateinit var panelLp: WindowManager.LayoutParams
@@ -108,6 +109,11 @@ class CapriService : Service(), Actions.Hooks {
     private var vx = 0f
     private var vy = 0f
     private var walkTx = 0f
+    private var walkTotal = 1f
+    private var scripted = false
+    private var bubbleText: TextView? = null
+    private val tfMono: android.graphics.Typeface by lazy { try { android.graphics.Typeface.createFromAsset(assets, "fonts/ShareTechMono-Regular.ttf") } catch (e: Exception) { android.graphics.Typeface.MONOSPACE } }
+    private val tfBody: android.graphics.Typeface by lazy { try { android.graphics.Typeface.createFromAsset(assets, "fonts/BarlowSemiCondensed-Regular.ttf") } catch (e: Exception) { android.graphics.Typeface.DEFAULT } }
     private var walkTy = 0f
     private var lastNs = 0L
 
@@ -141,6 +147,7 @@ class CapriService : Service(), Actions.Hooks {
         if (sprite == null) setup()
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
+        if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
         if (intent?.action == ACT_ASK) {
             val t = intent.getStringExtra("text") ?: ""
             if (t.isNotBlank()) h.postDelayed({
@@ -179,7 +186,7 @@ class CapriService : Service(), Actions.Hooks {
         hideBubble()
         hidePanel()
         mode = 0
-        s.play("leave", false) { stopSelf() }
+        clip("leave", false) { stopSelf() }
         h.postDelayed({ stopSelf() }, 1500)
     }
 
@@ -237,6 +244,7 @@ class CapriService : Service(), Actions.Hooks {
         }
         fx = spriteLp.x.toFloat()
         fy = spriteLp.y.toFloat()
+        s.unit = hPx / 384f
         s.glowColor = Themes.accent(prefs)
         s.lowPower = prefs.getB("lowPower", false)
         s.bob = !s.lowPower
@@ -245,16 +253,42 @@ class CapriService : Service(), Actions.Hooks {
         wm.addView(s, spriteLp)
         s.animate().alpha(1f).setDuration(400).start()
 
-        val b = TextView(this)
-        b.setTextColor(Color.parseColor("#F2F2F2"))
-        b.textSize = 15f
-        b.setPadding(dp(12), dp(9), dp(12), dp(9))
-        b.maxWidth = (screenW * 0.7f).toInt()
-        b.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#EC10141B"))
-            setStroke(dp(2), Themes.accent(prefs))
-            cornerRadius = dp(14).toFloat()
-        }
+        val b = LinearLayout(this)
+        b.orientation = LinearLayout.VERTICAL
+        b.layoutDirection = if (L.ar) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
+        b.setPadding(dp(14), dp(9), dp(14), dp(11))
+        b.background = PanelDrawable(Themes.accent(prefs), Color.parseColor("#27D6E8"), resources.displayMetrics.density)
+        val head = LinearLayout(this)
+        head.orientation = LinearLayout.HORIZONTAL
+        head.gravity = Gravity.CENTER_VERTICAL
+        val dot = TextView(this)
+        dot.text = "\u25CF "
+        dot.textSize = 11f
+        dot.setTextColor(Color.parseColor("#FF2A3D"))
+        head.addView(dot)
+        val name = TextView(this)
+        name.text = "CAPRI"
+        name.typeface = tfMono
+        name.textSize = 12f
+        name.setTextColor(Themes.accent(prefs))
+        head.addView(name)
+        val gap = View(this)
+        head.addView(gap, LinearLayout.LayoutParams(dp(28), 1, 1f))
+        val clock = TextView(this)
+        clock.tag = "clock"
+        clock.typeface = tfMono
+        clock.textSize = 11f
+        clock.setTextColor(Color.parseColor("#7D8C98"))
+        head.addView(clock)
+        b.addView(head)
+        val body = TextView(this)
+        body.typeface = tfBody
+        body.setTextColor(Color.parseColor("#EAF0F4"))
+        body.textSize = 17f
+        body.maxWidth = (screenW * 0.68f).toInt()
+        body.setPadding(0, dp(4), 0, 0)
+        b.addView(body)
+        bubbleText = body
         b.setOnClickListener { bubbleTapped() }
         bubble = b
         bubbleLp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
@@ -294,7 +328,7 @@ class CapriService : Service(), Actions.Hooks {
             }
         }
 
-        s.play("arrive", false) { settle() }
+        clip("arrive", false) { settle() }
         poke()
         h.postDelayed(blinkTask, 4000)
         h.postDelayed(wanderTask, 15_000L)
@@ -312,35 +346,70 @@ class CapriService : Service(), Actions.Hooks {
 
     // ---- animation state ----
 
+    // Every clip goes through here so the window can change shape (she is wider when lying down).
+    private fun clip(name: String, loop: Boolean = true, done: (() -> Unit)? = null) {
+        val sp = sprite ?: return
+        applyShape(name)
+        sp.play(name, loop, done)
+    }
+
+    // Keeps her feet and the middle of her where they are while the window resizes for the clip.
+    private fun applyShape(name: String) {
+        val sp = sprite ?: return
+        val (w, hh) = sp.sizeFor(name)
+        if (w <= 0 || hh <= 0 || (w == spriteLp.width && hh == spriteLp.height)) return
+        val cx = spriteLp.x + spriteLp.width / 2f
+        val bottom = spriteLp.y + spriteLp.height
+        spriteLp.width = w
+        spriteLp.height = hh
+        spriteLp.x = (cx - w / 2f).toInt()
+        spriteLp.y = bottom - hh
+        fx = spriteLp.x.toFloat()
+        fy = spriteLp.y.toFloat()
+        try { wm.updateViewLayout(sp, spriteLp) } catch (e: Exception) { }
+        if (bubbleShown) placeBubble()
+    }
+
+    private fun grounded() = abs(spriteLp.y - floorY()) < dp(10)
+
     private fun settle() {
         val s = sprite ?: return
+        if (scripted) return
         s.glow = talking && !s.lowPower
         s.glitchFx = busy || mode == 1
-        when {
-            dragging || mode == 1 -> s.play("dangle")
-            mode == 2 -> s.play("walk")
-            busy -> s.play("glitch")
-            talking -> s.play("idle_mouth")
-            asleep -> s.play("sleep")
-            dancing -> s.play("dance")
-            else -> s.play("idle")
-        }
+        s.talk = talking
+        clip(when {
+            dragging || mode == 1 -> "dangle"
+            mode == 2 -> "walk"
+            busy -> "glitch"
+            asleep -> if (grounded()) "laydown_sleep" else "sleep"
+            dancing -> "dance"
+            else -> "idle"
+        })
     }
 
     private val blinkTask = object : Runnable {
         override fun run() {
             val s = sprite
-            if (s != null && !asleep && !talking && !busy && !dragging && !hidden && mode == 0 && s.current == "idle") {
-                s.play("idle_blink", false) { settle() }
+            if (s != null && !asleep && !busy && !dragging && !hidden && !scripted && mode == 0 && s.current == "idle") {
+                clip("idle_blink", false) { settle() }
             }
             h.postDelayed(this, Random.nextLong(3500, 8000))
         }
     }
 
     private val sleepTask = Runnable {
-        if (!busy && !talking && !agent.running) {
+        if (!busy && !talking && !agent.running && !scripted) {
             asleep = true
-            settle()
+            if (mode == 0 && !grounded() && !hidden) {
+                fx = spriteLp.x.toFloat(); fy = spriteLp.y.toFloat()
+                walkTx = fx
+                walkTy = floorY()
+                walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
+                startMotion(2)
+            } else {
+                settle()
+            }
         }
     }
 
@@ -444,7 +513,7 @@ class CapriService : Service(), Actions.Hooks {
         h.postDelayed(sleepTask, 150_000L)
         if (asleep) {
             asleep = false
-            sprite?.play("wake", false) { settle() }
+            clip("wake", false) { settle() }
         }
     }
 
@@ -500,7 +569,10 @@ class CapriService : Service(), Actions.Hooks {
             val dx = walkTx - fx
             val dy = walkTy - fy
             val dist = hypot(dx, dy)
-            val sp = dp(55) * (1f + prefs.getI("wanderPace", 1) * 0.5f)
+            val top = dp(55) * (1f + prefs.getI("wanderPace", 1) * 0.5f)
+            // ease in over the first stretch and ease out over the last, like she is floating rather than sliding
+            val ramp = minOf(1f, 0.25f + (walkTotal - dist) / dp(90), 0.2f + dist / dp(130)).coerceIn(0.2f, 1f)
+            val sp = if (asleep) top * 1.6f else top * ramp
             if (dist < sp * dt + 2f) {
                 fx = walkTx; fy = walkTy
                 mode = 0
@@ -517,7 +589,7 @@ class CapriService : Service(), Actions.Hooks {
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
-    private fun canRoam() = !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running
+    private fun canRoam() = !scripted && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running
 
     private val wanderTask = object : Runnable {
         override fun run() {
@@ -525,8 +597,9 @@ class CapriService : Service(), Actions.Hooks {
             if (pace > 0 && canRoam()) {
                 val r = Random.nextInt(100)
                 when {
-                    r < 65 -> walkSomewhere()
-                    r < 85 -> sprite?.play("grin", false) { settle() }
+                    r < 55 -> walkSomewhere()
+                    r < 70 -> teleport()
+                    r < 85 -> clip("grin", false) { settle() }
                     else -> { /* just stays put this time */ }
                 }
             }
@@ -539,8 +612,23 @@ class CapriService : Service(), Actions.Hooks {
         fy = spriteLp.y.toFloat()
         walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
         walkTy = (fy + Random.nextInt(-dp(120), dp(120))).coerceIn(dp(48).toFloat(), floorY())
+        walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
         sprite?.flip = walkTx < fx
         startMotion(2)
+    }
+
+    // Glitches out and pops up somewhere else, like her arrive and leave animations on the desktop.
+    private fun teleport() {
+        scripted = true
+        clip("leave", false) {
+            fx = Random.nextFloat() * (maxX() - minX()) + minX()
+            fy = Random.nextFloat() * (floorY() - dp(60)) + dp(60)
+            spriteLp.x = fx.toInt()
+            spriteLp.y = fy.toInt()
+            try { sprite?.let { wm.updateViewLayout(it, spriteLp) } } catch (e: Exception) { }
+            if (bubbleShown) placeBubble()
+            clip("arrive", false) { scripted = false; settle() }
+        }
     }
 
     // ---- touch: drag, throw, tap, long press ----
@@ -631,7 +719,7 @@ class CapriService : Service(), Actions.Hooks {
             s.animate().scaleX(1.07f).scaleY(0.93f).setDuration(70).withEndAction {
                 s.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
             }.start()
-            s.play("grin", false) { settle() }
+            clip("grin", false) { settle() }
         }
         if (panelShown) hidePanel() else showPanel()
     }
@@ -673,7 +761,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun renderTyped() {
-        val b = bubble ?: return
+        val b = bubbleText ?: return
         val sp = SpannableString(typingFull)
         if (typingPos < typingFull.length) sp.setSpan(ForegroundColorSpan(Color.TRANSPARENT), typingPos, typingFull.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         b.text = sp
@@ -698,6 +786,7 @@ class CapriService : Service(), Actions.Hooks {
         val b = bubble ?: return
         if (hidden) return
         h.removeCallbacks(typeTask)
+        (b.findViewWithTag<TextView>("clock"))?.text = java.text.SimpleDateFormat("HH:mm", java.util.Locale.US).format(java.util.Date())
         typingFull = text
         typingPos = if (typed && !(sprite?.lowPower ?: false)) 0 else text.length
         renderTyped()
@@ -788,7 +877,7 @@ class CapriService : Service(), Actions.Hooks {
             Charm.add(prefs, 2)
             val quick = QuickAsks.match(text)
             if (quick != null) {
-                say(Actions.run(this, prefs, quick, this))
+                say(Actions.run(this, prefs, quick, this, true))
                 return
             }
         }
@@ -879,6 +968,22 @@ class CapriService : Service(), Actions.Hooks {
 
     override fun dictate() { startListening(true) }
 
+    // Direct phone commands: open an app and type, tap a label, scroll, go back...
+    override fun hands(spec: String) {
+        if (CapriAccess.instance == null) {
+            confirm(L.t("I need my accessibility access for that. Tap to open the setting.", "أحتاج صلاحية الوصول عشان هذا. اضغط لفتح الإعداد.")) {
+                startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+            }
+            return
+        }
+        busy = true
+        settle()
+        Thread {
+            val result = try { Hands.run(this, spec) } catch (e: Throwable) { L.t("That failed: ", "فشلت: ") + (e.message ?: "") }
+            h.post { busy = false; say(result) }
+        }.start()
+    }
+
     // ---- small menu next to her ----
 
     private fun hideMenu() {
@@ -891,17 +996,14 @@ class CapriService : Service(), Actions.Hooks {
         val m = LinearLayout(this)
         m.orientation = LinearLayout.VERTICAL
         m.layoutDirection = if (L.ar) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
-        m.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#F010141B"))
-            setStroke(dp(2), Themes.accent(prefs))
-            cornerRadius = dp(14).toFloat()
-        }
+        m.background = PanelDrawable(Themes.accent(prefs), Color.parseColor("#27D6E8"), resources.displayMetrics.density)
         for ((label, action) in items) {
             val t = TextView(this)
             t.text = label
-            t.textSize = 15f
+            t.typeface = tfBody
+            t.textSize = 17f
             t.setTextColor(Color.WHITE)
-            t.setPadding(dp(16), dp(11), dp(16), dp(11))
+            t.setPadding(dp(18), dp(12), dp(18), dp(12))
             t.setOnClickListener { hideMenu(); action() }
             m.addView(t)
         }
@@ -949,12 +1051,9 @@ class CapriService : Service(), Actions.Hooks {
         p.gravity = Gravity.CENTER_VERTICAL
         p.layoutDirection = if (L.ar) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
         p.setPadding(dp(12), dp(6), dp(6), dp(6))
-        p.background = GradientDrawable().apply {
-            setColor(Color.parseColor("#F010141B"))
-            setStroke(dp(2), Themes.accent(prefs))
-            cornerRadius = dp(16).toFloat()
-        }
+        p.background = PanelDrawable(Themes.accent(prefs), Color.parseColor("#27D6E8"), resources.displayMetrics.density)
         val e = EditText(this)
+        e.typeface = tfBody
         e.hint = L.t("Say something to Capri", "قل شي لكابري")
         e.setHintTextColor(Color.parseColor("#8A94A0"))
         e.setTextColor(Color.WHITE)
@@ -1114,10 +1213,10 @@ class CapriService : Service(), Actions.Hooks {
         if (hidden) {
             hideBubble(); hidePanel()
             speakId++; Voice.stop(); tts?.stop()
-            s.play("leave", false) { s.visibility = View.GONE }
+            clip("leave", false) { s.visibility = View.GONE }
         } else {
             s.visibility = View.VISIBLE
-            s.play("arrive", false) { settle() }
+            clip("arrive", false) { settle() }
         }
         (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(NOTE_ID, notification())
     }

@@ -79,11 +79,11 @@ object Ears {
         return out.toByteArray()
     }
 
-    fun sttKey(prefs: Prefs): String {
-        val own = prefs.getS("sttKey", "").trim()
+    fun sttKey(prefs: Prefs, base: String): String {
+        val own = prefs.getSecret("sttKey")
         if (own.isNotEmpty()) return own
-        val groq = prefs.key(Providers.GROQ)
-        return if (groq.isNotEmpty()) groq else prefs.key(prefs.cur)
+        val byHost = prefs.keyForUrl(base)
+        return if (byHost.isNotEmpty()) byHost else prefs.key(prefs.cur)
     }
 
     private fun transcribe(prefs: Prefs, wav: ByteArray): String {
@@ -102,13 +102,14 @@ object Ears {
         body.write(wav)
         body.write("\r\n--$boundary--\r\n".toByteArray())
 
+        Net.checkKey(base, sttKey(prefs, base))
         val c = URL("$base/audio/transcriptions").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
         c.connectTimeout = 20000
         c.readTimeout = 60000
         c.doOutput = true
         c.setRequestProperty("Content-Type", "multipart/form-data; boundary=$boundary")
-        val key = sttKey(prefs)
+        val key = sttKey(prefs, base)
         if (key.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $key")
         c.outputStream.use { it.write(body.toByteArray()) }
         val code = c.responseCode
