@@ -18,7 +18,7 @@ class Agent(
     private val system =
         "You are the hands of Capri, controlling an Android phone to do what the user asked. Each turn you get the goal, your earlier steps and a list of what is on screen as " +
         "[index] kind \"label\" @(x,y). Reply with ONE JSON object and nothing else: {\"say\":\"five words about what you're doing\",\"act\":\"...\"}. " +
-        "Acts: tap (\"id\": index), tap_text (\"text\"), type_in (\"id\": index of a text box, \"text\"), type (\"text\", into the focused box), submit, scroll_down, scroll_up, back, home, open (\"app\": app name), wait, " +
+        "Acts: tap (\"id\": index), tap_text (\"text\"), long_press (\"id\"), tap_xy (\"x\", \"y\" in pixels of the attached screenshot, only when there is one), type_in (\"id\": index of a text box, \"text\"), type (\"text\", into the focused box), submit, scroll_down, scroll_up, back, home, open (\"app\": app name), wait, " +
         "done (\"say\": short friendly final line), fail (\"say\": why). " +
         "Rules: finish with done as soon as the goal is reached. Never enter passwords or payment details. Never send messages, buy, delete, uninstall or change settings " +
         "unless the goal says exactly that. If you are stuck after a few tries, use fail. The say text must be in the same language as the goal. " +
@@ -37,7 +37,7 @@ class Agent(
         running = true
         cancelled = false
         Thread {
-            var last = L.t("Done.", "خلصت.")
+            var last = L.t("Done.", "تمّت.")
             try { last = loop(goal) } catch (e: Throwable) { last = L.t("Something broke: ", "صار خلل: ") + (e.message ?: "") }
             running = false
             finish(last)
@@ -47,12 +47,15 @@ class Agent(
     private fun loop(goal: String): String {
         val trail = ArrayList<String>()
         var bad = 0
+        var lastHash = 0
         val riskyGoal = risky.containsMatchIn(goal)
         val sendGoal = Regex("send|post|submit|search|find|look up|ابحث|ارسل|أرسل|دور|بحث", RegexOption.IGNORE_CASE).containsMatchIn(goal)
         for (step in 1..16) {
             if (cancelled) return L.t("Stopped.", "وقفت.")
-            val acc = CapriAccess.instance ?: return L.t("Lost my hands. Is accessibility still on?", "فقدت التحكم. هل الوصول لسا شغال؟")
+            val acc = CapriAccess.instance ?: return L.t("Lost my hands. Is accessibility still on?", "فقدت السيطرة. تأكد إن صلاحية الوصول للحين شغّالة.")
             val screen = acc.dump(if (brain.isLocal()) 2200 else 3500)
+            if (trail.isNotEmpty() && screen.hashCode() == lastHash && !trail.last().contains("didn't change")) trail[trail.size - 1] = trail.last() + " (the screen didn't change, try something else)"
+            lastHash = screen.hashCode()
             val image = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
             val user = "Goal: $goal\nSteps so far:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(8).joinToString("\n")) + "\n\nCurrent screen:\n$screen"
             val out = brain.completeBlocking(system, user, image)
@@ -67,13 +70,20 @@ class Agent(
             if (say.isNotBlank() && act != "done" && act != "fail") progress(say)
             var note = act
             when (act) {
-                "done" -> return say.ifBlank { L.t("Done.", "خلصت.") }
+                "done" -> return say.ifBlank { L.t("Done.", "تمّت.") }
                 "fail" -> return say.ifBlank { L.t("I couldn't do that.", "ما قدرت أسويها.") }
                 "tap" -> {
                     val id = j.optInt("id", -1)
                     val label = acc.labelOf(id)
                     note = if (!riskyGoal && risky.containsMatchIn(label)) "tap [$id] \"$label\" refused, it looks risky and the goal didn't ask for it"
                     else "tap [$id]" + if (acc.clickIndex(id)) "" else " (failed)"
+                }
+                "long_press" -> note = "long_press [${j.optInt("id", -1)}]" + if (acc.longPress(j.optInt("id", -1))) "" else " (failed)"
+                "tap_xy" -> {
+                    val sc = CapriAccess.lastShotScale
+                    val px = (j.optDouble("x", -1.0) * sc).toInt()
+                    val py = (j.optDouble("y", -1.0) * sc).toInt()
+                    note = if (px < 0 || py < 0) "tap_xy needs x and y" else { acc.point(px, py); acc.tap(px, py); "tap_xy ($px,$py)" }
                 }
                 "tap_text" -> {
                     val t = j.optString("text")
@@ -103,7 +113,7 @@ class Agent(
             trail.add("${trail.size + 1}. $note")
             try { Thread.sleep(1300) } catch (e: InterruptedException) { }
         }
-        return L.t("That's taking too long, I'll stop here.", "طوّلت، بوقف هنا.")
+        return L.t("That's taking too long, I'll stop here.", "طوّلت الموضوع، بوقف هنا.")
     }
 
     private fun parse(s: String): JSONObject? {

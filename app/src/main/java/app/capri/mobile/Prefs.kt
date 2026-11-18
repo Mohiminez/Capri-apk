@@ -102,8 +102,8 @@ class Prefs(ctx: Context) {
 }
 
 object Themes {
-    val names = listOf("Crimson", "Bubblegum", "Cyber Cyan", "Royal", "Toxic")
-    private val colors = listOf("#FF2A6D", "#FF77C8", "#00E5FF", "#7A5CFF", "#A6FF00")
+    val names = listOf("Night City", "Crimson", "Bubblegum", "Cyber Cyan", "Royal", "Toxic")
+    private val colors = listOf("#E84246", "#FF2A6D", "#FF77C8", "#00E5FF", "#7A5CFF", "#A6FF00")
 
     // A mod can set its own accent; otherwise the chosen theme decides.
     fun accentHex(p: Prefs): String {
@@ -117,7 +117,7 @@ object Themes {
 object Charm {
     private val steps = listOf(0, 40, 160, 480, 1200)
     private val en = listOf("Strangers", "Acquaintances", "Choombas", "Close", "Ride or die")
-    private val ar = listOf("غرباء", "معارف", "أصحاب", "قريبين", "للموت")
+    private val ar = listOf("غرباء", "معارف", "أصدقاء", "مقرّبين", "للموت")
 
     fun level(points: Int): Int = steps.indexOfLast { points >= it }.coerceAtLeast(0)
     fun label(points: Int): String = (if (L.ar) ar else en)[level(points)]

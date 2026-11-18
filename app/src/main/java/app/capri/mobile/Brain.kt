@@ -73,7 +73,10 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         prefs.putS("history", arr.toString())
     }
 
-    fun anyReady(): Boolean = chain(prefs.cur).any { ready(it) }
+    fun anyReady(): Boolean = prefs.getB("noAI", false) || chain(prefs.cur).any { ready(it) }
+
+    private val canned get() = if (L.ar) listOf("هه. كمّل.", "مممم. سجّلتها.", "ما عندي عقل اليوم بس أسمعك.", "أنا الحين بدون ذكاء اصطناعي، فبس أبتسم وأهز راسي.", "كمّل كمّل.", "هذا يضحك، صراحة.", "أنا هنا. اطلب مني أفتح شي.")
+        else listOf("Heh. Go on.", "Mm. Noted.", "No brain today, but I'm listening.", "I'm in no-AI mode, so I just nod. Ask me to open something.", "Keep going, choom.", "That's kind of funny, honestly.", "I'm here. Try telling me to open an app.")
 
     fun forget() { history.clear(); save() }
 
@@ -86,7 +89,14 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         sb.append("\n")
         if (custom.isNotBlank() || addon.isNotBlank()) sb.append("Whatever your personality above says, these lines always hold:\n")
         sb.append(Persona.safety(ctx)).append("\n").append(Persona.MACHINERY)
-        if (L.lang(prefs) == 2) sb.append("\nThe user chose Arabic: reply in casual, natural Arabic (Gulf dialect if they write in it) unless they write in another language. Keep tag names in English.")
+        if (L.lang(prefs) == 2) sb.append("\nThe user chose Arabic. Reply in natural, warm, playful Arabic with a light Gulf flavour, as a girl would speak (feminine forms for yourself), in short sentences. If they write in plain Modern Standard Arabic, answer in the same register. Keep tag names, app names and code in English. Never translate tags.")
+        val replyLang = prefs.getS("replyLang", "").trim()
+        if (replyLang.isNotEmpty()) sb.append("\nAlways reply in ").append(replyLang.take(30)).append(", whatever language they write in.")
+        when (prefs.getI("tone", 0)) {
+            1 -> sb.append("\nTone: calm, gentle and supportive. Tease much less than usual.")
+            2 -> sb.append("\nTone: professional and concise, almost no slang, still recognisably you.")
+            3 -> sb.append("\nTone: wilder and cheekier than usual, with more chaotic energy, but never cruel and never crossing your safety rules.")
+        }
         val nick = prefs.getS("nick", "")
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
         sb.append("\nHow well you know them: ").append(listOf("barely at all", "a little", "as friends", "closely", "like ride-or-die family")[Charm.level(prefs.getI("charm", 0))])
@@ -101,6 +111,13 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     // done(reply, error): exactly one of them is non-null, always called on the main thread.
     // hidden = an instruction from the app, not something the user said, so it isn't kept in the chat.
     fun ask(text: String, hidden: Boolean, image: String? = null, done: (String?, String?) -> Unit) {
+        if (prefs.getB("noAI", false)) {
+            // No AI mode: she answers from a handful of lines, so nothing leaves the phone and nothing costs anything.
+            if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
+            val line = if (hidden) "NOTHING" else canned.random()
+            main.postDelayed({ done(line, null) }, 600)
+            return
+        }
         if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
@@ -242,6 +259,8 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
 
     private fun describe(code: Int, txt: String): String {
         if (code == 401 || code == 403) return "HTTP $code, the key was refused"
+        if (code == 429) return "HTTP 429, rate limited: wait a bit or add another provider"
+        if (code == 402) return "HTTP 402, this provider says you're out of credits"
         var detail = txt.take(140)
         try { detail = JSONObject(txt).getJSONObject("error").getString("message").take(140) } catch (e: Exception) { }
         return "HTTP $code: $detail"

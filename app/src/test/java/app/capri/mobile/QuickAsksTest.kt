@@ -30,3 +30,16 @@ class QuickAsksTest {
         assert(!Net.isPrivate("8.8.8.8"))
     }
 }
+
+class MoreAsksTest {
+    @Test fun danceAndScroll() {
+        assertEquals("[[emote:dance]]", QuickAsks.match("dance"))
+        assertEquals("[[scrollforme:on]]", QuickAsks.match("scroll for me"))
+        assertEquals("[[emote:stop]]", QuickAsks.match("stop dancing"))
+    }
+
+    @Test fun ownSettings() {
+        assertEquals("[[set:size|bigger]]", QuickAsks.match("make you bigger"))
+        assertEquals("[[set:color|hair=cyan]]", QuickAsks.match("change your hair color to cyan"))
+    }
+}

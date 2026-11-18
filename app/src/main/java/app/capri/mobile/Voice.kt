@@ -35,6 +35,40 @@ object Voice {
 
     val geminiVoices = listOf("Kore", "Zephyr", "Leda", "Aoede", "Puck", "Charon", "Fenrir", "Callirrhoe", "Autonoe", "Despina")
 
+    // How loud her voice is right now (0 to 1); -1 when unknown, then her mouth just flaps.
+    @Volatile var level = -1f
+    private var viz: android.media.audiofx.Visualizer? = null
+
+    private fun startViz(session: Int) {
+        stopViz()
+        try {
+            val v = android.media.audiofx.Visualizer(session)
+            v.captureSize = android.media.audiofx.Visualizer.getCaptureSizeRange()[0]
+            v.setDataCaptureListener(object : android.media.audiofx.Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(vz: android.media.audiofx.Visualizer?, wf: ByteArray?, rate: Int) {
+                    if (wf == null || wf.isEmpty()) return
+                    var sum = 0.0
+                    for (b in wf) { val d = (b.toInt() and 0xFF) - 128; sum += d * d }
+                    val rms = Math.sqrt(sum / wf.size) / 128.0
+                    level = (level.coerceAtLeast(0f) * 0.35f + (rms * 6).toFloat().coerceIn(0f, 1f) * 0.65f)
+                }
+                override fun onFftDataCapture(vz: android.media.audiofx.Visualizer?, fft: ByteArray?, rate: Int) {}
+            }, android.media.audiofx.Visualizer.getMaxCaptureRate() / 2, true, false)
+            v.enabled = true
+            level = 0f
+            viz = v
+        } catch (e: Throwable) {
+            level = -1f
+        }
+    }
+
+    private fun stopViz() {
+        try { viz?.enabled = false } catch (e: Throwable) { }
+        try { viz?.release() } catch (e: Throwable) { }
+        viz = null
+        level = -1f
+    }
+
     @Volatile private var gen = 0
     @Volatile private var prefsRef: Prefs? = null
     private var player: MediaPlayer? = null
@@ -42,6 +76,7 @@ object Voice {
 
     fun stop() {
         gen++
+        stopViz()
         try { player?.stop() } catch (e: Exception) { }
         try { player?.release() } catch (e: Exception) { }
         player = null
@@ -191,11 +226,14 @@ object Voice {
         mp.setAudioAttributes(AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         mp.setDataSource(f.path)
+        val vol = (prefsRef?.getI("ttsVolume", 100) ?: 100) / 100f
+        mp.setVolume(vol, vol)
         mp.setOnCompletionListener { done.countDown() }
         mp.setOnErrorListener { _, _, _ -> done.countDown(); true }
         mp.prepare()
         if (my != gen) { mp.release(); return }
         onStart()
+        startViz(mp.audioSessionId)
         mp.start()
         // Her voice sliders (50 to 200 percent). Set after start(): some versions begin playing when params are set.
         try {
@@ -204,12 +242,14 @@ object Voice {
             if (speed != 1f || pitch != 1f) mp.playbackParams = android.media.PlaybackParams().setSpeed(speed).setPitch(pitch)
         } catch (e: Exception) { }
         done.await(90, TimeUnit.SECONDS)
+        stopViz()
         try { mp.release() } catch (e: Exception) { }
         if (player === mp) player = null
     }
 
     private fun playPcm(pcm: ByteArray, rate: Int, my: Int, onStart: () -> Unit) {
         if (my != gen) return
+        val vol2 = (prefsRef?.getI("ttsVolume", 100) ?: 100) / 100f
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -219,12 +259,15 @@ object Voice {
             .setTransferMode(AudioTrack.MODE_STATIC)
             .build()
         track = t
+        try { t.setVolume(vol2) } catch (e: Exception) { }
         t.write(pcm, 0, pcm.size)
         onStart()
+        startViz(t.audioSessionId)
         t.play()
         val ms = pcm.size / 2L * 1000L / rate
         var waited = 0L
         while (waited < ms + 300 && my == gen) { Thread.sleep(50); waited += 50 }
+        stopViz()
         try { t.release() } catch (e: Exception) { }
         if (track === t) track = null
     }

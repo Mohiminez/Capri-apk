@@ -31,6 +31,10 @@ class CapriAccess : AccessibilityService() {
     companion object {
         @Volatile var instance: CapriAccess? = null
         @Volatile var foreground: String = ""
+        @Volatile var onForeground: ((String) -> Unit)? = null
+        @Volatile var onScrolled: ((String) -> Unit)? = null
+        // The screenshot is shrunk to 720 px wide; this is how many real pixels each of its pixels is.
+        @Volatile var lastShotScale = 1f
     }
 
     @Volatile private var nodes: List<ScreenNode> = emptyList()
@@ -45,7 +49,11 @@ class CapriAccess : AccessibilityService() {
         if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
             val pkg = event.packageName?.toString() ?: return
             // Her own windows and the system UI aren't "the app they're in".
-            if (pkg != packageName && pkg != "com.android.systemui") foreground = pkg
+            if (pkg != packageName && pkg != "com.android.systemui") {
+                if (pkg != foreground) { foreground = pkg; onForeground?.invoke(pkg) }
+            }
+        } else if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+            event.packageName?.toString()?.let { if (it != packageName) onScrolled?.invoke(it) }
         }
     }
 
@@ -113,6 +121,7 @@ class CapriAccess : AccessibilityService() {
                     if (hw != null) {
                         val soft = hw.copy(Bitmap.Config.ARGB_8888, false)
                         val scale = 720f / soft.width
+                        lastShotScale = if (scale < 1f) 1f / scale else 1f
                         val small = if (scale < 1f) Bitmap.createScaledBitmap(soft, 720, (soft.height * scale).toInt(), true) else soft
                         val bos = ByteArrayOutputStream()
                         small.compress(Bitmap.CompressFormat.JPEG, 70, bos)
@@ -160,6 +169,13 @@ class CapriAccess : AccessibilityService() {
     fun tap(x: Int, y: Int): Boolean {
         val p = Path().apply { moveTo(x.toFloat(), y.toFloat()) }
         return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p, 0, 70)).build(), null, null)
+    }
+
+    fun longPress(i: Int): Boolean {
+        val n = nodes.getOrNull(i) ?: return false
+        point(n.x, n.y)
+        val p = Path().apply { moveTo(n.x.toFloat(), n.y.toFloat()); lineTo(n.x + 1f, n.y.toFloat()) }
+        return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p, 0, 800)).build(), null, null)
     }
 
     fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, ms: Long = 350): Boolean {

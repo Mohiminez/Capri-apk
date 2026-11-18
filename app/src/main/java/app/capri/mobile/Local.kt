@@ -12,15 +12,15 @@ import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
 
-class LocalModel(val label: String, val file: String, val url: String)
+class LocalModel(val label: String, val file: String, val url: String, val needMb: Int = 2500)
 
 // Runs a .litertlm model on the phone with Google's LiteRT-LM, and downloads models from Hugging Face.
 object LocalLlm {
     val catalog = listOf(
         LocalModel("Qwen2.5 1.5B, best balance (about 1.6 GB)", "qwen2.5-1.5b.litertlm",
-            "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm"),
+            "https://huggingface.co/litert-community/Qwen2.5-1.5B-Instruct/resolve/main/Qwen2.5-1.5B-Instruct_multi-prefill-seq_q8_ekv4096.litertlm", 2600),
         LocalModel("Qwen3 0.6B, light and quick (about 0.6 GB)", "qwen3-0.6b.litertlm",
-            "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm")
+            "https://huggingface.co/litert-community/Qwen3-0.6B/resolve/main/Qwen3-0.6B.litertlm", 1400)
     )
 
     fun dir(ctx: Context): File = File(ctx.filesDir, "models").also { it.mkdirs() }

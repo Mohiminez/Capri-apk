@@ -21,7 +21,7 @@ class AskActivity : Activity() {
             ?: intent.getStringExtra(Intent.EXTRA_TEXT)
         if (!text.isNullOrBlank()) {
             if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, L.t("Open Capri and allow floating over apps first.", "افتح كابري واسمح بالظهور فوق التطبيقات أول."), Toast.LENGTH_LONG).show()
+                Toast.makeText(this, L.t("Open Capri and allow floating over apps first.", "افتح كابري واسمح لها بالظهور فوق التطبيقات أول."), Toast.LENGTH_LONG).show()
             } else {
                 startForegroundService(Intent(this, CapriService::class.java)
                     .setAction(CapriService.ACT_ASK).putExtra("text", text.take(3000)))

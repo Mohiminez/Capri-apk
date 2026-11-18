@@ -25,15 +25,15 @@ Every build is now signed with the same key (`app/capri.keystore`), so a new APK
 
 ## What she does
 
-- Her real animations, played the way the desktop does it: the body keeps moving while the mouth overlay flaps, she lies down to sleep on the floor, drifts with easing, glitch-teleports with her arrive and leave clips, dances to music, dangles when held and bounces when thrown
-- Effects: a soft glow while she talks, an RGB split while she thinks, a gentle float, a ripple where you tap, a letter-by-letter speech bubble in the desktop's cut-corner glass style
-- Her colors: recolor hair, accents, eyes, edges and body (ported from the desktop)
-- The settings screen is styled like the desktop Mainframe (red edge, mono labels, numbered setup, NORMAL / HIGHER / MAX brain tiers)
-- Hands: say or type "open WhatsApp and type hi", "scroll down", "tap Send", "go back", "take a screenshot" and she does it with accessibility. No AI needed for those. "Test her hands" on the Home tab checks it works
-- Chat with Gemini, Groq, NVIDIA, OpenRouter, Cerebras, Mistral, OpenAI, Claude, DeepSeek, xAI, Together, SambaNova, Fireworks, Hugging Face, any OpenAI-compatible server, or an offline model on the phone. Each provider keeps its own key; if one fails she switches to another
-- Voice: Groq Orpheus (Saudi Arabic), Gemini, ElevenLabs, OpenAI/Kokoro; ears: phone recogniser or Whisper; conversation mode and dictation
+- **Looks and moves like the desktop version.** Her real animations; the body keeps moving while her mouth overlay flaps, and the mouth follows the loudness of her voice. She lies down to sleep, drifts with easing, glitch-teleports with her arrive and leave clips, dangles when held, bounces when thrown, and dances like the desktop does it: her idle with a head nod on the beat and floating notes (the old dance sheet was never what the desktop used)
+- **Speaks like the desktop version.** A terminal-style speech box: the "> you:" line, "CAPRI:" in red, neon-blue text, a blinking block cursor, a tail to her head, a glitch when it opens, pages for long answers, Yes/No buttons, long-press to copy. Optional chimes
+- **Interface in the desktop's Night City look** (red rim, clipped corners, wine glow), numbered setup, NORMAL / HIGHER / MAX brain tiers, and a real Arabic interface (RTL, the Tajawal font, hand-polished wording)
+- **Her colors:** recolor hair, accents, eyes, edges and body, or just tell her ("change your hair color to cyan")
+- **Hands** (accessibility): "open WhatsApp and type hi", "scroll down", "tap Send", "go back", "take a screenshot", in English or Arabic, with no AI needed. Launches go through the accessibility service so POCO / Xiaomi background limits don't block them. Per-tool switches, four security levels (Lockdown, Ask every time, Guarded, Trusted), a hands self-test, and a setup report you can paste when something breaks
+- **From the desktop:** scroll for me (she watches and rates your TikTok / Shorts / Reels and swipes), doomscroll guard, head pats, jealousy of other AI apps, emotes (hearts, zzz, glitch), mini games, mischief mode, care nudges, bond meter, settings she changes herself (size, wander, voice, speed, volume, colors, theme), focus timer, hologram, "what can you do"
+- **Chat** with Gemini, Groq, NVIDIA, OpenRouter, Cerebras, Mistral, OpenAI, Claude, DeepSeek, xAI, Together, SambaNova, Fireworks, Hugging Face, any OpenAI-compatible server, or an offline model on the phone. Each provider keeps its own key; if one fails or is rate-limited she switches to another. No-AI mode, tone styles, and a reply-language override
+- **Voice:** Groq Orpheus (Saudi Arabic), Gemini, ElevenLabs, OpenAI/Kokoro; ears: phone recogniser or Whisper; volume, speed, pitch; conversation mode; dictation; tap her to cut her off
 - Memory, reminders (they survive a restart), timers, alarms, weather, Wikipedia, what's playing, torch, volume, directions, search, clipboard
-- Looks at your screen on request, or comments while you play; game mode; mini games; mischief mode; care nudges; bond meter
 - "Ask Capri" in the text-selection menu and Share sheet, a quick settings tile, notification reading, start with the phone
 
 ## Privacy and safety
@@ -44,6 +44,10 @@ Every build is now signed with the same key (`app/capri.keystore`), so a new APK
 - Security levels: Lockdown, Guarded (she asks before her own ideas; your direct orders just run) and Trusted
 - Jobs refuse taps on risky labels (pay, delete, send...) and sending unless your request asked for it, and treat text on the screen as untrusted
 - Downloaded models are checked for size; the Hugging Face token only goes to huggingface.co
+
+## Ideas borrowed from other projects
+
+CapriCore (setup report, per-tool permissions, tone styles, memory-fit hints, voice-off-at-launch) and a few desktop-pet projects (tap to interrupt, bubble timing, focus timer).
 
 ## What isn't possible on a phone
 

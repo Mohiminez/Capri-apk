@@ -19,17 +19,23 @@ object Actions {
         fun chaos()
         fun dictate()
         fun hands(spec: String)
+        fun emote(name: String)
+        fun setting(key: String, value: String)
+        fun watchAlong(on: Boolean)
     }
 
     const val LOCKDOWN = 0
     const val GUARDED = 1
     const val TRUSTED = 2
+    const val ASK_ALWAYS = 3
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
     private val readOnly = setOf("weather", "wiki", "playing", "remember")
     // In Guarded these ask first, by showing a bubble you tap to allow.
-    private val asksFirst = setOf("do", "look", "url", "dictate")
+    private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme")
+    // In "ask every time" mode even your own direct orders ask first.
+    private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos")
 
     fun strip(s: String): String = tag.replace(s, "").replace(Regex("\\s+"), " ").trim()
 
@@ -41,10 +47,11 @@ object Actions {
             val name = m.groupValues[1].lowercase()
             val arg = m.groupValues[2].trim()
             if (level == LOCKDOWN && name !in readOnly) {
-                extra = L.t(" (Lockdown is on, so I can't touch your phone.)", " (وضع القفل شغّال، ما أقدر ألمس جوالك.)")
+                extra = L.t(" (Lockdown is on, so I can't touch your phone.)", " (وضع الإغلاق الكامل شغّال، فما أقدر ألمس جوالك.)")
                 continue
             }
-            if (level == GUARDED && hooks != null && (name in asksFirst || (name == "hands" && !userInitiated))) {
+            if (hooks != null && ((level == ASK_ALWAYS && name in controls) ||
+                    (level == GUARDED && (name in asksFirst || (name == "hands" && !userInitiated))))) {
                 hooks.confirm(describe(name, arg)) { execute(ctx, prefs, name, arg, hooks) }
                 continue
             }
@@ -54,18 +61,31 @@ object Actions {
     }
 
     private fun describe(name: String, arg: String): String = when (name) {
-        "do" -> L.t("I'll do this on your phone: $arg", "بسوي هذا على جوالك: $arg")
-        "hands" -> L.t("Let me use your phone: $arg", "أستخدم جوالك: $arg")
+        "do" -> L.t("I'll do this on your phone: $arg", "بسوّي هذا على جوالك: $arg")
+        "hands" -> L.t("Let me use your phone: $arg", "خلني أستخدم جوالك: $arg")
+        "scrollforme" -> L.t("Want me to scroll your videos and react?", "تبيني أتصفّح لك الفيديوهات وأعلّق عليها؟")
+        "open" -> L.t("Open $arg?", "أفتح $arg؟")
         "look" -> L.t("Can I look at your screen?", "أقدر أشوف شاشتك؟")
         "url" -> L.t("Open $arg?", "أفتح $arg؟")
-        else -> L.t("Type what you say next into the box you have open?", "أكتب اللي تقوله بالخانة المفتوحة؟")
+        else -> L.t("Type what you say next into the box you have open?", "أكتب اللي تقوله بعد شوي في الخانة المفتوحة؟")
     }
+
+    // Tools you can switch off one by one (Hands tab), like the desktop's explicit permissions.
+    private val groups = mapOf(
+        "open" to "apps", "url" to "apps", "look" to "screen",
+        "hands" to "control", "do" to "control", "scrollforme" to "control", "dictate" to "control",
+        "music" to "media", "media" to "media", "volume" to "media",
+        "timer" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
+        "flash" to "device", "nav" to "device", "search" to "device", "copy" to "device",
+        "weather" to "lookup", "wiki" to "lookup", "playing" to "lookup")
 
     // Returns extra text to add to her reply when something went wrong.
     private fun execute(ctx: Context, prefs: Prefs, name: String, arg: String, hooks: Hooks?): String {
+        val group = groups[name]
+        if (group != null && !prefs.getB("tool_$group", true)) return L.t(" (That tool is switched off in my settings.)", " (هذي الأداة مطفية من إعداداتي.)")
         try {
             when (name) {
-                "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app.", " ما لقيت التطبيق.")
+                "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app.", " ما لقيت هذا التطبيق.")
                 "url" -> if (arg.startsWith("http://") || arg.startsWith("https://")) start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(arg)))
                 "music" -> playMusic(ctx, arg)
                 "media" -> media(ctx, arg)
@@ -99,6 +119,10 @@ object Actions {
                 "chaos" -> hooks?.chaos()
                 "dictate" -> hooks?.dictate()
                 "hands" -> hooks?.hands(arg)
+                "emote" -> hooks?.emote(arg)
+                "focus" -> hooks?.setting("focus", arg)
+                "set" -> hooks?.setting(arg.substringBefore('|'), arg.substringAfter('|', ""))
+                "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
             }
         } catch (e: Exception) {
             return L.t(" That didn't work on this phone.", " ما زبطت على هذا الجوال.")
@@ -106,9 +130,10 @@ object Actions {
         return ""
     }
 
+    // Launches go through the accessibility service when it's on: phones like POCO and Xiaomi block other apps from opening things in the background.
     private fun start(ctx: Context, i: Intent) {
         i.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
-        ctx.startActivity(i)
+        (CapriAccess.instance ?: ctx).startActivity(i)
     }
 
     private val aliases = mapOf(
@@ -227,6 +252,35 @@ object QuickAsks {
             }
             return "Timer's running. [[timer:$secs|Capri]]"
         }
+        Regex("^(?:focus|pomodoro|focus mode|ركزي|وضع التركيز)(?: for)? ?(\\d+)?(?: minutes| mins| min| دقيقة| دقائق)?$").find(t)?.let {
+            val n = (it.groupValues[1].toIntOrNull() ?: 25).coerceIn(1, 180)
+            return L.t("Focus for $n minutes. I'll stay quiet. [[focus:$n]]", "تركيز لمدة $n دقيقة. بسكت. [[focus:$n]]")
+        }
+        Regex("^change (?:your )?(hair|accents|eyes|edges|body|colou?rs?)(?: colou?r)? (?:to )?([a-z]+)$").find(t)?.let {
+            val slot = if (it.groupValues[1].startsWith("colo")) "all" else it.groupValues[1]
+            return "[[set:color|$slot=${it.groupValues[2]}]]"
+        }
+        Regex("^(?:غيري|بدلي) لون (شعرك|عيونك|جسمك|الوانك|ألوانك) (?:الى|إلى|ل|لـ)? ?(.+)$").find(t)?.let {
+            val slot = when (it.groupValues[1]) { "شعرك" -> "hair"; "عيونك" -> "eyes"; "جسمك" -> "body"; else -> "all" }
+            return "[[set:color|$slot=${it.groupValues[2].trim()}]]"
+        }
+        if (Regex("^(dance|dance for me|start dancing|ارقص|ارقصي|ارقص لي)$").matches(t)) return "[[emote:dance]]"
+        if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
+        if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
+        if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
+        if (Regex("^(make you bigger|be bigger|bigger|get bigger|اكبري|كبري نفسك|اكبر)$").matches(t)) return "[[set:size|bigger]]"
+        if (Regex("^(make you smaller|be smaller|smaller|get smaller|صغري نفسك|اصغري|اصغر)$").matches(t)) return "[[set:size|smaller]]"
+        if (Regex("^(stop wandering|dont wander|do not wander|stay put|اثبتي|لا تتمشين|وقفي التمشي)$").matches(t)) return "[[set:wander|off]]"
+        if (Regex("^(wander around|wander|you can wander|تمشي|تمشين)$").matches(t)) return "[[set:wander|1]]"
+        if (Regex("^(quiet mode|be quiet|go quiet|وضع الصمت|اسكتي)$").matches(t)) return "[[set:quiet|on]]"
+        if (Regex("^(talk again|voice on|you can talk|تكلمي|ارجعي تتكلمين)$").matches(t)) return "[[set:quiet|off]]"
+        if (Regex("^(talk faster|speak faster|اسرعي)$").matches(t)) return "[[set:speed|faster]]"
+        if (Regex("^(talk slower|speak slower|ابطئي)$").matches(t)) return "[[set:speed|slower]]"
+        if (Regex("^(louder|speak louder|you are too quiet|ارفعي صوتك)$").matches(t)) return "[[set:volume|up]]"
+        if (Regex("^(quieter|speak quieter|you are too loud|اخفضي صوتك)$").matches(t)) return "[[set:volume|down]]"
+        if (Regex("^(what can you do|what do you do|your features|your abilities|وش تقدر تسوي|وش تسوين|ايش تقدرين تسوين)$").matches(t))
+            return L.t("I chat, talk, remember you, wander, dance, and use your phone: open apps and type, tap, scroll, look at your screen, set timers and reminders, check weather, play music, and scroll your videos for you. Pat my head. Say hands for help.",
+                "أسولف معك وأتكلم وأتذكّرك وأتمشّى وأرقص وأستخدم جوالك: أفتح التطبيقات وأكتب وأضغط وأسحب وأشوف شاشتك وأضبط المؤقتات والتذكيرات وأقول لك الطقس وأشغّل الموسيقى وأتصفّح لك الفيديوهات. وامسح على راسي إذا تبي.")
         if (Regex("^(flashlight|torch|turn on the flashlight|turn on the torch)( on)?$").matches(t)) return "On. [[flash:on]]"
         if (Regex("^(flashlight off|torch off|turn off the flashlight|turn off the torch)$").matches(t)) return "Off. [[flash:off]]"
         if (Regex("^(volume up|louder)$").matches(t)) return "Louder. [[volume:up]]"
