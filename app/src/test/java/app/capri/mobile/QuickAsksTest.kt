@@ -87,3 +87,12 @@ class LookTest {
         assert(!re.containsMatchIn("open whatsapp"))
     }
 }
+
+class SecretNeverPlainTest {
+    @Test fun netBlocksKeysOverPublicHttp() {
+        var threw = false
+        try { Net.checkKey("http://example.com/v1", "k") } catch (e: Exception) { threw = true }
+        assert(threw)
+        Net.checkKey("http://192.168.1.5:8880/v1", "k")
+    }
+}

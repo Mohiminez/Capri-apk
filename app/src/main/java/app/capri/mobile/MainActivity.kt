@@ -650,19 +650,89 @@ class MainActivity : Activity() {
         note(o, t("The phone voice is basic. Groq's Orpheus is free and has a Saudi Arabic voice, Gemini is free with your Gemini key, ElevenLabs is what the Windows version uses.",
             "صوت الجوال عادي. Groq Orpheus مجاني وفيه صوت سعودي، وGemini مجاني بمفتاحك، وElevenLabs هو اللي تستخدمه نسخة الويندوز."))
         toggle(o, t("She talks out loud", "تتكلم بصوت مسموع"), "voice", true)
+
+        val k = section(t("THE WINDOWS VOICE (KOKORO), ON YOUR PHONE", "صوت الويندوز (Kokoro) على جوالك"))
+        note(k, t("The Windows version speaks with Kokoro. Download it once and it works offline, in English (Arabic text still uses the phone voice). About 150 MB.",
+            "نسخة الويندوز تتكلم بـKokoro. نزّله مرة وحدة ويشتغل بدون نت، بالإنجليزي (النص العربي يستخدم صوت الجوال). حوالي ١٥٠ ميجا."))
+        val kst = body(k, "", 14f, cyan)
+        val kbtn = btn(k, "", true) { }
+        fun kokoroState() {
+            val hd = prefs.getB("kokoroHd", false)
+            val ok = Kokoro.ready(this, hd)
+            kst.text = if (ok) "\u25CF " + t("Downloaded. Voice: ", "منزّل. الصوت: ") + prefs.getS("kokoroVoice", "af_heart") else "\u25CB " + t("Not downloaded yet.", "ما نزّلته للحين.")
+            kbtn.text = if (ok) t("DELETE THE KOKORO FILES", "احذف ملفات Kokoro") else t("DOWNLOAD THE KOKORO VOICE", "نزّل صوت Kokoro")
+        }
+        kbtn.setOnClickListener {
+            val hd = prefs.getB("kokoroHd", false)
+            if (Kokoro.ready(this, hd)) { Kokoro.delete(this); kokoroState(); return@setOnClickListener }
+            kbtn.isEnabled = false
+            kst.text = t("Downloading... 0%", "جاري التنزيل... 0%")
+            bg("kokoro-download", this) {
+                val err = Kokoro.download(this, hd) { p, name -> runOnUiThread { kst.text = t("Downloading... ", "جاري التنزيل... ") + p + "%  (" + name + ")" } }
+                runOnUiThread {
+                    kbtn.isEnabled = true
+                    if (err == null) {
+                        prefs.putI("ttsEngine", Voice.KOKORO)
+                        if (prefs.getS("kokoroVoice", "").isBlank()) prefs.putS("kokoroVoice", "af_heart")
+                        toast(t("Done. Kokoro is now her voice. Press Test the voice.", "تم. Kokoro صار صوتها. اضغط «جرّب الصوت»."))
+                        showTab(2)
+                    } else { kokoroState(); kst.text = t("Failed: ", "فشل: ") + err }
+                }
+            }
+        }
+        toggle(k, t("Full quality model (310 MB instead of 88 MB)", "الموديل الكامل (310 ميجا بدل 88)"), "kokoroHd", false) { kokoroState() }
+        note(k, t("Kokoro can't speak Arabic. For Arabic she uses the best voice you have a key for:", "Kokoro ما يتكلم عربي. للعربي تستخدم أحسن صوت عندك له مفتاح:"))
+        spin(k, listOf(t("Automatic (Groq Saudi, else Gemini, else the offline voice, else phone)", "تلقائي (Groq سعودي، وإلا Gemini، وإلا الصوت الأوفلاين، وإلا الجوال)"), t("Phone voice", "صوت الجوال"), t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"), t("Groq Saudi voice (free key)", "صوت Groq السعودي (مفتاح مجاني)"), t("Offline Arabic voice (no key, download below)", "الصوت العربي الأوفلاين (بدون مفتاح، نزّله تحت)")), prefs.getI("arVoice", 0)) { prefs.putI("arVoice", it) }
+        note(k, t("Groq asks you to accept the Orpheus terms once in console.groq.com before its voice works. Your Groq or Gemini key from the brain section is reused.", "Groq يطلب منك الموافقة على شروط Orpheus مرة وحدة من console.groq.com قبل ما يشتغل صوته. يستخدم مفتاح Groq أو Gemini اللي حطيته في قسم العقل."))
+        slider(k, t("Robot %", "روبوت %"), "voiceRobot", 0, 100, 0)
+        slider(k, t("Glitch %", "قلتش %"), "voiceGlitch", 0, 100, 0)
+        note(k, t("Voice names: af_* and am_* are American women and men, bf_* and bm_* are British. Use PICK A VOICE below. Speed and pitch sliders work too.",
+            "أسماء الأصوات: af_* و am_* أمريكي نساء ورجال، وbf_* و bm_* بريطاني. استخدم «اختر صوتاً» تحت. ومنزلقات السرعة والحدّة تشتغل."))
+        kokoroState()
+
+        val ar = section(t("ARABIC VOICE ON YOUR PHONE (NO KEY)", "صوت عربي على جوالك (بدون مفتاح)"))
+        note(ar, t("A neural Arabic voice (Meta MMS) that works offline with no key. About 40 MB. It reads Standard Arabic clearly, so dialect words sound like a news reader. Choose it in the list above or pick the engine \"Arabic voice on this phone\".",
+            "صوت عربي عصبي (Meta MMS) يشتغل بدون نت وبدون مفتاح. حوالي ٤٠ ميجا. ينطق الفصحى بوضوح، فالكلمات العامية تطلع بنطق مذيع. اخترته من القائمة فوق أو اختر المحرّك «صوت عربي على الجوال»."))
+        val ast = body(ar, "", 14f, cyan)
+        val abtn = btn(ar, "", true) { }
+        fun arabicState() {
+            val ok = ArabicTts.ready(this, prefs.getB("arabicHd", false))
+            ast.text = if (ok) "\u25CF " + t("Downloaded.", "منزّل.") else "\u25CB " + t("Not downloaded yet.", "ما نزّلته للحين.")
+            abtn.text = if (ok) t("DELETE THE ARABIC VOICE FILES", "احذف ملفات الصوت العربي") else t("DOWNLOAD THE ARABIC VOICE", "نزّل الصوت العربي")
+        }
+        abtn.setOnClickListener {
+            val hd = prefs.getB("arabicHd", false)
+            if (ArabicTts.ready(this, hd)) { ArabicTts.delete(this); arabicState(); return@setOnClickListener }
+            abtn.isEnabled = false
+            ast.text = t("Downloading... 0%", "جاري التنزيل... 0%")
+            bg("arabic-download", this) {
+                val err = ArabicTts.download(this, hd) { p, name -> runOnUiThread { ast.text = t("Downloading... ", "جاري التنزيل... ") + p + "%  (" + name + ")" } }
+                runOnUiThread {
+                    abtn.isEnabled = true
+                    if (err == null) {
+                        prefs.putI("arVoice", 4)
+                        if (prefs.getI("ttsEngine", 0) == Voice.PHONE) prefs.putI("ttsEngine", Voice.ARABIC)
+                        toast(t("Done. Arabic now uses the offline voice. Press Test the voice.", "تم. العربي الحين يستخدم الصوت الأوفلاين. اضغط «جرّب الصوت»."))
+                        showTab(2)
+                    } else { arabicState(); ast.text = t("Failed: ", "فشل: ") + err }
+                }
+            }
+        }
+        toggle(ar, t("Full quality model (114 MB instead of 39 MB)", "الموديل الكامل (114 ميجا بدل 39)"), "arabicHd", false) { arabicState() }
+        arabicState()
         spin(o, Voice.engines, prefs.getI("ttsEngine", 0)) {
             prefs.putI("ttsEngine", it)
-            voiceNameE?.setText(if (it == Voice.ELEVEN) prefs.getS("voiceId", "") else prefs.getS("voiceName", ""))
+            voiceNameE?.setText(prefs.getS(voiceKeyOf(it), if (it == Voice.KOKORO) "af_heart" else ""))
         }
         edit(o, t("Voice key (empty = use the brain key)", "مفتاح الصوت (فاضي = يستخدم مفتاح العقل)"), prefs.getSecret("voiceKey"), password = true) { prefs.putSecret("voiceKey", it) }
         voiceNameE = edit(o, t("Voice (ElevenLabs id, Gemini name, or OpenAI/Groq voice)", "الصوت (معرّف ElevenLabs أو اسم صوت Gemini أو صوت OpenAI/Groq)"),
-            if (prefs.getI("ttsEngine", 0) == Voice.ELEVEN) prefs.getS("voiceId", "") else prefs.getS("voiceName", "")) {
-            if (prefs.getI("ttsEngine", 0) == Voice.ELEVEN) prefs.putS("voiceId", it.trim()) else prefs.putS("voiceName", it.trim())
+            prefs.getS(voiceKeyOf(prefs.getI("ttsEngine", 0)), if (prefs.getI("ttsEngine", 0) == Voice.KOKORO) "af_heart" else "")) {
+            prefs.putS(voiceKeyOf(prefs.getI("ttsEngine", 0)), it.trim())
         }
         voiceModelE = edit(o, t("Voice model (optional)", "موديل الصوت (اختياري)"), prefs.getS("voiceModel", "")) { prefs.putS("voiceModel", it.trim()) }
         voiceUrlE = edit(o, t("Server URL (Groq / OpenAI / Kokoro only)", "عنوان السيرفر (فقط لـ Groq / OpenAI / Kokoro)"), prefs.getS("voiceUrl", "")) { prefs.putS("voiceUrl", it.trim()) }
-        note(o, t("The Windows version's own voice is Kokoro. To get the same voice: on your PC run  docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu  then press the Kokoro preset below and put your PC's Wi-Fi address in Server URL (like http://192.168.1.5:8880/v1). Kokoro has no Arabic; for Arabic use Groq (Saudi) or Gemini.",
-            "صوت نسخة الويندوز هو Kokoro. عشان تجيب نفس الصوت: على الكمبيوتر شغّل  docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu  بعدين اضغط إعداد Kokoro تحت وحط عنوان الكمبيوتر على الواي فاي في عنوان السيرفر (مثل http://192.168.1.5:8880/v1). Kokoro ما يدعم العربي، للعربي استخدم Groq (سعودي) أو Gemini."))
+        note(o, t("Other options: a Kokoro server on your PC, Groq, OpenAI. Kokoro has no Arabic; for Arabic use Groq (Saudi) or Gemini.",
+            "خيارات ثانية: سيرفر Kokoro على الكمبيوتر، أو Groq، أو OpenAI. Kokoro ما يدعم العربي، للعربي استخدم Groq (سعودي) أو Gemini."))
         btn(o, t("PRESETS: GROQ, OPENAI, KOKORO", "إعدادات جاهزة: Groq وOpenAI وKokoro")) {
             val names = listOf(t("Groq Orpheus (free, English + Saudi Arabic)", "Groq Orpheus (مجاني، إنجليزي وعربي سعودي)"), "OpenAI tts-1", t("Kokoro server on this phone or PC", "سيرفر Kokoro على الجوال أو الكمبيوتر"))
             pickDialog(t("Pick a preset", "اختر إعداداً جاهزاً"), names) { n ->
@@ -701,8 +771,15 @@ class MainActivity : Activity() {
         toggle(e, t("Conversation mode: she listens again after answering, until you say bye", "وضع المحادثة: بعد ما تجاوب تسمعك مرة ثانية، لين تقول «باي»"), "convo", false)
     }
 
+    private fun voiceKeyOf(engine: Int) = when (engine) { Voice.ELEVEN -> "voiceId"; Voice.KOKORO -> "kokoroVoice"; else -> "voiceName" }
+
     private fun pickVoice() {
         when (prefs.getI("ttsEngine", 0)) {
+            Voice.KOKORO -> {
+                val list = Kokoro.voices(this)
+                if (list.isEmpty()) toast(t("Download the Kokoro voice first (button above).", "نزّل صوت Kokoro أول (الزر فوق)."))
+                else pickDialog(t("Pick a voice", "اختر صوتاً"), list) { voiceNameE?.setText(list[it]) }
+            }
             Voice.GEMINI -> pickDialog(t("Pick a Gemini voice", "اختر صوت Gemini"), Voice.geminiVoices) { voiceNameE?.setText(Voice.geminiVoices[it]) }
             Voice.OPENAI -> {
                 val v = if ((voiceUrlE?.text?.toString() ?: "").contains("groq")) Voice.groqVoices else listOf("nova", "shimmer", "alloy", "echo", "fable", "onyx")
@@ -718,7 +795,7 @@ class MainActivity : Activity() {
     }
 
     private fun testVoice() {
-        val line = t("Hi choom. This is my voice. Not bad, right?", "هلا يا خوي. هذا صوتي. مو بطّال، صح؟")
+        val line = if (L.ar) "هلا يا خوي. هذا صوتي. مو بطّال، صح؟" else "Hi choom. This is my voice. Not bad, right?"
         toast(t("Generating...", "جاري التوليد..."))
         Thread {
             val err = Voice.speak(this, prefs, line) { }

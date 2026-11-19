@@ -176,6 +176,18 @@ class CapriAccess : AccessibilityService() {
 
     fun labelOf(i: Int): String = nodes.getOrNull(i)?.label ?: ""
 
+    // The words on whatever sits under a screen point (all the controls that contain it), so a blind tap can be checked first.
+    fun labelAt(x: Int, y: Int): String {
+        dump()
+        val r = android.graphics.Rect()
+        val out = ArrayList<String>()
+        for (n in nodes) {
+            try { n.node.getBoundsInScreen(r) } catch (e: Exception) { continue }
+            if (r.contains(x, y) && n.label.isNotBlank()) out.add(n.label)
+        }
+        return out.joinToString(" | ")
+    }
+
     fun clickIndex(i: Int): Boolean {
         val n = nodes.getOrNull(i) ?: return false
         return clickNode(n)

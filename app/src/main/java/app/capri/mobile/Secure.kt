@@ -33,7 +33,9 @@ object Secret {
             c.init(Cipher.ENCRYPT_MODE, key())
             "enc:" + Base64.encodeToString(c.iv, Base64.NO_WRAP) + ":" + Base64.encodeToString(c.doFinal(plain.toByteArray(Charsets.UTF_8)), Base64.NO_WRAP)
         } catch (e: Exception) {
-            plain
+            // Never keep a secret as plain text. Better to lose it (you can paste it again) than to store it unprotected.
+            try { Diag.log("secret", "encryption failed, not saved: " + e.javaClass.simpleName) } catch (x: Throwable) { }
+            ""
         }
     }
 

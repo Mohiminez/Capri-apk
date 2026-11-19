@@ -23,12 +23,16 @@ object Voice {
     const val GEMINI = 1
     const val ELEVEN = 2
     const val OPENAI = 3
+    const val KOKORO = 4
+    const val ARABIC = 5
 
     val engines get() = listOf(
         L.t("Phone voice (basic)", "صوت الجوال (عادي)"),
         L.t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"),
         L.t("ElevenLabs (like the Windows version)", "ElevenLabs (مثل نسخة الويندوز)"),
-        L.t("Groq / OpenAI / Kokoro server", "Groq أو OpenAI أو سيرفر Kokoro")
+        L.t("Groq / OpenAI / Kokoro server", "Groq أو OpenAI أو سيرفر Kokoro"),
+        L.t("Kokoro on this phone (the Windows voice, offline, English)", "Kokoro على الجوال (صوت الويندوز، أوفلاين، إنجليزي)"),
+        L.t("Arabic voice on this phone (offline, no key)", "صوت عربي على الجوال (أوفلاين، بدون مفتاح)")
     )
 
     val groqVoices get() = if (L.ar) listOf("noura", "lulwa", "aisha", "fahad", "sultan", "abdullah") else listOf("hannah", "diana", "autumn", "austin", "daniel", "troy")
@@ -96,12 +100,80 @@ object Voice {
                 GEMINI -> playPcm(gemini(prefs, text), 24000, my, onStart)
                 ELEVEN -> playMp3(ctx, eleven(prefs, text), my, onStart)
                 OPENAI -> playMp3(ctx, openai(prefs, text), my, onStart)
+                ARABIC -> {
+                    // Arabic text: her offline Arabic voice (or the one chosen for Arabic); anything else: the phone voice
+                    if (!KokoroText.mostlyArabic(text)) return "phone"
+                    return arabic(ctx, prefs, text, my, onStart)
+                }
+                KOKORO -> {
+                    // Kokoro only speaks English; Arabic text goes to the best Arabic voice she has a key for
+                    if (KokoroText.mostlyArabic(text)) return arabic(ctx, prefs, text, my, onStart)
+                    if (!Kokoro.ready(ctx, prefs.getB("kokoroHd", false))) return L.t("The Kokoro voice isn't downloaded yet (Voice tab).", "صوت Kokoro ما انحمّل للحين (تبويب الصوت).")
+                    val parts = Kokoro.pieces(text)
+                    // make the next sentence while this one is playing, so there is no gap between them
+                    val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+                    try {
+                        var pending = parts.firstOrNull()?.let { p -> pool.submit<Kokoro.Chunk?> { Kokoro.chunk(ctx, prefs, p) } }
+                        var started = false
+                        for (k in parts.indices) {
+                            if (my != gen) break
+                            val c = pending?.get()
+                            pending = parts.getOrNull(k + 1)?.let { p -> pool.submit<Kokoro.Chunk?> { Kokoro.chunk(ctx, prefs, p) } }
+                            if (c == null) continue
+                            playPcm(c.pcm, c.rate, my, { if (!started) { started = true; onStart() } })
+                        }
+                    } finally { pool.shutdownNow() }
+                }
                 else -> return "phone"
             }
             null
         } catch (e: Throwable) {
             e.message ?: "voice failed"
         }
+    }
+
+    // 0 = automatic (Groq Saudi voice, else Gemini, else the phone), 1 = phone, 2 = Gemini, 3 = Groq
+    private fun arabic(ctx: Context, prefs: Prefs, text: String, my: Int, onStart: () -> Unit): String? {
+        val groqUrl = "https://api.groq.com/openai/v1"
+        val hasGroq = prefs.keyForUrl(groqUrl).isNotEmpty() || prefs.getSecret("voiceKey").isNotEmpty() && prefs.getS("voiceUrl", "").contains("groq")
+        val hasGemini = prefs.keyForUrl("https://generativelanguage.googleapis.com/").isNotEmpty()
+        val offline = ArabicTts.ready(ctx, prefs.getB("arabicHd", false))
+        val pick = when (prefs.getI("arVoice", 0)) {
+            1 -> 1
+            2 -> 2
+            3 -> 3
+            4 -> if (offline) 4 else return L.t("The offline Arabic voice isn't downloaded yet (Voice tab).", "الصوت العربي الأوفلاين ما انحمّل للحين (تبويب الصوت).")
+            else -> if (hasGroq) 3 else if (hasGemini) 2 else if (offline) 4 else 1
+        }
+        when (pick) {
+            4 -> {
+                val pool = java.util.concurrent.Executors.newSingleThreadExecutor()
+                try {
+                    val parts = KokoroText.pieces(text)
+                    var pending = parts.firstOrNull()?.let { p -> pool.submit<Kokoro.Chunk?> { ArabicTts.chunk(ctx, prefs, p) } }
+                    var started = false
+                    for (k in parts.indices) {
+                        if (my != gen) break
+                        val c = pending?.get()
+                        pending = parts.getOrNull(k + 1)?.let { p -> pool.submit<Kokoro.Chunk?> { ArabicTts.chunk(ctx, prefs, p) } }
+                        if (c == null) continue
+                        playPcm(c.pcm, c.rate, my, { if (!started) { started = true; onStart() } })
+                    }
+                } finally { pool.shutdownNow() }
+            }
+            3 -> {
+                val body = JSONObject().put("model", "canopylabs/orpheus-arabic-saudi").put("input", text)
+                    .put("voice", prefs.getS("arGroqVoice", "noura").ifBlank { "noura" }).put("response_format", "wav")
+                val key = prefs.keyForUrl(groqUrl).ifEmpty { voiceKey(prefs, groqUrl) }
+                playMp3(ctx, post("$groqUrl/audio/speech", mapOf("Authorization" to "Bearer $key"), body), my, onStart)
+            }
+            2 -> {
+                val key = voiceKey(prefs, "https://generativelanguage.googleapis.com/")
+                playPcm(gemini(prefs, "Say this warmly and naturally, in Arabic: $text", geminiTtsModel(key), prefs.getS("arGeminiVoice", "Kore").ifBlank { "Kore" }), 24000, my, onStart)
+            }
+            else -> return "phone"
+        }
+        return null
     }
 
     // Your voice key if you set one, else the key you saved for the provider at that address, else the brain key.
@@ -133,14 +205,15 @@ object Voice {
         return c.inputStream.use { it.readBytes() }
     }
 
-    private fun gemini(prefs: Prefs, text: String): ByteArray {
+    // modelOverride/nameOverride are for her Arabic voice, so it never touches the voice settings of the engine you picked.
+    private fun gemini(prefs: Prefs, text: String, modelOverride: String? = null, nameOverride: String? = null): ByteArray {
         val key = voiceKey(prefs, "https://generativelanguage.googleapis.com/")
-        var model = prefs.getS("voiceModel", "").trim()
-        if (model.isEmpty() || !model.contains("tts", true)) {
+        var model = modelOverride ?: prefs.getS("voiceModel", "").trim()
+        if (modelOverride == null && (model.isEmpty() || !model.contains("tts", true))) {
             model = geminiTtsModel(key)
             prefs.putS("voiceModel", model)
         }
-        val name = prefs.getS("voiceName", "Kore").ifBlank { "Kore" }
+        val name = nameOverride ?: prefs.getS("voiceName", "Kore").ifBlank { "Kore" }
         val body = JSONObject()
             .put("contents", JSONArray().put(JSONObject().put("parts", JSONArray().put(JSONObject().put("text", text)))))
             .put("generationConfig", JSONObject()

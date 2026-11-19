@@ -21,6 +21,20 @@ object CustomLook {
         "sleep" to "perch", "laydown_sleep" to "perch"
     )
 
+    // (InputStream.readNBytes needs a newer Android than this app supports, so the bounded read is written out)
+    private fun readCapped(ins: java.io.InputStream, cap: Long): ByteArray {
+        val out = java.io.ByteArrayOutputStream()
+        val buf = ByteArray(32 * 1024)
+        var left = cap
+        while (left > 0) {
+            val n = ins.read(buf, 0, minOf(buf.size.toLong(), left).toInt())
+            if (n < 0) break
+            out.write(buf, 0, n)
+            left -= n
+        }
+        return out.toByteArray()
+    }
+
     private fun dir(ctx: Context) = File(ctx.filesDir, DIR)
 
     fun active(ctx: Context): Boolean = Prefs(ctx).getB("lookOn", false) && File(dir(ctx), "look.json").exists()
@@ -60,7 +74,8 @@ object CustomLook {
                     val isSheet = !e.isDirectory && Regex("^sprites/[a-z_]+\\.png$").matches(n)
                     val isLook = n == "look.json"
                     if (!isSheet && !isLook) continue
-                    val bytes = z.readBytes()
+                    // read at most one byte over the limit, so a hostile zip can never fill the memory before being refused
+                    val bytes = readCapped(z, MAX_SHEET + 1)
                     total += bytes.size
                     if (bytes.size > MAX_SHEET || total > MAX_TOTAL) throw IllegalStateException("too big")
                     if (isLook) json = String(bytes, Charsets.UTF_8)

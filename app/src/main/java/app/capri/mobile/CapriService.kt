@@ -922,6 +922,7 @@ class CapriService : Service(), Actions.Hooks {
         (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Capri", lastReply))
         heard = "sys: " + L.t("copied", "تم النسخ")
         renderBubble()
+        placeBubble()
     }
 
     // The box's size is worked out once per page, from the WHOLE page with no cursor, and then frozen.
@@ -940,12 +941,13 @@ class CapriService : Service(), Actions.Hooks {
         val tail = pl.tail.toInt()
         b.setPadding(dp(26), dp(11) + (if (pl.tailDown) 0 else tail), dp(14), dp(11) + (if (pl.tailDown) tail else 0))
         val saved = bt.text
-        bt.text = "CAPRI: " + (if (thinking) "" else typingFull) + " "
+        val page = if (thinking) "" else typingFull
+        bt.text = bubbleSpan(page, page.length, true, false)
         b.measure(View.MeasureSpec.makeMeasureSpec(screenW - dp(16), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
         bt.text = saved
         lockKey = key
-        lockW = b.measuredWidth + dp(4)
-        lockH = b.measuredHeight + dp(2)
+        lockW = b.measuredWidth
+        lockH = b.measuredHeight
         return Pair(lockW, lockH)
     }
 
@@ -973,11 +975,9 @@ class CapriService : Service(), Actions.Hooks {
             lastDown = above
             lastTip = tip
         }
-        if (bubbleLp.x != x || bubbleLp.y != y || bubbleLp.width != bw || bubbleLp.height != bh) {
+        if (bubbleLp.x != x || bubbleLp.y != y) {
             bubbleLp.x = x
             bubbleLp.y = y
-            bubbleLp.width = bw
-            bubbleLp.height = bh
             if (bubbleShown) try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
         }
     }
@@ -1003,26 +1003,27 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
-    private fun renderBubble() {
-        val bt = bubbleText ?: return
-        val hv = heardView ?: return
-        if (heard.isNotEmpty()) { hv.visibility = View.VISIBLE; hv.text = "> " + heard.take(70) } else hv.visibility = View.GONE
+    // The styled text of the box: red bold "CAPRI:" label, the page, and the cursor. Used both to draw and to measure,
+    // so the box is always sized for exactly what is shown (a label in bold or a cursor glyph can change the line height).
+    private fun bubbleSpan(page: String, pos: Int, showCaret: Boolean, typing: Boolean): android.text.SpannableStringBuilder {
         val speaker = "CAPRI: "
-        val page = if (thinking) "" else typingFull
         val full = speaker + page + " "
         val sb = android.text.SpannableStringBuilder(full)
         sb.setSpan(ForegroundColorSpan(Night.sRed), 0, speaker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
         sb.setSpan(android.text.style.StyleSpan(android.graphics.Typeface.BOLD), 0, speaker.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        val caret = speaker.length + pos.coerceIn(0, page.length)
+        if (showCaret && caret < full.length) sb.replace(caret, caret + 1, "\u2588")
+        if (typing && caret + 1 < full.length) sb.setSpan(ForegroundColorSpan(Color.TRANSPARENT), caret + 1, full.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
+        return sb
+    }
+
+    private fun renderBubble() {
+        val bt = bubbleText ?: return
+        val hv = heardView ?: return
+        if (heard.isNotEmpty()) { hv.visibility = View.VISIBLE; hv.text = "> " + heard.take(70) } else hv.visibility = View.GONE
+        val page = if (thinking) "" else typingFull
         val typing = !thinking && typingPos < page.length
-        val caret = speaker.length + (if (thinking) 0 else typingPos.coerceAtMost(page.length))
-        val showCaret = typing || cursorOn
-        if (showCaret && caret < full.length) {
-            sb.replace(caret, caret + 1, "\u2588")
-        }
-        if (typing && caret + 1 < full.length) {
-            sb.setSpan(ForegroundColorSpan(Color.TRANSPARENT), caret + 1, full.length, Spanned.SPAN_EXCLUSIVE_EXCLUSIVE)
-        }
-        bt.text = sb
+        bt.text = bubbleSpan(page, if (thinking) 0 else typingPos, typing || cursorOn, typing)
     }
 
     private fun bubbleTapped() {
@@ -1207,7 +1208,7 @@ class CapriService : Service(), Actions.Hooks {
                 if (err == null) {
                     talkDone()
                 } else {
-                    Toast.makeText(this, L.t("Voice problem, using the phone voice: ", "مشكلة في الصوت، باستخدم صوت الجوال: ") + err, Toast.LENGTH_LONG).show()
+                    if (err != "phone") Toast.makeText(this, L.t("Voice problem, using the phone voice: ", "مشكلة في الصوت، باستخدم صوت الجوال: ") + err, Toast.LENGTH_LONG).show()
                     phoneSpeak(text)
                 }
             }
@@ -1824,7 +1825,13 @@ class CapriService : Service(), Actions.Hooks {
         e.hint = L.t("Say something to Capri", "قل شي لكابري")
         e.setHintTextColor(Night.faint)
         e.setTextColor(Night.white)
-        e.setSingleLine(true)
+        // Wrapping, multi-line box (up to 5 lines) with a Send key. The old single-line box scrolled sideways, so the start of long
+        // messages slid out of view and the text seemed to vanish and come back while typing.
+        e.setRawInputType(android.text.InputType.TYPE_CLASS_TEXT or android.text.InputType.TYPE_TEXT_FLAG_CAP_SENTENCES)
+        e.setHorizontallyScrolling(false)
+        e.maxLines = 5
+        e.textSize = 16f
+        e.gravity = Gravity.CENTER_VERTICAL or Gravity.START
         e.imeOptions = EditorInfo.IME_ACTION_SEND
         e.setOnEditorActionListener { _, id, _ ->
             if (id == EditorInfo.IME_ACTION_SEND) { sendTyped(); true } else false
@@ -1850,9 +1857,11 @@ class CapriService : Service(), Actions.Hooks {
         panelLp = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.WRAP_CONTENT,
             OVERLAY, WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL, PixelFormat.TRANSLUCENT).apply {
             gravity = Gravity.TOP
-            y = screenH * 18 / 100
+            y = screenH * 12 / 100
             horizontalMargin = 0.03f
-            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_PAN
+            // The box sits near the top, away from the keyboard, so nothing needs to be panned or resized when the keyboard opens
+            // (panning is what made the text jump down and back).
+            softInputMode = WindowManager.LayoutParams.SOFT_INPUT_STATE_VISIBLE or WindowManager.LayoutParams.SOFT_INPUT_ADJUST_NOTHING
         }
     }
 

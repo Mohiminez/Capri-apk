@@ -48,7 +48,8 @@ Offline: download a model inside the app and choose **On this phone**. / بدو�
 - **Clones** — *"make clones"*; tap one to pop it.
 - **Share to her** — share a picture, PDF or text file to *Ask Capri*; or select text anywhere → *Ask Capri* (translate / explain).
 - **Say her name** — turn on *Wake word* (Voice tab): *"Capri, open WhatsApp"* or just *"Capri"* and wait for her *"yes?"*. Works in English and Arabic (*"كابري"*).
-- **Her desktop voice (Kokoro)** — the Windows version speaks with Kokoro. On a PC run `docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu`, then Voice tab → *Presets → Kokoro* and put the PC address in *Server URL*. (No Arabic in Kokoro; Arabic uses Groq or Gemini.)
+- **Her desktop voice (Kokoro), offline on the phone** — Voice tab → *Download the Kokoro voice* (about 150 MB, once). It is the same model the Windows version uses, English only; Arabic text uses the phone voice. Pick a voice, speed, pitch, robot and glitch to taste.
+- **Offline Arabic voice, no key** — Voice tab → *Download the Arabic voice* (about 40 MB, once). Meta MMS-TTS Arabic running on the phone. Clear Standard-Arabic reading (dialect words sound like a news reader); it is not the PC voice, which has no Arabic. Used automatically for Arabic when no Groq/Gemini key is set.
 - **Chess** — *"let's play chess"* (or the *Play chess with her* button): a full board with every rule, three levels, undo, play as white or black, and she comments on the game.
 - **Looks (.capri)** — import a look made in the desktop editor (Mods → *Import a mod or look*) and she changes shape. *Remove my mod* brings the original back.
 - **Scroll for me**, doomscroll guard, head pats, reminders, timers, weather, memory, quick-settings tile.
@@ -71,6 +72,17 @@ gradle assembleRelease
 ```
 
 Put the whole repo (with the `.github` folder) on GitHub; in *Settings → Actions → General → Workflow permissions* choose **Read and write** if the release step is refused.
+
+## Signing / التوقيع
+
+The repo contains a **public** test key (`capri.keystore`) so every build installs over the last one. Anyone can read its password, so for real use make your own and give it to GitHub once (run on any PC with Java):
+
+```bash
+keytool -genkeypair -v -keystore my.keystore -alias capri -keyalg RSA -keysize 2048 -validity 10000
+base64 -w0 my.keystore   # copy the output
+```
+
+GitHub → repo → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYSTORE_B64` (that output), `CAPRI_KEYSTORE_PASSWORD`, `CAPRI_KEY_ALIAS`. Builds then use your key automatically. Note: Android won't install an update signed with a different key over the old app; uninstall the old one once.
 
 ## Credits & licence
 

@@ -56,6 +56,7 @@ object LocalLlm {
                 break
             }
             val total = conn.contentLengthLong
+            if (total > 8_000_000_000L) { conn.disconnect(); return "that file is bigger than 8 GB, I won't download it" }
             var done = 0L
             var last = -1
             conn.inputStream.use { ins ->
