@@ -16,8 +16,8 @@ object CustomLook {
 
     // her animation names (the original art) -> the sheet in the look that replaces it. A look has no walk or mouth art, so she holds her pose.
     private val map = mapOf(
-        "idle" to "idle", "idle_blink" to "blink", "glitch" to "glitch", "wake" to "wake", "dangle" to "dangle",
-        "arrive" to "glitch", "leave" to "glitch", "walk" to "idle", "dance" to "idle", "grin" to "idle",
+        "idle" to "idle", "idle_blink" to "idle", "glitch" to "glitch", "wake" to "wake", "dangle" to "dangle",
+        "arrive" to "blink", "leave" to "blink", "walk" to "idle", "dance" to "idle", "grin" to "idle",
         "sleep" to "perch", "laydown_sleep" to "perch"
     )
 
@@ -38,8 +38,8 @@ object CustomLook {
         val o = BitmapFactory.Options().apply { inJustDecodeBounds = true }
         BitmapFactory.decodeFile(f.absolutePath, o)
         if (o.outWidth <= 0 || o.outHeight <= 0) return null
-        // frames are 240 wide; a sheet that isn't a multiple of 240 is a single wide frame
-        val frames = if (o.outWidth >= 240 && o.outWidth % 240 == 0) o.outWidth / 240 else 1
+        // A look's sheet is ONE picture (it can be wider than a standing frame, like the glitch pose), never a strip of frames.
+        val frames = 1
         val fps = try { JSONObject(File(dir(ctx), "look.json").readText()).optJSONObject("sheets")?.optJSONObject(map[anim])?.optInt("fps", 12) ?: 12 } catch (e: Exception) { 12 }
         return JSONObject().put("frames", frames).put("fps", fps.coerceIn(1, 60)).put("w", o.outWidth / frames).put("h", o.outHeight).put("cols", frames).put("sx", 0.0)
     }

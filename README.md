@@ -47,6 +47,8 @@ Offline: download a model inside the app and choose **On this phone**. / بدو�
 - **Points at things** — *"circle the send button"* draws a glowing ring on it.
 - **Clones** — *"make clones"*; tap one to pop it.
 - **Share to her** — share a picture, PDF or text file to *Ask Capri*; or select text anywhere → *Ask Capri* (translate / explain).
+- **Say her name** — turn on *Wake word* (Voice tab): *"Capri, open WhatsApp"* or just *"Capri"* and wait for her *"yes?"*. Works in English and Arabic (*"كابري"*).
+- **Her desktop voice (Kokoro)** — the Windows version speaks with Kokoro. On a PC run `docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu`, then Voice tab → *Presets → Kokoro* and put the PC address in *Server URL*. (No Arabic in Kokoro; Arabic uses Groq or Gemini.)
 - **Chess** — *"let's play chess"* (or the *Play chess with her* button): a full board with every rule, three levels, undo, play as white or black, and she comments on the game.
 - **Looks (.capri)** — import a look made in the desktop editor (Mods → *Import a mod or look*) and she changes shape. *Remove my mod* brings the original back.
 - **Scroll for me**, doomscroll guard, head pats, reminders, timers, weather, memory, quick-settings tile.

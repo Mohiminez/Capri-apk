@@ -220,6 +220,7 @@ class CapriService : Service(), Actions.Hooks {
         hideMenu()
         clearClones()
         hideRing()
+        stopWake()
         if (::agent.isInitialized) agent.cancel()
         Voice.stop()
         try { if (panelShown) wm.removeView(panel) } catch (e: Exception) { }
@@ -379,7 +380,9 @@ class CapriService : Service(), Actions.Hooks {
         clip("arrive", false) { settle() }
         poke()
         h.postDelayed(blinkTask, 4000)
-        h.postDelayed(wanderTask, 15_000L)
+        h.postDelayed(wanderTask, 8_000L)
+        h.postDelayed(unstickTask, 2000)
+        h.postDelayed(wakeTask, 3000)
         h.postDelayed(musicTask, 5000)
         h.postDelayed(watchTask, 60_000L)
         h.postDelayed(checkInTask, 20 * 60_000L)
@@ -581,6 +584,7 @@ class CapriService : Service(), Actions.Hooks {
             } catch (e: Throwable) {
                 CrashLog.record(this@CapriService, e, "movement")
                 mode = 0
+                settle()
                 return
             }
             if (mode != 0) choreo.postFrameCallback(this)
@@ -629,7 +633,7 @@ class CapriService : Service(), Actions.Hooks {
             val dx = walkTx - fx
             val dy = walkTy - fy
             val dist = hypot(dx, dy)
-            val top = dp(55) * (1f + prefs.getI("wanderPace", 1) * 0.5f)
+            val top = dp(75) * (1f + prefs.getI("wanderPace", 1) * 0.6f)
             // ease in over the first stretch and ease out over the last, like she is floating rather than sliding
             val ramp = minOf(1f, 0.25f + (walkTotal - dist) / dp(90), 0.2f + dist / dp(130)).coerceIn(0.2f, 1f)
             val sp = if (asleep) top * 1.6f else top * ramp
@@ -642,10 +646,14 @@ class CapriService : Service(), Actions.Hooks {
                 fy += dy / dist * sp * dt
             }
         }
-        spriteLp.x = fx.toInt()
-        spriteLp.y = fy.toInt()
-        try { wm.updateViewLayout(s, spriteLp) } catch (e: Exception) { }
-        if (bubbleShown) placeBubble()
+        val nx = fx.toInt()
+        val ny = fy.toInt()
+        if (nx != spriteLp.x || ny != spriteLp.y) {
+            spriteLp.x = nx
+            spriteLp.y = ny
+            try { wm.updateViewLayout(s, spriteLp) } catch (e: Exception) { }
+            if (bubbleShown) placeBubble()
+        }
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
@@ -657,13 +665,13 @@ class CapriService : Service(), Actions.Hooks {
             if (pace > 0 && canRoam()) {
                 val r = Random.nextInt(100)
                 when {
-                    r < 55 -> walkSomewhere()
-                    r < 70 -> teleport()
-                    r < 85 -> clip("grin", false) { settle() }
+                    r < 62 -> walkSomewhere()
+                    r < 72 -> teleport()
+                    r < 88 -> clip("grin", false) { settle() }
                     else -> { /* just stays put this time */ }
                 }
             }
-            h.postDelayed(this, Random.nextLong(10_000, 28_000) / maxOf(1, pace))
+            h.postDelayed(this, Random.nextLong(6_000, 15_000) / maxOf(1, pace))
         }
     }
 
@@ -680,6 +688,7 @@ class CapriService : Service(), Actions.Hooks {
     // Glitches out and pops up somewhere else, like her arrive and leave animations on the desktop.
     private fun teleport() {
         scripted = true
+        h.postDelayed({ if (scripted && !dragging) { scripted = false; settle() } }, 5000)
         clip("leave", false) {
             fx = Random.nextFloat() * (maxX() - minX()) + minX()
             fy = Random.nextFloat() * (floorY() - dp(60)) + dp(60)
@@ -688,6 +697,27 @@ class CapriService : Service(), Actions.Hooks {
             try { sprite?.let { wm.updateViewLayout(it, spriteLp) } } catch (e: Exception) { }
             if (bubbleShown) placeBubble()
             clip("arrive", false) { scripted = false; settle() }
+        }
+    }
+
+    // Safety net: if anything ever leaves her frozen (a flag that never cleared, a clip that stopped on its last frame), this frees her.
+    private var stuckScripted = 0
+    private var stuckTalking = 0
+    private var stuckBusy = 0
+    private var stuckMode = 0
+    private val unstickTask = object : Runnable {
+        override fun run() {
+            stuckScripted = if (scripted) stuckScripted + 1 else 0
+            stuckTalking = if (talking) stuckTalking + 1 else 0
+            stuckBusy = if (busy && !agent.running) stuckBusy + 1 else 0
+            stuckMode = if (mode != 0 && !dragging) stuckMode + 1 else 0
+            if (stuckScripted > 4) { scripted = false; stuckScripted = 0; Diag.log("unstick", "scripted") }
+            if (stuckTalking > 30) { talking = false; stuckTalking = 0; Diag.log("unstick", "talking") }
+            if (stuckBusy > 75) { busy = false; stuckBusy = 0; Diag.log("unstick", "busy") }
+            if (stuckMode > 10) { mode = 0; stuckMode = 0; Diag.log("unstick", "mode") }
+            val sp = sprite
+            if (sp != null && !hidden && !scripted && !dragging && mode == 0 && sp.stalled) settle()
+            h.postDelayed(this, 2000)
         }
     }
 
@@ -855,7 +885,8 @@ class CapriService : Service(), Actions.Hooks {
         heardView = hv
         val body = TextView(this)
         body.typeface = tfMono
-        body.textSize = 14f
+        body.textSize = 15f
+        body.setLineSpacing(0f, 1.12f)
         body.setTextColor(Night.neon)
         body.maxWidth = (screenW * 0.8f).toInt()
         b.addView(body)
@@ -893,29 +924,62 @@ class CapriService : Service(), Actions.Hooks {
         renderBubble()
     }
 
+    // The box's size is worked out once per page, from the WHOLE page with no cursor, and then frozen.
+    // (Before, it was re-measured while the letters typed in and the cursor blinked, so it grew and shrank and jumped around.)
+    private var lockKey = 0
+    private var lockW = 0
+    private var lockH = 0
+    private var lastTip = -1f
+    private var lastDown: Boolean? = null
+
+    private fun bubbleSize(pl: SpeechPlate): Pair<Int, Int> {
+        val b = bubble ?: return Pair(0, 0)
+        val bt = bubbleText ?: return Pair(0, 0)
+        val key = ((if (thinking) "." else typingFull) + "|" + heard.take(70) + "|" + (buttonsRow?.visibility ?: 0) + "|" + pl.tailDown + "|" + screenW).hashCode()
+        if (key == lockKey && lockW > 0) return Pair(lockW, lockH)
+        val tail = pl.tail.toInt()
+        b.setPadding(dp(26), dp(11) + (if (pl.tailDown) 0 else tail), dp(14), dp(11) + (if (pl.tailDown) tail else 0))
+        val saved = bt.text
+        bt.text = "CAPRI: " + (if (thinking) "" else typingFull) + " "
+        b.measure(View.MeasureSpec.makeMeasureSpec(screenW - dp(16), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        bt.text = saved
+        lockKey = key
+        lockW = b.measuredWidth + dp(4)
+        lockH = b.measuredHeight + dp(2)
+        return Pair(lockW, lockH)
+    }
+
     // Where the plate goes: above her head with the tail pointing down, or below her when there's no room.
     private fun placeBubble() {
         val b = bubble ?: return
         val pl = plate ?: return
-        val tail = pl.tail.toInt()
-        b.setPadding(dp(26), dp(11) + (if (pl.tailDown) 0 else tail), dp(14), dp(11) + (if (pl.tailDown) tail else 0))
-        b.measure(View.MeasureSpec.makeMeasureSpec(screenW - dp(16), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-        var bw = b.measuredWidth
-        var bh = b.measuredHeight
+        var (bw, bh) = bubbleSize(pl)
+        if (bw <= 0) return
         val headX = spriteLp.x + spriteLp.width / 2
         val headY = spriteLp.y + (spriteLp.height * 0.08f).toInt()
-        val above = headY - bh - dp(2) >= dp(24)
+        // a little hysteresis, so it does not flip above/below back and forth while she walks near the top
+        val above = headY - bh - dp(2) >= (if (pl.tailDown) dp(24) else dp(64))
         if (above != pl.tailDown) {
             pl.configure(above, pl.tipX)
-            b.setPadding(dp(26), dp(11) + (if (above) 0 else tail), dp(14), dp(11) + (if (above) tail else 0))
-            b.measure(View.MeasureSpec.makeMeasureSpec(screenW - dp(16), View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
-            bw = b.measuredWidth
-            bh = b.measuredHeight
+            val s2 = bubbleSize(pl)
+            bw = s2.first
+            bh = s2.second
         }
-        bubbleLp.x = (headX - bw / 2).clampTo(dp(8), screenW - bw - dp(8))
-        bubbleLp.y = if (above) headY - bh - dp(2) else spriteLp.y + spriteLp.height - dp(30)
-        pl.configure(above, ((headX - bubbleLp.x).toFloat() / maxOf(1, bw)).coerceIn(0.1f, 0.9f))
-        if (bubbleShown) try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
+        val x = (headX - bw / 2).clampTo(dp(8), screenW - bw - dp(8))
+        val y = (if (above) headY - bh - dp(2) else spriteLp.y + spriteLp.height - dp(30)).clampTo(dp(24), screenH - bh - dp(8))
+        val tip = ((headX - x).toFloat() / maxOf(1, bw)).clampTo(0.1f, 0.9f)
+        if (lastDown != above || abs(tip - lastTip) > 0.01f) {
+            pl.configure(above, tip)
+            lastDown = above
+            lastTip = tip
+        }
+        if (bubbleLp.x != x || bubbleLp.y != y || bubbleLp.width != bw || bubbleLp.height != bh) {
+            bubbleLp.x = x
+            bubbleLp.y = y
+            bubbleLp.width = bw
+            bubbleLp.height = bh
+            if (bubbleShown) try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
+        }
     }
 
     private val hideBubbleTask = Runnable { pendingConfirm = null; hideBubble() }
@@ -984,15 +1048,15 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacks(typeTask)
         if (typingPos < typingFull.length) h.postDelayed(typeTask, 26)
         h.removeCallbacks(hideBubbleTask)
-        h.postDelayed(hideBubbleTask, (typingFull.length * 90L).coerceIn(6000L, 22000L))
+        h.postDelayed(hideBubbleTask, (typingFull.length * 90L).coerceIn(7000L, 22000L))
     }
 
     private fun splitPages(text: String): List<String> {
-        if (text.length <= 240) return listOf(text)
+        if (text.length <= 170) return listOf(text)
         val out = ArrayList<String>()
         var cur = StringBuilder()
         for (part in text.split(Regex("(?<=[.!?\u061F])\\s+"))) {
-            if (cur.length + part.length > 240 && cur.isNotEmpty()) { out.add(cur.toString().trim()); cur = StringBuilder() }
+            if (cur.length + part.length > 170 && cur.isNotEmpty()) { out.add(cur.toString().trim()); cur = StringBuilder() }
             cur.append(part).append(' ')
         }
         if (cur.isNotBlank()) out.add(cur.toString().trim())
@@ -1120,6 +1184,9 @@ class CapriService : Service(), Actions.Hooks {
             val params = Bundle()
             params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, prefs.getI("ttsVolume", 100) / 100f)
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "capri")
+            // if the engine never reports "done" (interrupted, crashed, muted) she must not stay frozen mid-sentence
+            val mine = speakId
+            h.postDelayed({ if (mine == speakId && talking) talkDone() }, (text.length * 110L + 5000L).coerceAtMost(90_000L))
         } else {
             h.postDelayed({ talkDone() }, (text.length * 55L).coerceIn(1200L, 4500L))
         }
@@ -1820,6 +1887,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun heard(t: String?) {
         cloudListening = false
+        userListening = false
         if (t.isNullOrBlank()) { missed(); return }
         missCount = 0
         if (dictating) {
@@ -1838,6 +1906,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun missed() {
         dictating = false
+        userListening = false
         missCount++
         if (convoActive && missCount >= 2) {
             convoActive = false
@@ -1851,6 +1920,9 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun startListening(dictate: Boolean = false) {
+        stopWake()
+        userListening = true
+        userListeningAt = System.currentTimeMillis()
         poke()
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say(L.t("I need the microphone permission. Open the Capri app.", "أحتاج صلاحية المايك. افتح تطبيق كابري."), false)
@@ -1904,6 +1976,109 @@ class CapriService : Service(), Actions.Hooks {
         r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
             .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
+    }
+
+    // ---- wake word: "Capri, open WhatsApp" ----
+
+    private var wake: SpeechRecognizer? = null
+    private var wakeActive = false
+    private var wakeNextAt = 0L
+    private var wakeFails = 0
+    private var wakeMuted = false
+    private var userListening = false
+    private var userListeningAt = 0L
+    private val wakeRe = Regex("(capri|kapri|cabri|capry|كابري|كابرى|كابريه|كابرة|كبري|كابر)", RegexOption.IGNORE_CASE)
+
+    private fun wakeWanted(): Boolean = prefs.getB("wakeWord", false) && screenOn && !talking && !busy && !cloudListening && !dictating &&
+        !(userListening && System.currentTimeMillis() - userListeningAt < 25_000L) && !agent.running &&
+        checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && SpeechRecognizer.isRecognitionAvailable(this)
+
+    private val wakeTask = object : Runnable {
+        override fun run() {
+            try {
+                if (wakeWanted()) { if (!wakeActive && System.currentTimeMillis() >= wakeNextAt) startWake() }
+                else if (wakeActive) stopWake()
+            } catch (e: Throwable) { CrashLog.record(this@CapriService, e, "wake word") }
+            h.postDelayed(this, 1200)
+        }
+    }
+
+    // The recogniser beeps when it starts; keep those small system sounds quiet while she waits for her name.
+    private fun muteBeep(on: Boolean) {
+        if (wakeMuted == on) return
+        try {
+            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+            for (st in intArrayOf(android.media.AudioManager.STREAM_SYSTEM, android.media.AudioManager.STREAM_NOTIFICATION))
+                am.adjustStreamVolume(st, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
+            wakeMuted = on
+        } catch (e: Throwable) { }
+    }
+
+    private fun startWake() {
+        refreshMicType()
+        stopWake()
+        val r = SpeechRecognizer.createSpeechRecognizer(this)
+        wake = r
+        wakeActive = true
+        r.setRecognitionListener(object : RecognitionListener {
+            override fun onReadyForSpeech(params: Bundle?) {}
+            override fun onBeginningOfSpeech() {}
+            override fun onRmsChanged(rmsdB: Float) {}
+            override fun onBufferReceived(buffer: ByteArray?) {}
+            override fun onEndOfSpeech() {}
+            override fun onEvent(eventType: Int, params: Bundle?) {}
+            override fun onError(error: Int) {
+                // silence and "no match" are normal while waiting; anything else backs off so it never spins the battery
+                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) wakeFails = 0 else wakeFails = minOf(wakeFails + 1, 8)
+                wakeNextAt = System.currentTimeMillis() + 300L + wakeFails * 1500L
+                h.post { if (wake === r) stopWake() }
+            }
+            override fun onPartialResults(partialResults: Bundle?) { check(partialResults, false) }
+            override fun onResults(results: Bundle?) {
+                wakeFails = 0
+                if (!check(results, true)) h.post { if (wake === r) stopWake() }
+            }
+            private fun check(b: Bundle?, final: Boolean): Boolean {
+                val text = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return false
+                val m = wakeRe.find(text) ?: return false
+                var rest = text.substring(m.range.last + 1).trim().trimStart(',', '\u060C', '.', '!', ' ')
+                // while she is still hearing the sentence, wait for the end of it so the command is complete
+                if (!final && rest.isEmpty()) return false
+                if (!final) return false
+                h.post { if (wake === r) { stopWake(); onWake(rest) } }
+                return true
+            }
+        })
+        try {
+            muteBeep(true)
+            r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
+        } catch (e: Throwable) {
+            wakeFails = minOf(wakeFails + 1, 8)
+            wakeNextAt = System.currentTimeMillis() + 3000L
+            stopWake()
+        }
+    }
+
+    private fun stopWake() {
+        wakeActive = false
+        val r = wake
+        wake = null
+        try { r?.cancel() } catch (e: Throwable) { }
+        try { r?.destroy() } catch (e: Throwable) { }
+        muteBeep(false)
+    }
+
+    private fun onWake(rest: String) {
+        poke()
+        if (hidden) toggleHidden()
+        chime("show")
+        if (rest.length >= 2) { heard(rest); return }
+        say(L.t("Yes?", "نعم؟"), false)
+        h.postDelayed({ startListening() }, 600)
     }
 
     // ---- hide / show ----

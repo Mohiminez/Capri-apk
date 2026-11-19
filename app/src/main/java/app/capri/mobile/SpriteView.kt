@@ -104,6 +104,9 @@ class SpriteView(ctx: Context) : View(ctx) {
     var current = ""
         private set
 
+    // A one-shot clip that has ended and was never followed by anything: she would stand frozen on its last frame.
+    val stalled: Boolean get() = clip != null && !looping && finished
+
     // Mirrors her so she can face left; her walk is a drift, so one sheet does both ways.
     var flip = false
         set(v) { field = v; invalidate() }
@@ -152,7 +155,12 @@ class SpriteView(ctx: Context) : View(ctx) {
 
     fun play(name: String, loop: Boolean = true, onDone: (() -> Unit)? = null) {
         if (loop && looping && current == name && clip != null) return
-        val c = load(name) ?: return
+        val c = load(name)
+        if (c == null) {
+            // nothing to show for this clip: still report "finished" so whoever waits for it is never left hanging
+            if (!loop) post { onDone?.invoke() }
+            return
+        }
         clip = c
         current = name
         looping = loop

@@ -78,3 +78,12 @@ class ChessAskTest {
         assert(QuickAsks.match("العب شطرنج")!!.contains("[[chess:open]]"))
     }
 }
+
+class LookTest {
+    @Test fun wakeWordVariants() {
+        val re = Regex("(capri|kapri|cabri|capry|كابري|كابرى|كابريه|كابرة|كبري|كابر)", RegexOption.IGNORE_CASE)
+        assert(re.containsMatchIn("hey Capri open whatsapp"))
+        assert(re.containsMatchIn("اهلا كابري"))
+        assert(!re.containsMatchIn("open whatsapp"))
+    }
+}

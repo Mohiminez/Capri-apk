@@ -101,6 +101,8 @@ class MainActivity : Activity() {
             tfBold = font("BarlowSemiCondensed-SemiBold.ttf", Typeface.DEFAULT_BOLD)
         }
         tab = prefs.getI("lastTab", 0).coerceIn(0, 5)
+        window.statusBarColor = Night.glow
+        window.navigationBarColor = Night.ground
 
         val rootCol = LinearLayout(this)
         rootCol.orientation = LinearLayout.VERTICAL
@@ -165,6 +167,8 @@ class MainActivity : Activity() {
             val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3))
             lp.topMargin = dp(8)
             col.addView(bar, lp)
+            if (n == i) v.typeface = tfBold
+            col.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(50, 255, 255, 255)), null, null)
             col.setOnClickListener { showTab(n) }
             tabBar.addView(col)
         }
@@ -248,6 +252,8 @@ class MainActivity : Activity() {
             setColor(if (primary) Night.hot else Night.hover)
             setStroke(dp(2), if (primary) Night.hot else Night.edge)
         }
+        v.minHeight = dp(48)
+        v.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
         v.setOnClickListener { click() }
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, dp(5), 0, dp(5))
@@ -294,6 +300,8 @@ class MainActivity : Activity() {
         sw.setTextColor(text)
         sw.isChecked = prefs.getB(k, default)
         sw.thumbTintList = ColorStateList.valueOf(cyan)
+        sw.trackTintList = ColorStateList.valueOf(Color.argb(120, 94, 240, 246))
+        sw.minHeight = dp(48)
         sw.setOnCheckedChangeListener { _, on -> prefs.putB(k, on); extra?.invoke(on) }
         sw.setPadding(0, dp(8), 0, dp(8))
         p.addView(sw)
@@ -653,6 +661,8 @@ class MainActivity : Activity() {
         }
         voiceModelE = edit(o, t("Voice model (optional)", "موديل الصوت (اختياري)"), prefs.getS("voiceModel", "")) { prefs.putS("voiceModel", it.trim()) }
         voiceUrlE = edit(o, t("Server URL (Groq / OpenAI / Kokoro only)", "عنوان السيرفر (فقط لـ Groq / OpenAI / Kokoro)"), prefs.getS("voiceUrl", "")) { prefs.putS("voiceUrl", it.trim()) }
+        note(o, t("The Windows version's own voice is Kokoro. To get the same voice: on your PC run  docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu  then press the Kokoro preset below and put your PC's Wi-Fi address in Server URL (like http://192.168.1.5:8880/v1). Kokoro has no Arabic; for Arabic use Groq (Saudi) or Gemini.",
+            "صوت نسخة الويندوز هو Kokoro. عشان تجيب نفس الصوت: على الكمبيوتر شغّل  docker run -p 8880:8880 ghcr.io/remsky/kokoro-fastapi-cpu  بعدين اضغط إعداد Kokoro تحت وحط عنوان الكمبيوتر على الواي فاي في عنوان السيرفر (مثل http://192.168.1.5:8880/v1). Kokoro ما يدعم العربي، للعربي استخدم Groq (سعودي) أو Gemini."))
         btn(o, t("PRESETS: GROQ, OPENAI, KOKORO", "إعدادات جاهزة: Groq وOpenAI وKokoro")) {
             val names = listOf(t("Groq Orpheus (free, English + Saudi Arabic)", "Groq Orpheus (مجاني، إنجليزي وعربي سعودي)"), "OpenAI tts-1", t("Kokoro server on this phone or PC", "سيرفر Kokoro على الجوال أو الكمبيوتر"))
             pickDialog(t("Pick a preset", "اختر إعداداً جاهزاً"), names) { n ->
@@ -676,6 +686,8 @@ class MainActivity : Activity() {
         val e = section(t("HER EARS", "أذنها"))
         note(e, t("The phone's recogniser is free but weaker for Arabic dialects. \"Her own ears\" use Whisper (Groq is free and fast).",
             "تعرّف الجوال على الصوت مجاني بس أضعف مع اللهجات العربية. «أذنها الخاصة» تستخدم Whisper (وGroq مجاني وسريع)."))
+        toggle(e, t("Wake word: say \"Capri\" / \"كابري\" and then what you want (uses the microphone and some battery while the screen is on)", "كلمة النداء: قل \"كابري\" ثم طلبك (تستخدم المايك وشوية بطارية والشاشة شغّالة)"), "wakeWord", false)
+        note(e, t("Examples: \"Capri, open WhatsApp\", \"hey Capri\" then wait for her \"yes?\". Works best with the phone recogniser.", "أمثلة: \"كابري افتحي واتساب\"، \"اهلا كابري\" وانتظر ترد \"نعم؟\". تشتغل أحسن مع تعرّف الجوال."))
         spin(e, listOf(t("Phone recogniser", "تعرّف الجوال"), t("Her own ears (Whisper)", "أذنها الخاصة (Whisper)")), prefs.getI("sttEngine", 0)) { prefs.putI("sttEngine", it) }
         edit(e, t("Ears key (empty = Groq key, then brain key)", "مفتاح الأذن (فاضي = مفتاح Groq ثم مفتاح العقل)"), prefs.getSecret("sttKey"), password = true) { prefs.putSecret("sttKey", it) }
         sttUrlE = edit(e, t("Ears server URL (empty = Groq)", "عنوان سيرفر الأذن (فاضي = Groq)"), prefs.getS("sttUrl", "")) { prefs.putS("sttUrl", it.trim()) }
@@ -788,7 +800,22 @@ class MainActivity : Activity() {
     private fun buildHands() {
         val a = section(t("ACCESSIBILITY", "صلاحية الوصول"))
         val st = body(a, "", 16f, Color.WHITE, true)
-        refreshers.add { st.text = if (CapriAccess.instance != null) "\u25CF " + t("ON: she can see and use your phone", "شغّال: تقدر تشوف وتستخدم جوالك") else "\u25CB " + t("OFF", "مطفي") }
+        refreshers.add {
+            st.text = when {
+                CapriAccess.instance != null -> "\u25CF " + t("ON: she can see and use your phone", "شغّال: تقدر تشوف وتستخدم جوالك")
+                CapriAccess.enabledInSettings(this) -> "\u25D0 " + t("Switched on but not connected. Press RECONNECT below.", "مشغّلة بس مو متصلة. اضغط إعادة الاتصال تحت.")
+                else -> "\u25CB " + t("OFF", "مطفي")
+            }
+        }
+        btn(a, t("RECONNECT HER HANDS", "إعادة اتصال اليدين")) {
+            if (CapriAccess.instance != null) toast(t("Already connected.", "متصلة أصلاً."))
+            else if (!CapriAccess.enabledInSettings(this)) toast(t("Switch her on in accessibility settings first.", "شغّلها من إعدادات إمكانية الوصول أول."))
+            else {
+                CapriAccess.rebind(this)
+                toast(t("Reconnecting...", "أعيد الاتصال..."))
+                page.postDelayed({ refresh() }, 2500)
+            }
+        }
         note(a, t("With it she reads your screen, taps, types and scrolls with her own cursor, and takes screenshots.\n\nTo turn it on: 1) Open app info, tap the three dots and choose Allow restricted settings (Android 13+). 2) Open accessibility settings, find Capri under Installed apps and switch it on.\n\nOn POCO or Xiaomi phones also open app info > Other permissions and allow Display pop-up windows while running in the background and Start in the background, and set battery to No restrictions.",
             "بها تقرأ شاشتك وتضغط وتكتب وتسحب بمؤشرها هي وتاخذ لقطات شاشة.\n\nلتشغيلها: ١) افتح «معلومات التطبيق» واضغط النقاط الثلاث واختر «السماح بالإعدادات المقيّدة» (أندرويد ١٣ وما فوق). ٢) افتح إعدادات «إمكانية الوصول»، وابحث عن كابري تحت «التطبيقات المثبّتة» وشغّلها.\n\nإذا كان جوالك POCO أو Xiaomi: من معلومات التطبيق > الأذونات الأخرى فعّل «عرض النوافذ المنبثقة أثناء التشغيل في الخلفية» و«البدء في الخلفية»، وخلّ البطارية «بدون قيود»."))
         btn(a, t("1. OPEN APP INFO", "١. معلومات التطبيق")) { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
@@ -934,9 +961,16 @@ class MainActivity : Activity() {
 
     private fun refresh() { for (r in refreshers) r() }
 
+    private var autoRebindTried = false
+
     override fun onResume() {
         super.onResume()
         refresh()
+        // switched on in settings but never connected (after an update, or a stopped service): reconnect by itself
+        if (!autoRebindTried && CapriAccess.instance == null && CapriAccess.enabledInSettings(this)) {
+            autoRebindTried = true   // once per launch, and only after giving Android a few seconds to connect it on its own
+            page.postDelayed({ if (CapriAccess.instance == null) { CapriAccess.rebind(this); page.postDelayed({ refresh() }, 2500) } }, 6000)
+        }
         val crash = CrashLog.unseen(this)
         if (crash != null) {
             CrashLog.markSeen(this)

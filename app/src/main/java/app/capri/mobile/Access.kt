@@ -35,6 +35,32 @@ class CapriAccess : AccessibilityService() {
         @Volatile var onScrolled: ((String) -> Unit)? = null
         // The screenshot is shrunk to 720 px wide; this is how many real pixels each of its pixels is.
         @Volatile var lastShotScale = 1f
+
+        // Is Capri switched ON in Android's accessibility settings (whether or not it is really connected)?
+        fun enabledInSettings(ctx: android.content.Context): Boolean {
+            val s = android.provider.Settings.Secure.getString(ctx.contentResolver, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: return false
+            return s.split(':').any { it.startsWith(ctx.packageName + "/") }
+        }
+
+        private var lastRebind = 0L
+
+        // "On but not working": Android lists the service as enabled yet never connected it. Turning the component off and on again
+        // makes the system bind it, the same as you switching it off and on by hand. Returns true if it tried.
+        fun rebind(ctx: android.content.Context): Boolean {
+            val now = System.currentTimeMillis()
+            if (instance != null || !enabledInSettings(ctx) || now - lastRebind < 20_000L) return false
+            lastRebind = now
+            return try {
+                val pm = ctx.packageManager
+                val cn = android.content.ComponentName(ctx, CapriAccess::class.java)
+                pm.setComponentEnabledSetting(cn, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DISABLED, android.content.pm.PackageManager.DONT_KILL_APP)
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try { pm.setComponentEnabledSetting(cn, android.content.pm.PackageManager.COMPONENT_ENABLED_STATE_DEFAULT, android.content.pm.PackageManager.DONT_KILL_APP) } catch (e: Throwable) { }
+                }, 700)
+                Diag.log("access", "reconnect attempt")
+                true
+            } catch (e: Throwable) { false }
+        }
     }
 
     @Volatile private var nodes: List<ScreenNode> = emptyList()
@@ -43,17 +69,26 @@ class CapriAccess : AccessibilityService() {
     private var cursor: ImageView? = null
     private var cursorLp: WindowManager.LayoutParams? = null
 
-    override fun onServiceConnected() { instance = this }
+    override fun onCreate() { super.onCreate(); instance = this }
+    override fun onServiceConnected() { super.onServiceConnected(); instance = this }
     override fun onUnbind(intent: Intent?): Boolean { instance = null; return super.onUnbind(intent) }
+    override fun onDestroy() { if (instance === this) instance = null; super.onDestroy() }
     override fun onAccessibilityEvent(event: AccessibilityEvent?) {
-        if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
-            val pkg = event.packageName?.toString() ?: return
-            // Her own windows and the system UI aren't "the app they're in".
-            if (pkg != packageName && pkg != "com.android.systemui") {
-                if (pkg != foreground) { foreground = pkg; onForeground?.invoke(pkg) }
+        // An error thrown here makes Android quietly stop the service while Settings still shows it as ON
+        // (the "it's on but doesn't work until I switch it off and on" problem), so nothing may escape this method.
+        try {
+            if (instance == null) instance = this
+            if (event?.eventType == AccessibilityEvent.TYPE_WINDOW_STATE_CHANGED) {
+                val pkg = event.packageName?.toString() ?: return
+                // Her own windows and the system UI aren't "the app they're in".
+                if (pkg != packageName && pkg != "com.android.systemui") {
+                    if (pkg != foreground) { foreground = pkg; onForeground?.invoke(pkg) }
+                }
+            } else if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
+                event.packageName?.toString()?.let { if (it != packageName) onScrolled?.invoke(it) }
             }
-        } else if (event?.eventType == AccessibilityEvent.TYPE_VIEW_SCROLLED) {
-            event.packageName?.toString()?.let { if (it != packageName) onScrolled?.invoke(it) }
+        } catch (e: Throwable) {
+            try { CrashLog.record(this, e, "accessibility event") } catch (x: Throwable) { }
         }
     }
 

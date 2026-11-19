@@ -32,7 +32,7 @@ object Diag {
         sb.append("Running: ${CapriService.running}\n")
         sb.append("Floating over apps: ${Settings.canDrawOverlays(ctx)}\n")
         sb.append("Microphone: ${ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED}\n")
-        sb.append("Accessibility connected: ${CapriAccess.instance != null}\n")
+        sb.append("Accessibility connected: ${CapriAccess.instance != null} (switched on in settings: ${CapriAccess.enabledInSettings(ctx)})\n")
         val listeners = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: ""
         sb.append("Notification access: ${listeners.contains(ctx.packageName)}\n")
         sb.append("Foreground app seen: ${CapriAccess.foreground.ifEmpty { "(none)" }}\n\n")
