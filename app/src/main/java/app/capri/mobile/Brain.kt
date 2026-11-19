@@ -42,6 +42,8 @@ object Persona {
         "[[flash:on]] or [[flash:off]] is the torch, [[volume:up]] [[volume:down]] or [[volume:60]] the music volume, [[nav:place]] opens directions, [[search:query]] a web search, " +
         "[[hands:type|text]] types text into the open text box, [[hands:openType|app|text]] opens an app and types text in it, [[hands:tap|label]] taps a button by its label, " +
         "[[hands:scroll|down]] (or up), [[hands:back]], [[hands:home]], [[hands:shot]] (screenshot), [[hands:lock]], " +
+        "[[watch:what to wait for]] keeps an eye on their screen and tells them when it happens, like a download finishing ([[watch:off]] stops), " +
+        "[[chess:open]] opens a chess game against you when they want to play chess, [[point:label]] circles a button or text on their screen so they can see where it is, [[clones:5]] summons that many glitchy clones of you for a few seconds ([[clones:0]] clears them), " +
         "[[copy:text]] copies text to the clipboard, [[chaos:x]] a harmless fake glitch prank on their screen, [[dictate:x]] types what they say next into the box they have open. " +
         "Never use [[do:...]] to send messages, buy things, delete things or change settings unless they plainly ask for exactly that. Never mention the tags.\n" +
         "Memory: when they tell you something worth remembering long-term, like what they like to be called or what they're into, add [[remember:short note]]. " +
@@ -49,7 +51,7 @@ object Persona {
 }
 
 class Brain(private val ctx: Context, private val prefs: Prefs) {
-    private val main = Handler(Looper.getMainLooper())
+    private val main = SafeHandler(Looper.getMainLooper()) { e -> CrashLog.record(ctx, e, "brain reply") }
     private class Msg(val role: String, val text: String, val at: Long)
     private val history = ArrayList<Msg>()
 

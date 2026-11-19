@@ -118,7 +118,7 @@ class MainActivity : Activity() {
         title.setTextColor(Color.WHITE)
         head.addView(title)
         val ver = TextView(this)
-        ver.text = "  mobile \u00B7 v0.4"
+        ver.text = "  mobile \u00B7 v" + Updater.current(this)
         ver.typeface = tfMono
         ver.textSize = 12f
         ver.setTextColor(muted)
@@ -428,6 +428,7 @@ class MainActivity : Activity() {
         pb.progressTintList = ColorStateList.valueOf(accent)
         col.addView(pb)
         val startBtn = btn(col, "", true) { toggleService() }
+        btn(col, t("PLAY CHESS WITH HER", "العب شطرنج معها")) { startActivity(Intent(this, ChessActivity::class.java)) }
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         hero.addView(row)
         refreshers.add {
@@ -847,11 +848,13 @@ class MainActivity : Activity() {
         val mods = section(t("MODS", "المودات"))
         note(mods, t("A mod is a small .json file: {\"name\", \"accent\": \"#RRGGBB\", \"personality\": \"extra lines\", \"nickname\"}. Data only, no code.",
             "المود ملف .json صغير: {\"name\", \"accent\": \"#RRGGBB\", \"personality\": \"سطور إضافية\", \"nickname\"}. بيانات فقط وبدون كود."))
-        btn(mods, t("IMPORT A MOD (.json)", "استيراد مود (.json)")) {
+        if (CustomLook.active(this)) note(mods, t("Look in use: ", "الشكل المستخدم: ") + CustomLook.name(this))
+        btn(mods, t("IMPORT A MOD OR LOOK (.json / .capri)", "استيراد مود أو شكل (.json / .capri)")) {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 7)
         }
         btn(mods, t("REMOVE MY MOD", "حذف المود")) {
             prefs.putS("modAccent", ""); prefs.putS("modPersona", "")
+            if (CustomLook.active(this)) { CustomLook.remove(this); toast(t("Look removed. Restart her.", "انحذف الشكل. أعد تشغيلها.")) }
             toast(t("Mod removed.", "انحذف المود."))
             showTab(5)
         }
@@ -874,9 +877,32 @@ class MainActivity : Activity() {
         note(dg, t("Copy a setup report (no keys, no chats) and paste it to whoever is helping you.", "انسخ تقرير الإعدادات (بدون مفاتيح وبدون محادثات) والصقه لمن يساعدك."))
         btn(dg, t("COPY SETUP REPORT", "انسخ تقرير الإعدادات"), true) { clip(Diag.report(this, prefs)); toast(t("Copied.", "تم النسخ.")) }
 
+        val lastCrash = CrashLog.last(this)
+        if (lastCrash != null) {
+            note(dg, t("The last error Capri caught is saved here. Copy it and send it to the developer.", "آخر خطأ سجّله كابري محفوظ هنا. انسخه وارسله للمطوّر."))
+            btn(dg, t("COPY LAST ERROR", "انسخ آخر خطأ")) { clip(lastCrash); toast(t("Copied.", "تم النسخ.")) }
+            btn(dg, t("SHARE LAST ERROR", "شارك آخر خطأ")) {
+                startActivity(Intent.createChooser(Intent(Intent.ACTION_SEND).setType("text/plain").putExtra(Intent.EXTRA_TEXT, lastCrash), "Capri"))
+            }
+            btn(dg, t("CLEAR LAST ERROR", "امسح آخر خطأ")) { CrashLog.clear(this); toast(t("Cleared.", "انمسح.")); showTab(tab) }
+        }
+        btn(dg, t("CHECK FOR UPDATES", "شوف في تحديث")) {
+            toast(t("Checking...", "أتحقق..."))
+            bg("update", this) {
+                val info = Updater.check(this)
+                runOnUiThread {
+                    if (info == null) toast(t("You have the latest version.", "عندك آخر نسخة."))
+                    else android.app.AlertDialog.Builder(this).setTitle(t("New version ", "نسخة جديدة ") + info.version)
+                        .setMessage(t("Download it and install over the old one. Your settings stay.", "نزّلها وثبّتها فوق القديمة. إعداداتك تبقى."))
+                        .setPositiveButton(t("Download", "تنزيل")) { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apk ?: info.page))) }
+                        .setNegativeButton(t("Later", "لاحقاً"), null).show()
+                }
+            }
+        }
+
         val news = section(t("WHAT'S NEW", "الجديد"))
-        note(news, t("\u2022 She dances with a head nod on the beat, like the desktop\n\u2022 A terminal-style speech box with a blinking cursor and Yes/No buttons\n\u2022 Pat her head, ask her to scroll your videos, doomscroll guard, jealousy of other AIs\n\u2022 She changes her own settings when you ask\n\u2022 Ask Capri in the text menu, tool switches, no-AI mode, setup report",
-            "\u2022 ترقص وتهز راسها على الإيقاع مثل نسخة الويندوز\n\u2022 صندوق كلام بشكل الترمينال مع مؤشر يرمش وأزرار نعم/لا\n\u2022 امسح على راسها، واطلب منها تتصفّح فيديوهاتك، وحارس التصفّح، وتغار من الذكاء الاصطناعي الثاني\n\u2022 تغيّر إعداداتها بنفسها إذا طلبت\n\u2022 Ask Capri من قائمة النص، ومفاتيح الأدوات، ووضع بدون ذكاء اصطناعي، وتقرير الإعدادات"))
+        note(news, t("\u2022 Fixed the crash on start\n\u2022 She can watch your screen and tell you when something finishes (\"tell me when the download is done\")\n\u2022 She can circle things on your screen, and spawn glitchy clones\n\u2022 Share pictures, PDFs and text files to her\n\u2022 Error reports you can copy, and an update checker\n\u2022 Dances, pats, doomscroll guard, no-AI mode, setup report",
+            "\u2022 إصلاح الكراش عند التشغيل\n\u2022 تراقب شاشتك وتقول لك إذا خلص شي (\"قولي إذا خلص التنزيل\")\n\u2022 تأشّر على أشياء في الشاشة، وتسوّي نسخ مشوّشة منها\n\u2022 شارك لها صور وPDF وملفات نصية\n\u2022 تقارير أخطاء تنسخها، ومدقّق تحديثات\n\u2022 رقص، مسح على الراس، حارس التصفّح، وضع بدون ذكاء اصطناعي، تقرير الإعدادات"))
 
         val c = section(t("CREDITS", "الشكر"))
         val tv = body(c, "Unofficial fan project, free for non-commercial use only. Based on Capri by Lachy: https://github.com/lachydotmcg/capri-desktop " +
@@ -908,7 +934,19 @@ class MainActivity : Activity() {
 
     private fun refresh() { for (r in refreshers) r() }
 
-    override fun onResume() { super.onResume(); refresh() }
+    override fun onResume() {
+        super.onResume()
+        refresh()
+        val crash = CrashLog.unseen(this)
+        if (crash != null) {
+            CrashLog.markSeen(this)
+            android.app.AlertDialog.Builder(this)
+                .setTitle(t("Capri hit a problem last time", "كابري واجه مشكلة المرة الماضية"))
+                .setMessage(crash.take(1500))
+                .setPositiveButton(t("Copy", "نسخ")) { _, _ -> clip(crash); toast(t("Copied.", "تم النسخ.")) }
+                .setNegativeButton(t("Close", "إغلاق"), null).show()
+        }
+    }
 
     override fun onRequestPermissionsResult(requestCode: Int, permissions: Array<out String>, grantResults: IntArray) {
         super.onRequestPermissionsResult(requestCode, permissions, grantResults)
@@ -921,11 +959,29 @@ class MainActivity : Activity() {
         if (requestCode != 7 || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {
+            val head = contentResolver.openInputStream(uri)?.use { val b = ByteArray(2); if (it.read(b) == 2) String(b, Charsets.ISO_8859_1) else "" } ?: ""
+            if (head == "PK") {
+                // a .capri look made in the desktop editor
+                val n = CustomLook.install(this, uri)
+                toast(t("Look loaded: ", "انحمّل الشكل: ") + n + t(" (restart her to see it)", " (أعد تشغيلها عشان يبان)"))
+                if (CapriService.running) { stopService(Intent(this, CapriService::class.java)); page.postDelayed({ startForegroundService(Intent(this, CapriService::class.java)) }, 700) }
+                showTab(tab)
+                return
+            }
             val txt = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
             val j = JSONObject(txt)
             if (j.has("accent")) prefs.putS("modAccent", j.getString("accent"))
             if (j.has("personality")) prefs.putS("modPersona", j.getString("personality").take(2000))
             if (j.has("nickname")) prefs.putS("nick", j.getString("nickname"))
+            // Only harmless look-and-feel settings can come from a mod file (never keys or providers).
+            val ok = setOf("size", "theme", "quiet", "sounds", "lang")
+            j.optJSONObject("settings")?.let { st ->
+                for (k in st.keys()) if (k in ok) when (val v = st.get(k)) {
+                    is Boolean -> prefs.putB(k, v)
+                    is Int -> prefs.putI(k, v)
+                    is String -> prefs.putS(k, v.take(200))
+                }
+            }
             toast(t("Mod loaded: ", "انحمّل المود: ") + j.optString("name", "?"))
             showTab(tab)
         } catch (e: Exception) {

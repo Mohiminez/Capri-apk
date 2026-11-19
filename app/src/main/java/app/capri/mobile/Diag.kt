@@ -43,6 +43,7 @@ object Diag {
         sb.append("Offline model: ${prefs.getS("localModel", "").ifEmpty { "(none)" }}\n")
         sb.append("Voice engine: ${prefs.getI("ttsEngine", 0)}, ears: ${prefs.getI("sttEngine", 0)}, language: ${prefs.getI("lang", 0)}\n")
         sb.append("Quiet: ${prefs.getB("quiet", false)}, game mode: ${prefs.getB("gameMode", false)}, no-AI: ${prefs.getB("noAI", false)}\n\n")
+        CrashLog.last(ctx)?.let { sb.append("Last error:\n").append(it.take(2500)).append("\n\n") }
         sb.append("Recent events:\n")
         if (lines.isEmpty()) sb.append("(none)\n") else for (l in lines) sb.append(l).append('\n')
         return sb.toString()

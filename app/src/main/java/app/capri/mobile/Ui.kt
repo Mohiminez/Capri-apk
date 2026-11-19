@@ -105,7 +105,13 @@ class SpeechPlate(private val density: Float) : Drawable() {
     private val bar = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Night.sRed }
     val tail get() = 14f * density
 
-    fun configure(down: Boolean, x: Float) { tailDown = down; tipX = x; onBoundsChange(bounds); invalidateSelf() }
+    // Before the box has been laid out its bounds are empty; the shape is built once the real size arrives (onBoundsChange).
+    fun configure(down: Boolean, x: Float) {
+        tailDown = down
+        tipX = x
+        if (!bounds.isEmpty) onBoundsChange(bounds)
+        invalidateSelf()
+    }
 
     override fun onBoundsChange(b: Rect) {
         val c = 10f * density
@@ -114,7 +120,9 @@ class SpeechPlate(private val density: Float) : Drawable() {
         val r = b.right - 2f
         val t = b.top + 2f + (if (tailDown) 0f else tail)
         val bt = b.bottom - 2f - (if (tailDown) tail else 0f)
-        val tx = (l + c + half + (r - l - 2 * (c + half)) * tipX).coerceIn(l + c + half, r - c - half)
+        // Never coerceIn() here: on an empty or very narrow box the range is empty and that throws, which crashed her on her first line.
+        val room = maxOf(0f, r - l - 2 * (c + half))
+        val tx = l + c + half + room * tipX.clampTo(0f, 1f)
         path.reset()
         path.moveTo(l + c, t)
         if (!tailDown) { path.lineTo(tx - half, t); path.lineTo(tx, b.top + 2f); path.lineTo(tx + half, t) }

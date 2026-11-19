@@ -20,28 +20,82 @@ import kotlin.math.sin
 import kotlin.math.floor
 import kotlin.random.Random
 
+class SpriteClip(val frames: Int, val fps: Int, val w: Int, val h: Int, val cols: Int, val sx: Float, val bmp: Bitmap) {
+    val bytes get() = bmp.byteCount
+}
+
+// All her sprite sheets live here, shared by her, her clones and the little one on the home screen,
+// so the same sheet is never decoded twice. Least recently used sheets are dropped to stay under the limit.
+object SpriteBank {
+    private var meta: JSONObject? = null
+    private val clips = LinkedHashMap<String, SpriteClip>(8, 0.75f, true)
+    private const val LIMIT = 34_000_000L
+
+    @Synchronized
+    fun info(ctx: Context, name: String): JSONObject? {
+        if (CustomLook.active(ctx)) return CustomLook.info(ctx, name)
+        if (meta == null) meta = JSONObject(ctx.assets.open("sprites.json").bufferedReader().use { it.readText() })
+        return meta?.optJSONObject(name)
+    }
+
+    @Synchronized
+    fun clear() { clips.clear() }
+
+    @Synchronized
+    fun get(ctx: Context, prefs: Prefs, name: String, keep: SpriteClip? = null): SpriteClip? {
+        clips[name]?.let { return it }
+        val o = try { info(ctx, name) } catch (e: Exception) { null } ?: return null
+        for (attempt in 0..1) {
+            try {
+                val opts = BitmapFactory.Options().apply { inMutable = true }
+                val custom = CustomLook.active(ctx)
+                val bmp = (if (custom) CustomLook.file(ctx, name)?.inputStream()?.use { BitmapFactory.decodeStream(it, null, opts) }
+                    else ctx.assets.open("sprites/$name.png").use { BitmapFactory.decodeStream(it, null, opts) }) ?: return null
+                if (!custom) Recolor.apply(prefs, bmp)
+                val c = SpriteClip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), o.optDouble("sx", 0.0).toFloat(), bmp)
+                clips[name] = c
+                trim(c, keep)
+                return c
+            } catch (e: OutOfMemoryError) {
+                // Low on memory: let go of every other sheet and try once more.
+                val it = clips.entries.iterator()
+                while (it.hasNext()) { if (it.next().value !== keep) it.remove() }
+                System.gc()
+            } catch (e: Exception) {
+                return null
+            }
+        }
+        return null
+    }
+
+    private fun trim(newest: SpriteClip, keep: SpriteClip?) {
+        var total = clips.values.sumOf { it.bytes.toLong() }
+        val it = clips.entries.iterator()
+        while (total > LIMIT && it.hasNext()) {
+            val e = it.next()
+            if (e.value === newest || e.value === keep) continue
+            total -= e.value.bytes
+            it.remove()
+        }
+    }
+}
+
 // Plays her animations like the desktop: the body keeps moving while the mouth overlay flaps, every clip is drawn at one scale
 // and sits on the bottom of the window, plus a soft glow while she talks, an RGB split while she thinks and a ripple where you tap.
 class SpriteView(ctx: Context) : View(ctx) {
-    private class Clip(val frames: Int, val fps: Int, val w: Int, val h: Int, val cols: Int, val sx: Float, val bmp: Bitmap) {
-        val bytes get() = bmp.byteCount
-    }
-
     private val prefs = Prefs(ctx)
-    private val meta = JSONObject(ctx.assets.open("sprites.json").bufferedReader().use { it.readText() })
-    private val clips = LinkedHashMap<String, Clip>(8, 0.75f, true)
     private val paint = Paint(Paint.FILTER_BITMAP_FLAG or Paint.ANTI_ALIAS_FLAG)
     private val ghostA = Paint(Paint.FILTER_BITMAP_FLAG)
     private val ghostB = Paint(Paint.FILTER_BITMAP_FLAG)
     private val glowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     private val src = Rect()
     private val dst = RectF()
-    private var clip: Clip? = null
+    private var clip: SpriteClip? = null
     private var looping = true
     private var done: (() -> Unit)? = null
     private var started = 0L
     private var finished = false
-    private var ripple: Clip? = null
+    private var ripple: SpriteClip? = null
     private var rippleAt = 0L
     private var rx = 0f
     private var ry = 0f
@@ -89,38 +143,12 @@ class SpriteView(ctx: Context) : View(ctx) {
 
     // The window size this clip needs: never narrower than a standing frame, as tall as the clip itself.
     fun sizeFor(name: String): Pair<Int, Int> {
-        val o = meta.optJSONObject(name) ?: return Pair(width, height)
+        val o = SpriteBank.info(context, name) ?: return Pair(width, height)
         val k = u()
         return Pair((maxOf(o.getInt("w"), 240) * k).toInt(), (o.getInt("h") * k).toInt())
     }
 
-    private fun load(name: String): Clip? {
-        clips[name]?.let { return it }
-        return try {
-            val o = meta.getJSONObject(name)
-            val opts = BitmapFactory.Options().apply { inMutable = true }
-            val bmp = context.assets.open("sprites/$name.png").use { BitmapFactory.decodeStream(it, null, opts) } ?: return null
-            Recolor.apply(prefs, bmp)
-            val c = Clip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), o.optDouble("sx", 0.0).toFloat(), bmp)
-            clips[name] = c
-            trim(c)
-            c
-        } catch (e: Exception) {
-            null
-        }
-    }
-
-    // Keep the sheets in memory under about 30 MB, dropping the least recently used.
-    private fun trim(keep: Clip) {
-        var total = clips.values.sumOf { it.bytes.toLong() }
-        val it = clips.entries.iterator()
-        while (total > 30_000_000L && it.hasNext()) {
-            val e = it.next()
-            if (e.value === keep || e.value === clip) continue
-            total -= e.value.bytes
-            it.remove()
-        }
-    }
+    private fun load(name: String): SpriteClip? = SpriteBank.get(context, prefs, name, clip)
 
     fun play(name: String, loop: Boolean = true, onDone: (() -> Unit)? = null) {
         if (loop && looping && current == name && clip != null) return
@@ -154,7 +182,7 @@ class SpriteView(ctx: Context) : View(ctx) {
     fun reload() {
         val n = current
         val lp = looping
-        clips.clear()
+        SpriteBank.clear()
         clip = null
         current = ""
         if (n.isNotEmpty()) play(n, lp)
@@ -169,9 +197,9 @@ class SpriteView(ctx: Context) : View(ctx) {
         invalidate()
     }
 
-    private fun frameRect(c: Clip, i: Int) = src.set((i % c.cols) * c.w, (i / c.cols) * c.h, (i % c.cols + 1) * c.w, (i / c.cols + 1) * c.h)
+    private fun frameRect(c: SpriteClip, i: Int) = src.set((i % c.cols) * c.w, (i / c.cols) * c.h, (i % c.cols + 1) * c.w, (i / c.cols + 1) * c.h)
 
-    private fun place(c: Clip, k: Float, floatY: Float) {
+    private fun place(c: SpriteClip, k: Float, floatY: Float) {
         val dw = c.w * k
         val dh = c.h * k
         val left = (width - dw) / 2f + c.sx * k
@@ -286,7 +314,7 @@ class SpriteView(ctx: Context) : View(ctx) {
         }
     }
 
-    private fun drawNodding(canvas: Canvas, c: Clip, index: Int, k: Float, nod: Float) {
+    private fun drawNodding(canvas: Canvas, c: SpriteClip, index: Int, k: Float, nod: Float) {
         val head = neck[0]
         val chest = neck[1]
         val nk = neck[2]
@@ -296,9 +324,13 @@ class SpriteView(ctx: Context) : View(ctx) {
         val row = index / c.cols
         val baseX = col * c.w
         val baseY = row * c.h
+        // piece() overwrites dst, so the frame's own rectangle is copied first (it used to drift down with every piece)
+        val frameL = dst.left
+        val frameT = dst.top
+        val frameR = dst.right
         fun piece(top: Float, bottom: Float, dx: Float, dy: Float) {
             src.set(baseX, baseY + top.toInt(), baseX + c.w, baseY + bottom.toInt())
-            dst.set(this.dst.left + dx * k, this.dst.top + top * k + dy * k, this.dst.right + dx * k, this.dst.top + bottom * k + dy * k)
+            dst.set(frameL + dx * k, frameT + top * k + dy * k, frameR + dx * k, frameT + bottom * k + dy * k)
             canvas.drawBitmap(c.bmp, src, dst, paint)
         }
         piece(chest, c.h.toFloat(), 0f, 0f)
@@ -312,7 +344,7 @@ class SpriteView(ctx: Context) : View(ctx) {
             y = top
         }
         // the head and hair: drop and lean about the neck
-        val pivot = this.dst.top + nk * k + drop * k
+        val pivot = frameT + nk * k + drop * k
         canvas.save()
         canvas.translate(0f, pivot)
         canvas.skew(-lean, 0f)

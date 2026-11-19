@@ -1,5 +1,12 @@
 package app.capri.mobile
 
+import android.net.Uri
+import android.graphics.Bitmap
+import android.graphics.BitmapFactory
+import android.graphics.Color
+import android.graphics.pdf.PdfRenderer
+import android.provider.OpenableColumns
+import java.io.File
 import android.app.Activity
 import android.app.Notification
 import android.content.BroadcastReceiver
@@ -17,17 +24,98 @@ import android.widget.Toast
 class AskActivity : Activity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        val text = intent.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString()
-            ?: intent.getStringExtra(Intent.EXTRA_TEXT)
-        if (!text.isNullOrBlank()) {
-            if (!Settings.canDrawOverlays(this)) {
-                Toast.makeText(this, L.t("Open Capri and allow floating over apps first.", "افتح كابري واسمح لها بالظهور فوق التطبيقات أول."), Toast.LENGTH_LONG).show()
-            } else {
-                startForegroundService(Intent(this, CapriService::class.java)
-                    .setAction(CapriService.ACT_ASK).putExtra("text", text.take(3000)))
+        val it0 = intent
+        if (!Settings.canDrawOverlays(this)) {
+            Toast.makeText(this, L.t("Open Capri and allow floating over apps first.", "افتح كابري واسمح لها بالظهور فوق التطبيقات أول."), Toast.LENGTH_LONG).show()
+            finish()
+            return
+        }
+        val text = it0.getCharSequenceExtra(Intent.EXTRA_PROCESS_TEXT)?.toString() ?: it0.getStringExtra(Intent.EXTRA_TEXT)
+        @Suppress("DEPRECATION")
+        val stream: Uri? = try { it0.getParcelableExtra(Intent.EXTRA_STREAM) } catch (e: Exception) { null }
+        if (stream == null) {
+            if (!text.isNullOrBlank()) go(Intent(this, CapriService::class.java).setAction(CapriService.ACT_ASK).putExtra("text", text.take(3000)))
+            finish()
+            return
+        }
+        // Reading a shared file can be slow: do it off the main thread, then hand it to her.
+        val type = it0.type ?: contentResolver.getType(stream) ?: ""
+        val app = applicationContext
+        bg("share-read", app) {
+            val svc = Intent(app, CapriService::class.java).setAction(CapriService.ACT_ASK)
+            var ok = false
+            try {
+                val name = nameOf(stream)
+                svc.putExtra("name", name)
+                if (!text.isNullOrBlank()) svc.putExtra("text", text.take(500))
+                when {
+                    type.startsWith("image/") -> {
+                        val f = File(app.cacheDir, "shared_image.jpg")
+                        val bmp = decodeSmall(stream, 1280)
+                        if (bmp != null) {
+                            f.outputStream().use { bmp.compress(Bitmap.CompressFormat.JPEG, 85, it) }
+                            svc.putExtra("kind", "image").putExtra("imagePath", f.absolutePath)
+                            ok = true
+                        }
+                    }
+                    type == "application/pdf" -> {
+                        val f = File(app.cacheDir, "shared_page.jpg")
+                        val pfd = contentResolver.openFileDescriptor(stream, "r")
+                        if (pfd != null) {
+                            pfd.use {
+                                val r = PdfRenderer(it)
+                                if (r.pageCount > 0) {
+                                    val pg = r.openPage(0)
+                                    val w = 1100
+                                    val h = (w * pg.height.toFloat() / maxOf(1, pg.width)).toInt().clampTo(100, 2400)
+                                    val bmp = Bitmap.createBitmap(w, h, Bitmap.Config.ARGB_8888)
+                                    bmp.eraseColor(Color.WHITE)
+                                    pg.render(bmp, null, null, PdfRenderer.Page.RENDER_MODE_FOR_DISPLAY)
+                                    pg.close()
+                                    f.outputStream().use { o -> bmp.compress(Bitmap.CompressFormat.JPEG, 85, o) }
+                                    svc.putExtra("kind", "image").putExtra("imagePath", f.absolutePath)
+                                    svc.putExtra("text", L.t("This is the first page of a PDF. ", "هذي أول صفحة من ملف PDF. ") + (text ?: "").take(300))
+                                    ok = true
+                                }
+                                r.close()
+                            }
+                        }
+                    }
+                    type.startsWith("text/") || type == "application/json" -> {
+                        val txt = contentResolver.openInputStream(stream)?.use { ins ->
+                            val buf = ByteArray(24_000)
+                            val n = ins.read(buf)
+                            if (n > 0) String(buf, 0, n, Charsets.UTF_8) else ""
+                        } ?: ""
+                        if (txt.isNotBlank()) { svc.putExtra("kind", "file").putExtra("text", txt.take(6000)); ok = true }
+                    }
+                }
+            } catch (e: Throwable) {
+                CrashLog.record(app, e, "reading a shared file")
+            }
+            runOnUiThread {
+                if (ok) go(svc) else Toast.makeText(this, L.t("I can't read that kind of file yet. Pictures, PDFs and text files work.", "ما أقدر أقرأ هالنوع من الملفات. الصور وPDF والنصوص تشتغل."), Toast.LENGTH_LONG).show()
+                finish()
             }
         }
-        finish()
+    }
+
+    private fun go(i: Intent) {
+        try { startForegroundService(i) } catch (e: Exception) { CrashLog.record(this, e, "starting her from the share sheet") }
+    }
+
+    private fun nameOf(u: Uri): String = try {
+        contentResolver.query(u, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) ?: "" else "" } ?: ""
+    } catch (e: Exception) { "" }
+
+    // A phone photo can be 12 megapixels: shrink while decoding so sharing one never runs out of memory.
+    private fun decodeSmall(u: Uri, maxSide: Int): Bitmap? {
+        val bounds = BitmapFactory.Options().apply { inJustDecodeBounds = true }
+        contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, bounds) }
+        var sample = 1
+        while (maxOf(bounds.outWidth, bounds.outHeight) / sample > maxSide * 2) sample *= 2
+        val o = BitmapFactory.Options().apply { inSampleSize = sample }
+        return contentResolver.openInputStream(u)?.use { BitmapFactory.decodeStream(it, null, o) }
     }
 }
 

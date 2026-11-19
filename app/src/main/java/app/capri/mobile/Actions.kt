@@ -22,6 +22,10 @@ object Actions {
         fun emote(name: String)
         fun setting(key: String, value: String)
         fun watchAlong(on: Boolean)
+        fun keepWatch(goal: String)
+        fun point(label: String)
+        fun clones(count: Int)
+        fun chess()
     }
 
     const val LOCKDOWN = 0
@@ -33,9 +37,9 @@ object Actions {
     // Lookups that only read public info: allowed even in Lockdown.
     private val readOnly = setOf("weather", "wiki", "playing", "remember")
     // In Guarded these ask first, by showing a bubble you tap to allow.
-    private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme")
+    private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
-    private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos")
+    private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos", "watch", "point")
 
     fun strip(s: String): String = tag.replace(s, "").replace(Regex("\\s+"), " ").trim()
 
@@ -51,7 +55,7 @@ object Actions {
                 continue
             }
             if (hooks != null && ((level == ASK_ALWAYS && name in controls) ||
-                    (level == GUARDED && (name in asksFirst || (name == "hands" && !userInitiated))))) {
+                    (level == GUARDED && (name in asksFirst || ((name == "hands" || name == "point") && !userInitiated))))) {
                 hooks.confirm(describe(name, arg)) { execute(ctx, prefs, name, arg, hooks) }
                 continue
             }
@@ -66,6 +70,8 @@ object Actions {
         "scrollforme" -> L.t("Want me to scroll your videos and react?", "تبيني أتصفّح لك الفيديوهات وأعلّق عليها؟")
         "open" -> L.t("Open $arg?", "أفتح $arg؟")
         "look" -> L.t("Can I look at your screen?", "أقدر أشوف شاشتك؟")
+        "watch" -> L.t("Can I keep an eye on your screen until: $arg?", "أقدر أراقب شاشتك لين: $arg؟")
+        "point" -> L.t("Let me look for \"$arg\" on your screen.", "خلني أدور على \"$arg\" في شاشتك.")
         "url" -> L.t("Open $arg?", "أفتح $arg؟")
         else -> L.t("Type what you say next into the box you have open?", "أكتب اللي تقوله بعد شوي في الخانة المفتوحة؟")
     }
@@ -73,7 +79,7 @@ object Actions {
     // Tools you can switch off one by one (Hands tab), like the desktop's explicit permissions.
     private val groups = mapOf(
         "open" to "apps", "url" to "apps", "look" to "screen",
-        "hands" to "control", "do" to "control", "scrollforme" to "control", "dictate" to "control",
+        "hands" to "control", "do" to "control", "watch" to "screen", "point" to "screen", "scrollforme" to "control", "dictate" to "control",
         "music" to "media", "media" to "media", "volume" to "media",
         "timer" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
         "flash" to "device", "nav" to "device", "search" to "device", "copy" to "device",
@@ -123,6 +129,10 @@ object Actions {
                 "focus" -> hooks?.setting("focus", arg)
                 "set" -> hooks?.setting(arg.substringBefore('|'), arg.substringAfter('|', ""))
                 "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
+                "watch" -> hooks?.keepWatch(arg)
+                "point" -> hooks?.point(arg)
+                "chess" -> hooks?.chess()
+                "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
         } catch (e: Exception) {
             return L.t(" That didn't work on this phone.", " ما زبطت على هذا الجوال.")
@@ -268,6 +278,32 @@ object QuickAsks {
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
+        if (Regex("^(?:let s |lets |can we |i want to |want to |wanna )?(?:play|have|do)(?: a| some)?(?: game of)? chess(?: with me)?(?: now)?$|^(?:play|chess) (?:with me|please)$|^chess$").matches(t) ||
+            Regex("^(?:خلنا|يلا|تعالي|تعال|ابي|ابغى|أبغى|أبي|ممكن|هيا)?\\s*(?:نلعب|العب|لعب|العبي|نلعبو)\\s*(?:معي\\s*)?(?:لعبه |لعبة )?(?:شطرنج|الشطرنج)(?:\\s*معي)?$|^شطرنج$").matches(t))
+            return L.t("Sure, let's play. [[chess:open]]", "يلا نلعب. [[chess:open]]")
+        // keeps an eye out, points at things, clones (ported from the desktop version)
+        if (Regex("^(stop watching|stop watching my screen|cancel the watch|dont watch anymore|وقف المراقبة|وقفي المراقبة|بس مراقبة)$").matches(t)) return "[[watch:off]]"
+        Regex("^(?:let me know|notify me|alert me|ping me|warn me) (?:when|once|as soon as|if) (.+)$").find(t)?.let {
+            return L.t("Okay, I'll watch for it. [[watch:${it.groupValues[1]}]]", "تمام، براقب. [[watch:${it.groupValues[1]}]]")
+        }
+        Regex("^tell me (?:when|once|as soon as) ((?:the|my|it|this|that|i|you|he|she|they|we) .+)$").find(t)?.let {
+            return L.t("Okay, I'll watch for it. [[watch:${it.groupValues[1]}]]", "تمام، براقب. [[watch:${it.groupValues[1]}]]")
+        }
+        Regex("^(?:نبهني|نبّهني|ابلغني|بلغني|خبرني|قل لي|قولي) (?:اذا|إذا|لما|لمّا|عندما|اول ما|أول ما|لو) (.+)$").find(t)?.let {
+            return L.t("Okay, I'll watch for it. [[watch:${it.groupValues[1]}]]", "تمام، براقب. [[watch:${it.groupValues[1]}]]")
+        }
+        Regex("^(?:point (?:at|to)|circle|highlight|show me where) (?:the )?(.+?)(?: is)?(?: button| icon)?$").find(t)?.let { return "[[point:${it.groupValues[1]}]]" }
+        Regex("^where (?:is|s) (?:the )?(.+?) (?:button|icon|option|tab|menu|field|box)$").find(t)?.let { return "[[point:${it.groupValues[1]}]]" }
+        Regex("^(?:دلني على|دليني على|حددي|حدد لي|اشري على|أشري على|وين زر|وين ايقونة|وين أيقونة) (?:زر )?(.+)$").find(t)?.let { return "[[point:${it.groupValues[1]}]]" }
+        if (Regex("^(?:clear|remove|get rid of|kill|stop)(?: the| all| your)? clones?$").matches(t) || Regex("^(?:امسحي|شيلي|ازيلي|خلصي على) (?:الكلونز|النسخ|الكلون)$").matches(t)) return "[[clones:0]]"
+        Regex("^(?:make|summon|spawn|create|give me)(?: me)?(?: (\\d+|a few|some|three|five|ten))?(?: more)? (?:clones?|copies of you)$").find(t)?.let {
+            val n = when (val w = it.groupValues[1]) { "", "a few", "some" -> 4; "three" -> 3; "five" -> 5; "ten" -> 8; else -> w.toIntOrNull() ?: 4 }
+            return L.t("Hold on. [[clones:$n]]", "لحظة. [[clones:$n]]")
+        }
+        Regex("^(?:سوي|سوّي|اعملي|اصنعي|سوي لي) (?:لي )?(\\d+)? ?(?:نسخ|نسخة|كلونز|كلون)(?: منك)?$").find(t)?.let {
+            return L.t("Hold on. [[clones:${(it.groupValues[1].toIntOrNull() ?: 4)}]]", "لحظة. [[clones:${(it.groupValues[1].toIntOrNull() ?: 4)}]]")
+        }
+        if (Regex("^(استنسخي نفسك|استنسخي)$").matches(t)) return "[[clones:4]]"
         if (Regex("^(make you bigger|be bigger|bigger|get bigger|اكبري|كبري نفسك|اكبر)$").matches(t)) return "[[set:size|bigger]]"
         if (Regex("^(make you smaller|be smaller|smaller|get smaller|صغري نفسك|اصغري|اصغر)$").matches(t)) return "[[set:size|smaller]]"
         if (Regex("^(stop wandering|dont wander|do not wander|stay put|اثبتي|لا تتمشين|وقفي التمشي)$").matches(t)) return "[[set:wander|off]]"

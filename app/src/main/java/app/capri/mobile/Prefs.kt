@@ -32,12 +32,15 @@ object Providers {
 class Prefs(ctx: Context) {
     private val p = ctx.getSharedPreferences("capri", Context.MODE_PRIVATE)
 
-    fun getS(k: String, d: String): String = p.getString(k, d) ?: d
+    // A value saved under the wrong type (an old build, a pasted backup) must never crash her: fall back to the default.
+    fun getS(k: String, d: String): String = try { p.getString(k, d) ?: d } catch (e: ClassCastException) { d }
     fun putS(k: String, v: String) { p.edit().putString(k, v).apply() }
-    fun getB(k: String, d: Boolean): Boolean = p.getBoolean(k, d)
+    fun getB(k: String, d: Boolean): Boolean = try { p.getBoolean(k, d) } catch (e: ClassCastException) { d }
     fun putB(k: String, v: Boolean) { p.edit().putBoolean(k, v).apply() }
-    fun getI(k: String, d: Int): Int = p.getInt(k, d)
+    fun getI(k: String, d: Int): Int = try { p.getInt(k, d) } catch (e: ClassCastException) { d }
     fun putI(k: String, v: Int) { p.edit().putInt(k, v).apply() }
+    fun getL(k: String, d: Long): Long = try { p.getLong(k, d) } catch (e: ClassCastException) { d }
+    fun putL(k: String, v: Long) { p.edit().putLong(k, v).apply() }
 
     // Every provider keeps its own key, model and address, so several can be filled in at once.
     val cur: Int get() = getI("provider", 0).coerceIn(0, Providers.all.size - 1)

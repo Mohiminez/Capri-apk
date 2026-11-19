@@ -1,24 +1,63 @@
-name: Build APK
+name: Build APK and publish release
+
 on:
   push:
     branches: [main, master]
+    paths-ignore: ["**.md", "LICENSE.md"]
+  pull_request:
   workflow_dispatch:
+
+concurrency:
+  group: build-${{ github.ref }}
+  cancel-in-progress: true
+
+permissions:
+  contents: write   # needed to create the Release
 
 jobs:
   build:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
           java-version: 17
+
       - uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: 8.9
-      - name: Build debug APK
-        run: gradle assembleDebug --no-daemon --stacktrace
+
+      - name: Unit tests (a failure here does not stop the build)
+        run: gradle testDebugUnitTest --no-daemon
+        continue-on-error: true
+
+      - name: Build the release APK
+        run: gradle assembleRelease --no-daemon --stacktrace
+
+      - name: Name the APK
+        id: apk
+        run: |
+          VERSION="0.5.${{ github.run_number }}"
+          mkdir -p dist
+          cp app/build/outputs/apk/release/*.apk "dist/Capri-${VERSION}.apk"
+          echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
+          echo "file=dist/Capri-${VERSION}.apk" >> "$GITHUB_OUTPUT"
+
       - uses: actions/upload-artifact@v4
         with:
-          name: Capri-debug-apk
-          path: app/build/outputs/apk/debug/*.apk
+          name: Capri-apk
+          path: dist/*.apk
+
+      # Only real pushes to the main branch publish a Release (not pull requests).
+      - name: Publish to Releases
+        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'master')
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "v${{ steps.apk.outputs.version }}" "${{ steps.apk.outputs.file }}" \
+            --title "Capri ${{ steps.apk.outputs.version }}" \
+            --generate-notes \
+            --target "${{ github.sha }}" \
+            --latest

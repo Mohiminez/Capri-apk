@@ -66,7 +66,7 @@ class CapriService : Service(), Actions.Hooks {
     private lateinit var prefs: Prefs
     private lateinit var brain: Brain
     private lateinit var agent: Agent
-    private val h = Handler(Looper.getMainLooper())
+    private val h = SafeHandler(Looper.getMainLooper()) { e -> CrashLog.record(this, e, "service task") }
 
     private var sprite: SpriteView? = null
     private lateinit var spriteLp: WindowManager.LayoutParams
@@ -150,11 +150,20 @@ class CapriService : Service(), Actions.Hooks {
         brain = Brain(this, prefs)
         val nm = getSystemService(NOTIFICATION_SERVICE) as NotificationManager
         nm.createNotificationChannel(NotificationChannel("capri", "Capri", NotificationManager.IMPORTANCE_LOW))
+        nm.createNotificationChannel(NotificationChannel("capri_alerts", "Capri alerts", NotificationManager.IMPORTANCE_HIGH))
         running = true
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        startFg()
+        if (!startFg()) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
+        // The system restarts a service after it dies. If she has died three times in two minutes, stop instead of looping.
+        if (intent == null && CrashLog.recentFatal(this, 120_000L) >= 3) {
+            stopSelf()
+            return START_NOT_STICKY
+        }
         if (!Settings.canDrawOverlays(this)) {
             stopSelf()
             return START_NOT_STICKY
@@ -163,13 +172,33 @@ class CapriService : Service(), Actions.Hooks {
             shutdown()
             return START_NOT_STICKY
         }
-        if (sprite == null) setup()
+        if (sprite == null) {
+            try {
+                setup()
+            } catch (e: Throwable) {
+                // Something in her setup broke: say why in the crash log and stop cleanly instead of crashing.
+                CrashLog.record(this, e, "setting her up")
+                Toast.makeText(this, L.t("Capri couldn't start. Open the app to see why.", "كابري ما قدرت تشتغل. افتح التطبيق وشوف السبب."), Toast.LENGTH_LONG).show()
+                stopSelf()
+                return START_NOT_STICKY
+            }
+        }
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
         if (intent?.action == ACT_ASK) {
             val t = intent.getStringExtra("text") ?: ""
-            if (t.isNotBlank()) h.postDelayed({
+            val kind = intent.getStringExtra("kind") ?: "text"
+            val imagePath = intent.getStringExtra("imagePath")
+            val name = intent.getStringExtra("name") ?: ""
+            if (kind == "image" && imagePath != null) h.postDelayed({
+                if (hidden) toggleHidden()
+                askAboutImage(imagePath, name, t)
+            }, 700) else if (kind == "file" && t.isNotBlank()) h.postDelayed({
+                if (hidden) toggleHidden()
+                ask("(They shared a file with you" + (if (name.isNotBlank()) ", named \"$name\"" else "") + ". Its text:\n" + t.take(6000) +
+                    "\nIn one or two short lines: say what it is and what matters in it, or answer their question about it.)", true)
+            }, 700) else if (t.isNotBlank()) h.postDelayed({
                 if (hidden) toggleHidden()
                 ask("(They selected this text in another app: \"$t\"\nIn one or two short lines: translate it if it isn't in their language, otherwise explain or sum it up.)", true)
             }, 700)
@@ -189,6 +218,8 @@ class CapriService : Service(), Actions.Hooks {
         try { unregisterReceiver(events) } catch (e: Exception) { }
         Ears.cancel()
         hideMenu()
+        clearClones()
+        hideRing()
         if (::agent.isInitialized) agent.cancel()
         Voice.stop()
         try { if (panelShown) wm.removeView(panel) } catch (e: Exception) { }
@@ -232,22 +263,49 @@ class CapriService : Service(), Actions.Hooks {
             .build()
     }
 
-    private fun startFg() {
+    // Returns false when Android refuses to let her run in the foreground right now (for example a restart from the background).
+    private var fgHasMic = false
+
+    private fun startFg(): Boolean {
         val n = notification()
-        if (Build.VERSION.SDK_INT >= 34) {
-            var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
-            if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) {
-                type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        val mic = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
+        try {
+            when {
+                Build.VERSION.SDK_INT >= 34 -> {
+                    var type = ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    if (mic) type = type or ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE
+                    try {
+                        startForeground(NOTE_ID, n, type)
+                        fgHasMic = mic
+                    } catch (e: Exception) {
+                        // e.g. started at boot, when the microphone type isn't allowed yet
+                        startForeground(NOTE_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
+                        fgHasMic = false
+                    }
+                }
+                Build.VERSION.SDK_INT >= 30 -> {
+                    // Android 11 to 13: only ask for the microphone type when she may really use the microphone.
+                    try {
+                        startForeground(NOTE_ID, n, if (mic) ServiceInfo.FOREGROUND_SERVICE_TYPE_MICROPHONE else 0)
+                        fgHasMic = mic
+                    } catch (e: Exception) {
+                        startForeground(NOTE_ID, n)
+                        fgHasMic = false
+                    }
+                }
+                else -> startForeground(NOTE_ID, n)
             }
-            try {
-                startForeground(NOTE_ID, n, type)
-            } catch (e: Exception) {
-                // e.g. started at boot, when the microphone type isn't allowed yet
-                startForeground(NOTE_ID, n, ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE)
-            }
-        } else {
-            startForeground(NOTE_ID, n)
+            return true
+        } catch (e: Throwable) {
+            CrashLog.record(this, e, "starting the foreground service")
+            return false
         }
+    }
+
+    // If the microphone permission was given after she started, she needs the microphone service type before she can hear in the background.
+    private fun refreshMicType() {
+        if (fgHasMic || checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) return
+        startFg()
     }
 
     // ---- setting her up ----
@@ -468,6 +526,10 @@ class CapriService : Service(), Actions.Hooks {
     // Screen state, battery and charger.
     private val events = object : BroadcastReceiver() {
         override fun onReceive(c: Context, i: Intent) {
+            try { handle(i) } catch (e: Throwable) { CrashLog.record(this@CapriService, e, "screen/battery event") }
+        }
+
+        private fun handle(i: Intent) {
             when (i.action) {
                 Intent.ACTION_SCREEN_OFF -> { screenOn = false; Voice.stop(); tts?.stop() }
                 Intent.ACTION_SCREEN_ON -> screenOn = true
@@ -485,7 +547,7 @@ class CapriService : Service(), Actions.Hooks {
             val game = prefs.getB("gameMode", false)
             val allowed = prefs.getB("watch", false) || (game && acc?.foregroundIsGame() == true)
             if (acc != null && allowed && screenOn && !hidden && !busy && !asleep && !panelShown && !quiet && !agent.running) {
-                Thread {
+                bg("job", this@CapriService) {
                     val txt = acc.dump(if (brain.isLocal()) 2000 else 3000)
                     val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
                     h.post {
@@ -493,7 +555,7 @@ class CapriService : Service(), Actions.Hooks {
                             ask("(You glance at their screen. What's on it:\n$txt\nIf something stands out, like a big play, a funny moment or something they're stuck on, react in one short line. If nothing stands out, reply with just NOTHING.)", true, img, true)
                         }
                     }
-                }.start()
+                }
             }
             h.postDelayed(this, prefs.getI("watchSecs", 60) * 1000L)
         }
@@ -514,7 +576,13 @@ class CapriService : Service(), Actions.Hooks {
     private val choreo = Choreographer.getInstance()
     private val frame = object : Choreographer.FrameCallback {
         override fun doFrame(frameTimeNanos: Long) {
-            step(frameTimeNanos)
+            try {
+                step(frameTimeNanos)
+            } catch (e: Throwable) {
+                CrashLog.record(this@CapriService, e, "movement")
+                mode = 0
+                return
+            }
             if (mode != 0) choreo.postFrameCallback(this)
         }
     }
@@ -581,7 +649,7 @@ class CapriService : Service(), Actions.Hooks {
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
-    private fun canRoam() = !scripted && !dancing && !danceAsked && !alongOn && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running
+    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running
 
     private val wanderTask = object : Runnable {
         override fun run() {
@@ -603,7 +671,7 @@ class CapriService : Service(), Actions.Hooks {
         fx = spriteLp.x.toFloat()
         fy = spriteLp.y.toFloat()
         walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
-        walkTy = (fy + Random.nextInt(-dp(120), dp(120))).coerceIn(dp(48).toFloat(), floorY())
+        walkTy = (fy + Random.nextInt(-dp(120), dp(120))).clampTo(dp(48).toFloat(), floorY())
         walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
         sprite?.flip = walkTx < fx
         startMotion(2)
@@ -648,6 +716,16 @@ class CapriService : Service(), Actions.Hooks {
         }
 
         override fun onTouch(v: View, e: MotionEvent): Boolean {
+            try {
+                touchEvent(v, e)
+            } catch (x: Throwable) {
+                CrashLog.record(this@CapriService, x, "touching her")
+                dragging = false
+            }
+            return true
+        }
+
+        private fun touchEvent(v: View, e: MotionEvent) {
             tracker?.addMovement(e)
             when (e.action) {
                 MotionEvent.ACTION_DOWN -> {
@@ -707,11 +785,15 @@ class CapriService : Service(), Actions.Hooks {
                     tracker = null
                 }
             }
-            return true
         }
     }
 
     private fun tapped() {
+        if (crowd.isNotEmpty()) {
+            clearClones()
+            say(L.t("Poof.", "بوف."), false)
+            return
+        }
         if (alongOn) {
             alongOn = false
             return
@@ -745,11 +827,11 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun moveTo(x: Int, y: Int) {
         val s = sprite ?: return
-        spriteLp.x = x.coerceIn(minX().toInt(), maxX().toInt())
-        spriteLp.y = y.coerceIn(0, screenH - spriteLp.height)
+        spriteLp.x = x.clampTo(minX().toInt(), maxX().toInt())
+        spriteLp.y = y.clampTo(0, screenH - spriteLp.height)
         fx = spriteLp.x.toFloat()
         fy = spriteLp.y.toFloat()
-        wm.updateViewLayout(s, spriteLp)
+        try { wm.updateViewLayout(s, spriteLp) } catch (e: Exception) { }
         if (bubbleShown) placeBubble()
     }
 
@@ -830,7 +912,7 @@ class CapriService : Service(), Actions.Hooks {
             bw = b.measuredWidth
             bh = b.measuredHeight
         }
-        bubbleLp.x = (headX - bw / 2).coerceIn(dp(8), maxOf(dp(8), screenW - bw - dp(8)))
+        bubbleLp.x = (headX - bw / 2).clampTo(dp(8), screenW - bw - dp(8))
         bubbleLp.y = if (above) headY - bh - dp(2) else spriteLp.y + spriteLp.height - dp(30)
         pl.configure(above, ((headX - bubbleLp.x).toFloat() / maxOf(1, bw)).coerceIn(0.1f, 0.9f))
         if (bubbleShown) try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
@@ -938,13 +1020,17 @@ class CapriService : Service(), Actions.Hooks {
         }
         placeBubble()
         if (first) {
-            wm.addView(b, bubbleLp)
-            bubbleShown = true
-            glitchIn(b)
-            h.postDelayed(cursorTask, 420)
-            chime("show")
+            try {
+                wm.addView(b, bubbleLp)
+                bubbleShown = true
+                glitchIn(b)
+                h.postDelayed(cursorTask, 420)
+                chime("show")
+            } catch (e: Exception) {
+                CrashLog.record(this, e, "showing her speech box")
+            }
         } else {
-            wm.updateViewLayout(b, bubbleLp)
+            try { wm.updateViewLayout(b, bubbleLp) } catch (e: Exception) { }
         }
         if (text == "...") { h.removeCallbacks(hideBubbleTask); h.postDelayed(hideBubbleTask, ms) }
     }
@@ -1047,7 +1133,7 @@ class CapriService : Service(), Actions.Hooks {
             phoneSpeak(text)
             return
         }
-        Thread {
+        bg("job", this@CapriService) {
             val err = Voice.speak(this, prefs, text) { h.post { if (id == speakId) { talking = true; settle() } } }
             h.post {
                 if (id != speakId) return@post
@@ -1058,7 +1144,7 @@ class CapriService : Service(), Actions.Hooks {
                     phoneSpeak(text)
                 }
             }
-        }.start()
+        }
     }
 
     private fun ask(text: String, hiddenPrompt: Boolean = false, image: String? = null, skipNothing: Boolean = false) {
@@ -1084,6 +1170,7 @@ class CapriService : Service(), Actions.Hooks {
             busy = false
             when {
                 reply != null && skipNothing && reply.trim().uppercase().startsWith("NOTHING") -> settle()
+                reply != null && hiddenPrompt && reply.trim().equals("NOTHING", ignoreCase = true) -> settle()
                 reply != null -> say(Actions.run(this, prefs, reply, this))
                 skipNothing -> settle()
                 else -> { Diag.log("brain", err ?: "?"); say(L.t("Signal lost: ", "انقطعت الإشارة: ") + err, false) }
@@ -1109,14 +1196,14 @@ class CapriService : Service(), Actions.Hooks {
         busy = true
         settle()
         showBubble("...", 90_000L, false)
-        Thread {
+        bg("job", this@CapriService) {
             val txt = acc.dump(if (brain.isLocal()) 2500 else 4000)
             val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
             h.post {
                 busy = false
                 ask("(You are looking at their screen right now. What's on it:\n$txt\nThey asked: $question\nAnswer from what you can see, in one or two short lines. Never read private messages out word for word.)", true, img)
             }
-        }.start()
+        }
     }
 
     // Weather, Wikipedia and "what's playing": she fetches it, then tells you in her own words.
@@ -1124,7 +1211,7 @@ class CapriService : Service(), Actions.Hooks {
         busy = true
         settle()
         showBubble("...", 90_000L, false)
-        Thread {
+        bg("job", this@CapriService) {
             val result = try {
                 when (name) {
                     "weather" -> Tools.weather(arg)
@@ -1138,7 +1225,7 @@ class CapriService : Service(), Actions.Hooks {
                 busy = false
                 ask("(Result of your lookup \"$name $arg\": $result\nTell them the answer in your own words, one or two short lines, in their language.)", true)
             }
-        }.start()
+        }
     }
 
     // In Guarded mode she asks first: a bubble you tap to allow.
@@ -1166,10 +1253,10 @@ class CapriService : Service(), Actions.Hooks {
         }
         busy = true
         settle()
-        Thread {
+        bg("job", this@CapriService) {
             val result = try { Hands.run(this, spec) } catch (e: Throwable) { L.t("That failed: ", "فشلت: ") + (e.message ?: "") }
             h.post { busy = false; say(result) }
-        }.start()
+        }
     }
 
     // ---- emotes, her own settings, scroll-for-me, pats, jealousy, doomscroll guard ----
@@ -1287,6 +1374,227 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     // She watches short videos with you: reacts to each one, then swipes to the next, like the desktop's "scroll for me".
+    // ---- keeps an eye out (ported from the desktop: "tell me when the download finishes") ----
+
+    private var eyeGoal: String? = null
+    private var eyeUntil = 0L
+    private var eyeAsking = false
+    private var eyeLastHash = 0
+
+    override fun keepWatch(goal: String) {
+        val g = goal.trim()
+        if (g.isEmpty() || g.lowercase() in setOf("off", "stop", "cancel", "no", "0", "clear")) {
+            if (eyeGoal != null) say(L.t("Okay, I stopped watching.", "تمام، وقفت المراقبة."), false)
+            stopEye()
+            return
+        }
+        if (CapriAccess.instance == null) {
+            say(L.t("I can't see your screen. Turn my accessibility permission on in the Capri app first.", "ما أقدر أشوف شاشتك. فعّل صلاحية الوصول لي من تطبيق كابري أول."), false)
+            return
+        }
+        eyeGoal = g.take(200)
+        eyeUntil = System.currentTimeMillis() + 2 * 3600_000L
+        eyeLastHash = 0
+        h.removeCallbacks(eyeTask)
+        h.postDelayed(eyeTask, 10_000)
+        say(L.t("Okay, I'll watch for it and tell you. Say \"stop watching\" to cancel.", "تمام، براقب وأقول لك. قل \"وقف المراقبة\" عشان ألغي."), false)
+    }
+
+    private fun stopEye() {
+        eyeGoal = null
+        eyeAsking = false
+        h.removeCallbacks(eyeTask)
+    }
+
+    private val eyeTask = object : Runnable {
+        override fun run() {
+            val goal = eyeGoal ?: return
+            if (System.currentTimeMillis() > eyeUntil) {
+                stopEye()
+                say(L.t("I stopped watching, it's been two hours.", "وقفت المراقبة، صار لها ساعتين."), false)
+                return
+            }
+            val acc = CapriAccess.instance
+            if (acc != null && screenOn && !eyeAsking && !busy && !agent.running) {
+                eyeAsking = true
+                bg("eye", this@CapriService) {
+                    val txt = acc.dump(if (brain.isLocal()) 1500 else 2500)
+                    val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
+                    h.post {
+                        // nothing changed on the screen since the last look: don't spend another request
+                        if (img == null && txt.hashCode() == eyeLastHash) { eyeAsking = false; return@post }
+                        eyeLastHash = txt.hashCode()
+                        brain.ask("(You are quietly watching their screen for them. They asked you to tell them when: \"$goal\". What's on the screen now:\n$txt\n" +
+                            "If that has clearly happened, reply with exactly DONE: followed by one short line telling them, in their language. If not, or you can't tell, reply with exactly NOTHING.)", true, img) { reply, err ->
+                            eyeAsking = false
+                            if (reply != null && eyeGoal != null && reply.trim().uppercase().startsWith("DONE")) {
+                                val line = Actions.strip(reply.trim().replace(Regex("^(?i)done\\s*[:\\-]?\\s*"), "")).ifBlank { L.t("It happened.", "صار اللي تنتظره.") }
+                                stopEye()
+                                alert(line)
+                                say(line, false)
+                            }
+                        }
+                    }
+                }
+            }
+            h.postDelayed(this, 25_000L)
+        }
+    }
+
+    // A real notification too, in case she is hidden or the screen is off.
+    private fun alert(text: String) {
+        try {
+            val n = Notification.Builder(this, "capri_alerts").setSmallIcon(R.drawable.ic_stat).setContentTitle("Capri").setContentText(text)
+                .setStyle(Notification.BigTextStyle().bigText(text)).setAutoCancel(true).build()
+            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).notify(7, n)
+        } catch (e: Exception) { }
+    }
+
+    // ---- points at things ("circle the send button") ----
+
+    private var ring: View? = null
+
+    override fun point(label: String) {
+        val acc = CapriAccess.instance
+        if (acc == null) {
+            say(L.t("I can't see your screen. Turn my accessibility permission on in the Capri app first.", "ما أقدر أشوف شاشتك. فعّل صلاحية الوصول لي من تطبيق كابري أول."), false)
+            return
+        }
+        bg("point", this@CapriService) {
+            val r = acc.boundsOf(label)
+            h.post {
+                if (r == null) say(L.t("I can't see \"$label\" on the screen.", "ما أشوف \"$label\" على الشاشة."), false)
+                else {
+                    showRing(r)
+                    say(L.t("Right there.", "هنا."), false)
+                }
+            }
+        }
+    }
+
+    private fun showRing(r: android.graphics.Rect) {
+        hideRing()
+        val pad = dp(10)
+        val v = RingView(this, Themes.accent(prefs))
+        val lp = WindowManager.LayoutParams(maxOf(dp(48), r.width() + pad * 2), maxOf(dp(48), r.height() + pad * 2),
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT)
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.x = r.left - pad
+        lp.y = r.top - pad
+        try {
+            wm.addView(v, lp)
+            ring = v
+            h.postDelayed({ hideRing() }, 3500)
+        } catch (e: Exception) {
+            CrashLog.record(this, e, "showing the pointer ring")
+        }
+    }
+
+    private fun hideRing() {
+        val v = ring ?: return
+        ring = null
+        try { wm.removeView(v) } catch (e: Exception) { }
+    }
+
+    // ---- clones: a crowd of glitchy copies of her. Tap one to pop it, tap her to clear them all ----
+
+    private class Clone(val view: SpriteView, val lp: WindowManager.LayoutParams)
+    private val crowd = ArrayList<Clone>()
+
+    override fun chess() {
+        try {
+            startActivity(Intent(this, ChessActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) {
+            say(L.t("I couldn't open the board. Open Capri and press Play chess.", "ما قدرت أفتح الرقعة. افتح كابري واضغط العب شطرنج."), false)
+        }
+    }
+
+    override fun clones(count: Int) {
+        clearClones()
+        if (count <= 0 || hidden || sprite == null) return
+        val n = count.clampTo(1, 8)
+        val hPx = (dp(prefs.getI("size", 140)) * 0.7f).toInt().coerceAtLeast(dp(60))
+        val wPx = hPx * 5 / 8
+        repeat(n) {
+            val v = SpriteView(this)
+            v.unit = hPx / 384f
+            v.glowColor = Themes.accent(prefs)
+            v.glitchFx = true
+            val lp = WindowManager.LayoutParams(wPx, hPx, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT)
+            lp.gravity = Gravity.TOP or Gravity.START
+            lp.x = Random.nextInt(0, maxOf(1, screenW - wPx))
+            lp.y = Random.nextInt(dp(60), maxOf(dp(61), screenH - hPx - dp(80)))
+            val c = Clone(v, lp)
+            v.setOnClickListener { popClone(c) }
+            try {
+                wm.addView(v, lp)
+                v.play("idle", true)
+                crowd.add(c)
+                h.postDelayed({ v.glitchFx = false }, 700)
+            } catch (e: Exception) {
+                CrashLog.record(this, e, "adding a clone")
+            }
+        }
+        if (crowd.isNotEmpty()) {
+            say(L.t("There are more of me now.", "صرنا أكثر الحين."), false)
+            h.postDelayed(crowdTask, 1200)
+            h.postDelayed({ clearClones() }, 25_000L)
+        }
+    }
+
+    private val crowdTask = object : Runnable {
+        override fun run() {
+            if (crowd.isEmpty()) return
+            for (c in crowd.toList()) {
+                if (Random.nextInt(100) < 55) {
+                    c.view.glitchFx = true
+                    h.postDelayed({
+                        if (crowd.contains(c)) {
+                            c.lp.x = Random.nextInt(0, maxOf(1, screenW - c.lp.width))
+                            c.lp.y = Random.nextInt(dp(60), maxOf(dp(61), screenH - c.lp.height - dp(80)))
+                            try { wm.updateViewLayout(c.view, c.lp) } catch (e: Exception) { }
+                            c.view.glitchFx = false
+                        }
+                    }, 260)
+                }
+            }
+            h.postDelayed(this, 1500)
+        }
+    }
+
+    private fun popClone(c: Clone) {
+        crowd.remove(c)
+        try { wm.removeView(c.view) } catch (e: Exception) { }
+        chime("show")
+    }
+
+    private fun clearClones() {
+        h.removeCallbacks(crowdTask)
+        for (c in crowd.toList()) try { wm.removeView(c.view) } catch (e: Exception) { }
+        crowd.clear()
+    }
+
+    // ---- pictures you share with her ----
+
+    private fun askAboutImage(path: String, name: String, question: String) {
+        if (brain.isLocal()) {
+            say(L.t("My brain can't see pictures. Pick an online brain that can, like Gemini, in the Capri app.", "عقلي ما يشوف الصور. اختر عقل أونلاين يشوف الصور مثل Gemini من التطبيق."), false)
+            return
+        }
+        val b64 = try { android.util.Base64.encodeToString(java.io.File(path).readBytes(), android.util.Base64.NO_WRAP) } catch (e: Exception) { null }
+        if (b64 == null) {
+            say(L.t("I couldn't open that picture.", "ما قدرت أفتح الصورة."), false)
+            return
+        }
+        ask("(They shared a picture with you" + (if (name.isNotBlank()) ", named \"$name\"" else "") + ". " +
+            (if (question.isNotBlank()) "They wrote: \"$question\". " else "") +
+            "Look at it and say what it is, or answer them, in one or two short lines. If there is text on it in another language, translate it.)", true, b64)
+    }
+
     override fun watchAlong(on: Boolean) {
         if (!on) {
             if (alongOn) { alongOn = false; say(L.t("Okay, I'll stop.", "تمام، وقفت."), false) }
@@ -1303,7 +1611,7 @@ class CapriService : Service(), Actions.Hooks {
         alongOn = true
         settle()
         say(L.t("Open TikTok, Shorts or Reels. I'll watch, react and scroll. Tap me to stop.", "افتح تيك توك أو شورتس أو ريلز. بشوف وأعلّق وأتصفّح. اضغط علي عشان أوقف."), false)
-        Thread {
+        bg("job", this@CapriService) {
             var n = 0
             try {
                 Thread.sleep(6000)
@@ -1332,7 +1640,7 @@ class CapriService : Service(), Actions.Hooks {
             } catch (e: Throwable) { }
             alongOn = false
             h.post { settle(); if (n > 0) say(L.t("That's enough scrolling for now.", "كفاية تصفّح الحين."), false) }
-        }.start()
+        }
     }
 
     // "Cheating on me with ChatGPT?"
@@ -1361,7 +1669,7 @@ class CapriService : Service(), Actions.Hooks {
             nags++
             scrollMs = limit * 30_000L
             if (nags % 2 == 1) say(L.t("You've been scrolling for a while now. Look up for a second.", "صار لك مدة تتصفّح. ارفع راسك شوي."), false)
-            else confirm(L.t("Still scrolling. Want me to take you home?", "للحين تتصفّح. أرجعك للشاشة الرئيسية؟")) { Thread { CapriAccess.instance?.global("home") }.start() }
+            else confirm(L.t("Still scrolling. Want me to take you home?", "للحين تتصفّح. أرجعك للشاشة الرئيسية؟")) { bg("job", this@CapriService) { CapriAccess.instance?.global("home") } }
         }
     }
 
@@ -1393,7 +1701,7 @@ class CapriService : Service(), Actions.Hooks {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
             PixelFormat.TRANSLUCENT)
         lp.gravity = Gravity.TOP or Gravity.START
-        lp.x = (spriteLp.x - m.measuredWidth / 2).coerceIn(dp(8), maxOf(dp(8), screenW - m.measuredWidth - dp(8)))
+        lp.x = (spriteLp.x - m.measuredWidth / 2).clampTo(dp(8), screenW - m.measuredWidth - dp(8))
         var y = spriteLp.y - m.measuredHeight
         if (y < dp(40)) y = spriteLp.y + spriteLp.height
         lp.y = y
@@ -1484,7 +1792,7 @@ class CapriService : Service(), Actions.Hooks {
     private fun showPanel() {
         if (panelShown || hidden) return
         if (panel == null) buildPanel()
-        wm.addView(panel, panelLp)
+        try { wm.addView(panel, panelLp) } catch (e: Exception) { CrashLog.record(this, e, "showing her typing box"); return }
         panelShown = true
         input?.requestFocus()
         h.postDelayed({
@@ -1548,6 +1856,7 @@ class CapriService : Service(), Actions.Hooks {
             say(L.t("I need the microphone permission. Open the Capri app.", "أحتاج صلاحية المايك. افتح تطبيق كابري."), false)
             return
         }
+        refreshMicType()
         speakId++
         Voice.stop()
         tts?.stop()
@@ -1561,14 +1870,14 @@ class CapriService : Service(), Actions.Hooks {
         if (prefs.getI("sttEngine", 0) == 1) {
             if (cloudListening) return
             cloudListening = true
-            Thread {
+            bg("job", this@CapriService) {
                 try {
                     val txt = Ears.listen(this, prefs) { }
                     h.post { heard(txt) }
                 } catch (e: Throwable) {
                     h.post { cloudListening = false; convoActive = false; say(L.t("Hearing problem: ", "مشكلة بالسمع: ") + (e.message ?: ""), false) }
                 }
-            }.start()
+            }
             return
         }
 

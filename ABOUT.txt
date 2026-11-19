@@ -1,0 +1,3 @@
+GitHub "About" box (paste in repo -> gear icon next to About):
+Description: Animated AI companion that floats over your Android apps — talks, watches your screen, and taps for you. Unofficial Android port of Capri. EN/AR. كابري رفيقة ذكية تطفو فوق التطبيقات.
+Topics: android, kotlin, ai-assistant, overlay, desktop-pet, accessibility-service, arabic, gemini, llm

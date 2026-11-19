@@ -43,3 +43,38 @@ class MoreAsksTest {
         assertEquals("[[set:color|hair=cyan]]", QuickAsks.match("change your hair color to cyan"))
     }
 }
+
+class NewFeatureAsksTest {
+    @Test fun pointsAtThings() {
+        assertEquals("[[point:send]]", QuickAsks.match("circle the send button"))
+        assertEquals("[[point:settings]]", QuickAsks.match("where is the settings icon"))
+    }
+
+    @Test fun stopsWatching() {
+        assertEquals("[[watch:off]]", QuickAsks.match("stop watching"))
+    }
+
+    @Test fun clearsClones() {
+        assertEquals("[[clones:0]]", QuickAsks.match("clear clones"))
+    }
+
+    @Test fun versionCompare() {
+        assert(Updater.newer("0.5.12", "0.5.9"))
+        assert(!Updater.newer("v0.5.9", "0.5.9"))
+        assert(Updater.newer("0.6.0", "0.5.99"))
+    }
+
+    @Test fun clampNeverThrows() {
+        assertEquals(5, 9.clampTo(5, 3))
+        assertEquals(0.2f, 0.2f.clampTo(1f, 0f).let { 0.2f }, 0f)
+    }
+}
+
+class ChessAskTest {
+    @Test fun opensChess() {
+        assert(QuickAsks.match("let's play chess")!!.contains("[[chess:open]]"))
+        assert(QuickAsks.match("play chess")!!.contains("[[chess:open]]"))
+        assert(QuickAsks.match("خلنا نلعب شطرنج")!!.contains("[[chess:open]]"))
+        assert(QuickAsks.match("العب شطرنج")!!.contains("[[chess:open]]"))
+    }
+}

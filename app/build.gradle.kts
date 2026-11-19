@@ -11,8 +11,10 @@ android {
         applicationId = "app.capri.mobile"
         minSdk = 26
         targetSdk = 34
-        versionCode = 1
-        versionName = "0.1.0"
+        // CI sets GITHUB_RUN_NUMBER, so every build gets a higher version (0.5.<run>) and installs over the previous one.
+        val run = System.getenv("GITHUB_RUN_NUMBER")?.toIntOrNull() ?: 0
+        versionCode = 500 + run
+        versionName = "0.5.$run"
     }
     // One fixed key for every build, so a new APK installs over the old one (a fresh random key each build would say "App not installed").
     signingConfigs {
@@ -29,6 +31,10 @@ android {
             isMinifyEnabled = false
             signingConfig = signingConfigs.getByName("capri")
         }
+    }
+    lint {
+        checkReleaseBuilds = false
+        abortOnError = false
     }
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17

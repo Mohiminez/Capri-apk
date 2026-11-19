@@ -154,6 +154,25 @@ class CapriAccess : AccessibilityService() {
         return clickNode(hit)
     }
 
+    // Where something is on the screen (for "circle the send button"). Uses the button around the text when there is one.
+    fun boundsOf(text: String): android.graphics.Rect? {
+        dump()
+        val q = text.lowercase().trim()
+        if (q.isEmpty()) return null
+        val hit = nodes.firstOrNull { it.label.lowercase() == q } ?: nodes.firstOrNull { it.label.lowercase().contains(q) } ?: return null
+        var cur: AccessibilityNodeInfo? = hit.node
+        var best: AccessibilityNodeInfo = hit.node
+        var hops = 0
+        while (cur != null && hops < 3) {
+            if (cur.isClickable) { best = cur; break }
+            cur = cur.parent
+            hops++
+        }
+        val r = android.graphics.Rect()
+        best.getBoundsInScreen(r)
+        return if (r.width() > 0 && r.height() > 0) r else null
+    }
+
     private fun clickNode(n: ScreenNode): Boolean {
         point(n.x, n.y)
         var cur: AccessibilityNodeInfo? = n.node
