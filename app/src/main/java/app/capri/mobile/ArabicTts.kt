@@ -99,7 +99,10 @@ object ArabicTts {
         val raw = piece(ctx, text, hd) ?: return null
         val pitch = (prefs.getI("ttsPitch", 100) / 100f).coerceIn(0.6f, 1.6f)
         val speed = (prefs.getI("ttsSpeed", 100) / 100f).coerceIn(0.6f, 1.6f)
-        val fx = Kokoro.effects(raw, prefs.getI("voiceRobot", 0), prefs.getI("voiceGlitch", 0))
+        // The raw voice is a low, plain narrator. Lift it so it sounds young and playful like her (the slider is "Her Arabic voice pitch").
+        val lift = (prefs.getI("arPitch", 130) / 100f).coerceIn(0.8f, 1.6f)
+        val shifted = Dsp.pitchShift(raw, lift)
+        val fx = Kokoro.effects(shifted, prefs.getI("voiceRobot", 0), prefs.getI("voiceGlitch", 0))
         return Kokoro.Chunk(Kokoro.toPcm(fx), (16000 * pitch * speed).toInt())
     }
 }

@@ -718,6 +718,7 @@ class MainActivity : Activity() {
                 }
             }
         }
+        slider(ar, t("Her Arabic voice pitch (130 = young and playful)", "نبرة صوتها بالعربي (130 = صغيرة ومشاكسة)"), "arPitch", 80, 160, 130)
         toggle(ar, t("Full quality model (114 MB instead of 39 MB)", "الموديل الكامل (114 ميجا بدل 39)"), "arabicHd", false) { arabicState() }
         arabicState()
         spin(o, Voice.engines, prefs.getI("ttsEngine", 0)) {

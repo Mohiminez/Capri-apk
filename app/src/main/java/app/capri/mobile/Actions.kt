@@ -96,12 +96,11 @@ object Actions {
                 "music" -> playMusic(ctx, arg)
                 "media" -> media(ctx, arg)
                 "timer" -> {
+                    // our own alarm (always rings), instead of asking the clock app, which many phones ignore
                     val parts = arg.split("|", limit = 2)
                     val secs = parts[0].trim().toIntOrNull()?.coerceIn(1, 86400) ?: 0
-                    if (secs > 0) start(ctx, Intent(AlarmClock.ACTION_SET_TIMER)
-                        .putExtra(AlarmClock.EXTRA_LENGTH, secs)
-                        .putExtra(AlarmClock.EXTRA_MESSAGE, parts.getOrElse(1) { "Capri" }.trim())
-                        .putExtra(AlarmClock.EXTRA_SKIP_UI, true))
+                    val label = parts.getOrElse(1) { "" }.trim().takeIf { it.isNotEmpty() && it != "Capri" }
+                    if (secs > 0) Reminders.add(ctx, "+$secs|" + L.t("Timer done", "انتهى المؤقت") + (label?.let { ": $it" } ?: ""))
                 }
                 "alarm" -> {
                     val parts = arg.split("|", limit = 2)
@@ -112,7 +111,7 @@ object Actions {
                         .putExtra(AlarmClock.EXTRA_MESSAGE, parts.getOrElse(1) { "Capri" }.trim())
                         .putExtra(AlarmClock.EXTRA_SKIP_UI, true))
                 }
-                "remind" -> Reminders.add(ctx, arg)
+                "remind" -> if (!Reminders.add(ctx, arg)) return L.t(" I couldn't read that time.", " ما فهمت الوقت.")
                 "remember" -> prefs.addNote(arg)
                 "do" -> hooks?.startJob(arg)
                 "look" -> hooks?.look(arg)
@@ -216,6 +215,7 @@ object QuickAsks {
 
     fun match(raw: String): String? {
         val r = raw.trim()
+        ReminderAsk.match(r)?.let { return it }
         enOpenType.find(r)?.let { return "On it. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         arOpenType.find(r)?.let { return "ابشر. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         enType.find(r)?.let { return "Typing. [[hands:type|${clean(it.groupValues[1])}]]" }
