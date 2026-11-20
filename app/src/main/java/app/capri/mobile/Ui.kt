@@ -8,6 +8,7 @@ import android.graphics.Paint
 import android.graphics.Path
 import android.graphics.PixelFormat
 import android.graphics.Rect
+import android.graphics.RectF
 import android.graphics.Shader
 import android.graphics.drawable.Drawable
 
@@ -193,4 +194,81 @@ class NeonPanel(private val density: Float, private val fillColor: Int = Night.f
     override fun setColorFilter(colorFilter: ColorFilter?) {}
     @Deprecated("Deprecated in Java")
     override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+// A section in the Mainframe style: no box, just the red rule down the left side.
+class RuleBar(private val density: Float, private val color: Int = Night.hot) : Drawable() {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.color = color }
+    private val soft = Paint(Paint.ANTI_ALIAS_FLAG)
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        val w = 3f * density
+        val rtl = false
+        canvas.drawRect(b.left.toFloat(), b.top.toFloat(), b.left + w, b.bottom.toFloat(), p)
+        soft.shader = LinearGradient(b.left.toFloat(), 0f, b.left + 90f * density, 0f, Color.argb(26, 232, 66, 70), Color.TRANSPARENT, Shader.TileMode.CLAMP)
+        canvas.drawRect(b.left + w, b.top.toFloat(), b.left + 90f * density, b.bottom.toFloat(), soft)
+        if (rtl) return
+    }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+// A neon frame around the whole screen, like the Mainframe window.
+class NeonFrame(private val density: Float) : Drawable() {
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.6f * density }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 6f * density; color = Color.argb(40, 94, 240, 246) }
+    private val r = RectF()
+    override fun draw(canvas: Canvas) {
+        val b = bounds
+        r.set(b.left + 3f * density, b.top + 2f * density, b.right - 3f * density, b.bottom - 2f * density)
+        edge.shader = LinearGradient(r.left, r.top, r.right, r.bottom, intArrayOf(Night.cyan, Color.argb(200, 40, 120, 132), Night.cyan), null, Shader.TileMode.CLAMP)
+        canvas.drawRoundRect(r, 16f * density, 16f * density, glow)
+        canvas.drawRoundRect(r, 16f * density, 16f * density, edge)
+    }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+// Puts the neon frame over a screen. Taps pass straight through it.
+fun neonWrap(ctx: android.content.Context, content: android.view.View): android.widget.FrameLayout {
+    val f = android.widget.FrameLayout(ctx)
+    f.addView(content, android.widget.FrameLayout.LayoutParams(-1, -1))
+    val over = android.view.View(ctx)
+    over.background = NeonFrame(ctx.resources.displayMetrics.density)
+    over.isClickable = false
+    over.isFocusable = false
+    f.addView(over, android.widget.FrameLayout.LayoutParams(-1, -1))
+    return f
+}
+
+// A card like the desktop's mod cards: cut corners at the top left and bottom right, a neon edge in the card's own colour.
+class CardDrawable(private val density: Float, private val edgeColor: Int) : Drawable() {
+    private val path = Path()
+    private val fill = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.argb(250, 10, 8, 16) }
+    private val edge = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 1.5f * density; color = edgeColor }
+    private val glow = Paint(Paint.ANTI_ALIAS_FLAG).apply { style = Paint.Style.STROKE; strokeWidth = 5f * density; color = Color.argb(48, Color.red(edgeColor), Color.green(edgeColor), Color.blue(edgeColor)) }
+    override fun onBoundsChange(b: Rect) {
+        val c = 14f * density
+        val l = b.left + 1.5f; val t = b.top + 1.5f; val r = b.right - 1.5f; val bt = b.bottom - 1.5f
+        path.reset()
+        path.moveTo(l + c, t); path.lineTo(r, t); path.lineTo(r, bt - c); path.lineTo(r - c, bt); path.lineTo(l, bt); path.lineTo(l, t + c)
+        path.close()
+    }
+    override fun draw(canvas: Canvas) { canvas.drawPath(path, fill); canvas.drawPath(path, glow); canvas.drawPath(path, edge) }
+    override fun setAlpha(alpha: Int) {}
+    override fun setColorFilter(colorFilter: ColorFilter?) {}
+    @Deprecated("Deprecated in Java")
+    override fun getOpacity(): Int = PixelFormat.TRANSLUCENT
+}
+
+// A dialog with the card look: cut corners and a cyan neon edge.
+fun darkDialog(d: android.app.AlertDialog) {
+    d.show()
+    val dens = d.context.resources.displayMetrics.density
+    d.window?.setBackgroundDrawable(CardDrawable(dens, Night.cyan))
+    d.window?.decorView?.setPadding((10 * dens).toInt(), (10 * dens).toInt(), (10 * dens).toInt(), (10 * dens).toInt())
 }

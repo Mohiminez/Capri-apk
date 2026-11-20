@@ -125,6 +125,14 @@ class ChessActivity : Activity() {
         root.setBackgroundColor(Night.ground)
         root.setPadding(dp(12), dp(28), dp(12), dp(12))
 
+        val bar = TextView(this)
+        bar.text = "\u2039  CHESS >"
+        bar.typeface = Typeface.DEFAULT_BOLD
+        bar.textSize = 15f
+        bar.setTextColor(Night.amber)
+        bar.setPadding(dp(6), 0, 0, dp(8))
+        bar.setOnClickListener { finish() }
+        root.addView(bar)
         val top = LinearLayout(this)
         top.orientation = LinearLayout.HORIZONTAL
         top.gravity = Gravity.CENTER_VERTICAL
@@ -169,7 +177,7 @@ class ChessActivity : Activity() {
         row2.addView(side, weight())
         root.addView(row1)
         root.addView(row2)
-        setContentView(root)
+        setContentView(neonWrap(this, root))
 
         sprite.play("idle")
         newGame()
@@ -189,7 +197,9 @@ class ChessActivity : Activity() {
         b.typeface = Typeface.DEFAULT_BOLD
         b.gravity = Gravity.CENTER
         b.setPadding(dp(8), dp(12), dp(8), dp(12))
-        b.background = GradientDrawable().apply { setColor(Night.hover); setStroke(dp(1), Night.edge); cornerRadius = dp(6).toFloat() }
+        b.typeface = Typeface.MONOSPACE
+        b.background = GradientDrawable().apply { setColor(Night.field); setStroke(dp(1), Night.deepEdge); cornerRadius = dp(22).toFloat() }
+        b.foreground = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
         b.setOnClickListener(click)
         return b
     }
@@ -221,7 +231,7 @@ class ChessActivity : Activity() {
                 if (cands[0].promo != 0) {
                     val names = listOf(t("Queen", "وزير"), t("Rook", "قلعة"), t("Bishop", "فيل"), t("Knight", "حصان"))
                     val codes = listOf(5, 4, 3, 2)
-                    AlertDialog.Builder(this).setTitle(t("Promote to", "رقّي إلى")).setItems(names.toTypedArray()) { _, i ->
+                    AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Promote to", "رقّي إلى")).setItems(names.toTypedArray()) { _, i ->
                         play(cands.first { it.promo == codes[i] })
                     }.setCancelable(false).show()
                 } else play(cands[0])

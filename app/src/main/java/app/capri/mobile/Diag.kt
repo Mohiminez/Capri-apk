@@ -32,6 +32,10 @@ object Diag {
         sb.append("Running: ${CapriService.running}\n")
         sb.append("Floating over apps: ${Settings.canDrawOverlays(ctx)}\n")
         sb.append("Microphone: ${ctx.checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED}\n")
+        try {
+            val n = ctx.packageManager.queryIntentActivities(android.content.Intent(android.content.Intent.ACTION_MAIN).addCategory(android.content.Intent.CATEGORY_LAUNCHER), 0).size
+            sb.append("Apps I can see: $n" + (if (n < 8) "  (too few: the phone hides installed apps, allow Installed apps in Capri's permissions)" else "") + "\n")
+        } catch (e: Throwable) { sb.append("Apps I can see: error ${e.message}\n") }
         sb.append("Accessibility connected: ${CapriAccess.instance != null} (switched on in settings: ${CapriAccess.enabledInSettings(ctx)})\n")
         val listeners = Settings.Secure.getString(ctx.contentResolver, "enabled_notification_listeners") ?: ""
         sb.append("Notification access: ${listeners.contains(ctx.packageName)}\n")

@@ -228,7 +228,7 @@ object Kokoro {
         val speed = prefs.getI("ttsSpeed", 100) / 100f
         val pitch = (prefs.getI("ttsPitch", 100) / 100f).coerceIn(0.6f, 1.6f)
         val raw = piece(ctx, text, voice, (speed / pitch).coerceIn(0.4f, 2.5f), hd) ?: return null
-        val fx = effects(raw, prefs.getI("voiceRobot", 0), prefs.getI("voiceGlitch", 0))
+        val fx = effects(Dsp.layers(raw, prefs.getI("voiceLayers", 0)), prefs.getI("voiceRobot", 0), prefs.getI("voiceGlitch", 0))
         return Chunk(toPcm(fx), (24000 * pitch).toInt())
     }
 }

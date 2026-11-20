@@ -35,7 +35,7 @@ object Actions {
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "wiki", "playing", "remember")
+    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
@@ -91,7 +91,7 @@ object Actions {
         if (group != null && !prefs.getB("tool_$group", true)) return L.t(" (That tool is switched off in my settings.)", " (هذي الأداة مطفية من إعداداتي.)")
         try {
             when (name) {
-                "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app.", " ما لقيت هذا التطبيق.")
+                "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app. If it is installed, your phone may be hiding apps from me: Settings > Apps > Capri > Permissions > Installed apps > Allow.", " ما لقيت هذا التطبيق. إذا هو منزّل، جوالك يمكن يخفي التطبيقات عني: الإعدادات > التطبيقات > Capri > الصلاحيات > التطبيقات المثبتة > سماح.")
                 "url" -> if (arg.startsWith("http://") || arg.startsWith("https://")) start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(arg)))
                 "music" -> playMusic(ctx, arg)
                 "media" -> media(ctx, arg)
@@ -111,6 +111,8 @@ object Actions {
                         .putExtra(AlarmClock.EXTRA_MESSAGE, parts.getOrElse(1) { "Capri" }.trim())
                         .putExtra(AlarmClock.EXTRA_SKIP_UI, true))
                 }
+                "info" -> return " " + DeviceInfo.answer(ctx, arg.lowercase())
+                "game" -> start(ctx, Intent(ctx, GamesActivity::class.java).putExtra("game", arg.lowercase()))
                 "remind" -> if (!Reminders.add(ctx, arg)) return L.t(" I couldn't read that time.", " ما فهمت الوقت.")
                 "remember" -> prefs.addNote(arg)
                 "do" -> hooks?.startJob(arg)
@@ -156,19 +158,47 @@ object Actions {
     )
 
     // Finds an installed app by its name in English or Arabic, or by part of its package name. Returns (label, package).
+    // Well-known package names, tried directly when the phone hides the list of installed apps from us.
+    private val knownPackages = mapOf(
+        "youtube" to listOf("com.google.android.youtube", "app.revanced.android.youtube", "com.vanced.android.youtube"),
+        "whatsapp" to listOf("com.whatsapp", "com.whatsapp.w4b"), "telegram" to listOf("org.telegram.messenger", "org.telegram.messenger.web", "org.thunderdog.challegram"),
+        "tiktok" to listOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill"), "instagram" to listOf("com.instagram.android", "com.instagram.lite"),
+        "snapchat" to listOf("com.snapchat.android"), "discord" to listOf("com.discord"), "chrome" to listOf("com.android.chrome"),
+        "twitter" to listOf("com.twitter.android"), "x" to listOf("com.twitter.android"), "facebook" to listOf("com.facebook.katana", "com.facebook.lite"),
+        "messenger" to listOf("com.facebook.orca"), "spotify" to listOf("com.spotify.music"), "netflix" to listOf("com.netflix.mediaclient"),
+        "gmail" to listOf("com.google.android.gm"), "maps" to listOf("com.google.android.apps.maps"), "reddit" to listOf("com.reddit.frontpage"),
+        "pinterest" to listOf("com.pinterest"), "steam" to listOf("com.valvesoftware.android.steam.community"), "pubg" to listOf("com.tencent.ig", "com.pubg.imobile"),
+        "camera" to listOf("com.android.camera", "com.android.camera2", "com.google.android.GoogleCamera", "com.sec.android.app.camera"),
+        "settings" to listOf("com.android.settings"), "calculator" to listOf("com.google.android.calculator", "com.miui.calculator", "com.sec.android.app.popupcalculator", "com.android.calculator2"),
+        "clock" to listOf("com.google.android.deskclock", "com.android.deskclock", "com.sec.android.app.clockpackage"), "play store" to listOf("com.android.vending"),
+        "phone" to listOf("com.google.android.dialer", "com.android.dialer", "com.samsung.android.dialer"), "messages" to listOf("com.google.android.apps.messaging", "com.samsung.android.messaging", "com.android.mms"),
+        "gallery" to listOf("com.google.android.apps.photos", "com.miui.gallery", "com.sec.android.gallery3d"), "photos" to listOf("com.google.android.apps.photos")
+    )
+
+    private fun norm(s: String): String = s.lowercase().replace(Regex("[\u064B-\u065F\u0640]"), "")
+        .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا').replace('ة', 'ه').replace('ى', 'ي').replace(Regex("[^a-z0-9\u0600-\u06FF ]"), "").replace(Regex("\\s+"), " ").trim()
+
     fun findApp(ctx: Context, name: String): Pair<String, String>? {
         val pm = ctx.packageManager
-        val apps = pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0)
-        var q = name.lowercase().trim().removePrefix("تطبيق ").removePrefix("application ").removePrefix("app ").trim()
-        q = aliases[q] ?: aliases[q.removePrefix("ال")] ?: q
+        val apps = try { pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0) } catch (e: Throwable) { emptyList() }
+        var q = norm(name).removePrefix("تطبيق ").removePrefix("application ").removePrefix("app ").trim()
+        val aliasKey = aliases.keys.firstOrNull { norm(it) == q || norm(it) == q.removePrefix("ال") }
+        q = if (aliasKey != null) aliases[aliasKey]!! else q
         if (q.isEmpty()) return null
-        fun label(i: Int) = apps[i].loadLabel(pm).toString().lowercase()
+        // Some phones (Xiaomi, Samsung, Oppo) hide the installed-apps list; known apps are still found by their package name.
+        fun viaKnown(): Pair<String, String>? {
+            val list = knownPackages[q] ?: knownPackages.entries.firstOrNull { q.contains(it.key) || it.key.contains(q) && q.length > 3 }?.value ?: return null
+            for (p in list) if (try { pm.getLaunchIntentForPackage(p) != null } catch (e: Throwable) { false }) return Pair(q, p)
+            return null
+        }
+        if (apps.isEmpty()) return viaKnown()
+        fun label(i: Int) = norm(apps[i].loadLabel(pm).toString())
         fun pkg(i: Int) = apps[i].activityInfo.packageName.lowercase()
         val idx = apps.indices.firstOrNull { label(it) == q }
             ?: apps.indices.firstOrNull { label(it).startsWith(q) }
             ?: apps.indices.firstOrNull { label(it).contains(q) }
             ?: apps.indices.firstOrNull { pkg(it).contains(q.replace(" ", "")) }
-            ?: return null
+            ?: return viaKnown()
         return Pair(apps[idx].loadLabel(pm).toString(), apps[idx].activityInfo.packageName)
     }
 
@@ -216,6 +246,7 @@ object QuickAsks {
     fun match(raw: String): String? {
         val r = raw.trim()
         ReminderAsk.match(r)?.let { return it }
+        LocalAsks.match(r)?.let { return it }
         enOpenType.find(r)?.let { return "On it. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         arOpenType.find(r)?.let { return "ابشر. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         enType.find(r)?.let { return "Typing. [[hands:type|${clean(it.groupValues[1])}]]" }

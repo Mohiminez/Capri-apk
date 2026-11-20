@@ -52,6 +52,19 @@ object Dsp {
         return FloatArray(n) { if (norm[it] > 1e-3f) out[it] / norm[it] else out[it] }
     }
 
+    // Two extra copies of the voice, one higher and one lower, mixed under it (the desktop's "voice layers"). amount 0..100.
+    fun layers(x: FloatArray, amount: Int): FloatArray {
+        if (amount <= 0 || x.size < 4096) return x
+        val a = (amount / 100f).coerceIn(0f, 1f) * 0.55f
+        val hi = pitchShift(x, 1.26f); val lo = pitchShift(x, 0.8f)
+        val g = 1f / (1f + 2 * a)
+        return FloatArray(x.size) { i ->
+            val h = if (i < hi.size) hi[i] else 0f
+            val l = if (i < lo.size) lo[i] else 0f
+            (x[i] + a * h + a * l) * g
+        }
+    }
+
     fun pitchShift(x: FloatArray, ratio: Float): FloatArray {
         if (abs(ratio - 1f) < 0.02f) return x
         return stretch(resample(x, ratio), ratio)

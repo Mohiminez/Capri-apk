@@ -211,6 +211,7 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
+        try { miniPlayer.hide() } catch (e: Throwable) { }
         CapriAccess.onForeground = null
         CapriAccess.onScrolled = null
         alongOn = false
@@ -378,6 +379,9 @@ class CapriService : Service(), Actions.Hooks {
         }
 
         clip("arrive", false) { settle() }
+        if (prefs.getB("intro", true) && !prefs.getB("lowPower", false) && Settings.canDrawOverlays(this)) {
+            try { IntroView(this, Themes.accent(prefs)).play(wm, h) } catch (e: Throwable) { }
+        }
         poke()
         h.postDelayed(blinkTask, 4000)
         h.postDelayed(wanderTask, 8_000L)
@@ -464,6 +468,8 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
+    private val miniPlayer by lazy { MiniPlayer(this, wm, h) }
+
     private val musicTask = object : Runnable {
         override fun run() {
             val am = getSystemService(AUDIO_SERVICE) as AudioManager
@@ -472,6 +478,7 @@ class CapriService : Service(), Actions.Hooks {
                 dancing = now
                 if (!asleep) settle()
             }
+            miniPlayer.tick(am.isMusicActive && prefs.getB("miniPlayer", true) && !hidden && !quiet && screenOn)
             h.postDelayed(this, 3000)
         }
     }
@@ -1331,6 +1338,12 @@ class CapriService : Service(), Actions.Hooks {
 
     private val feedApps = setOf("com.zhiliaoapp.musically", "com.ss.android.ugc.trill", "com.google.android.youtube", "com.instagram.android",
         "com.facebook.katana", "com.snapchat.android", "com.twitter.android", "com.reddit.frontpage", "com.lemon.lvoverseas")
+    private fun isFeedApp(pkg: String): Boolean {
+        if (pkg in feedApps) return true
+        val p = pkg.lowercase()
+        return listOf("tiktok", "musically", "aweme", "youtube", "instagram", "reels", "shorts", "kwai", "likee", "snack", "facebook", "snapchat", "twitter", "reddit", "pinterest", "vigo", "moj").any { p.contains(it) }
+    }
+
     private val aiApps = setOf("com.openai.chatgpt", "com.google.android.apps.bard", "com.anthropic.claude", "com.microsoft.copilot",
         "com.deepseek.chat", "ai.x.grok", "ai.perplexity.app.android", "ai.character.app")
 
@@ -1681,14 +1694,19 @@ class CapriService : Service(), Actions.Hooks {
         say(L.t("Open TikTok, Shorts or Reels. I'll watch, react and scroll. Tap me to stop.", "افتح تيك توك أو شورتس أو ريلز. بشوف وأعلّق وأتصفّح. اضغط علي عشان أوقف."), false)
         bg("job", this@CapriService) {
             var n = 0
+            var misses = 0
             try {
                 Thread.sleep(6000)
                 while (alongOn && n < 60) {
                     if (!screenOn) { Thread.sleep(3000); continue }
-                    if (CapriAccess.foreground !in feedApps) {
-                        if (n == 0) h.post { say(L.t("I don't see a video app in front.", "ما أشوف تطبيق فيديو مفتوح."), false) }
+                    val front = CapriAccess.foreground.ifEmpty { acc.rootInActiveWindow?.packageName?.toString() ?: "" }
+                    if (!isFeedApp(front)) {
+                        // give them a little time to open the app before giving up
+                        if (misses++ < 6) { Thread.sleep(3000); continue }
+                        h.post { say(L.t("I don't see a video app in front.", "ما أشوف تطبيق فيديو مفتوح."), false) }
                         break
                     }
+                    misses = 0
                     val txt = acc.dump(if (brain.isLocal()) 1200 else 1800)
                     val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
                     val latch = java.util.concurrent.CountDownLatch(1)
@@ -1812,12 +1830,12 @@ class CapriService : Service(), Actions.Hooks {
         p.gravity = Gravity.CENTER_VERTICAL
         p.layoutDirection = if (L.ar) View.LAYOUT_DIRECTION_RTL else View.LAYOUT_DIRECTION_LTR
         p.setPadding(dp(12), dp(6), dp(6), dp(6))
-        p.background = NeonPanel(resources.displayMetrics.density, Night.well)
+        p.background = PanelDrawable(Night.sCyan, Night.pink, resources.displayMetrics.density, 10f, Color.argb(244, 9, 11, 15))
         val prompt = TextView(this)
         prompt.text = "> "
         prompt.typeface = tfMono
         prompt.textSize = 17f
-        prompt.setTextColor(Night.rose)
+        prompt.setTextColor(Night.amber)
         p.addView(prompt)
         val e = EditText(this)
         e.typeface = tfMono
@@ -1843,7 +1861,7 @@ class CapriService : Service(), Actions.Hooks {
             val t = TextView(this)
             t.text = label
             t.textSize = 21f
-            t.setTextColor(Night.rose)
+            t.setTextColor(Night.sCyan)
             t.setPadding(dp(10), dp(8), dp(10), dp(8))
             t.setOnClickListener { click() }
             p.addView(t)

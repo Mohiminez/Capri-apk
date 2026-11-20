@@ -43,6 +43,13 @@ class MainActivity : Activity() {
     private lateinit var tabBar: LinearLayout
     private var tab = 0
     private val refreshers = ArrayList<() -> Unit>()
+    private lateinit var statusDot: TextView
+    private lateinit var scroller: ScrollView
+    private lateinit var searchBar: EditText
+    private var searchIdx: List<SearchHit>? = null
+    private var pendingJump: String? = null
+
+    class SearchHit(val tab: Int, val tabName: String, val raw: String, val title: String, val text: String)
 
     private var urlE: EditText? = null
     private var keyE: EditText? = null
@@ -60,7 +67,7 @@ class MainActivity : Activity() {
     private val panel = Night.field
     private val edge = Night.edge
     private val cyan = Night.cyan
-    private val yellow = Night.rose
+    private val yellow = Night.amber
     private val text = Night.white
     private val muted = Night.faint
     private val accent get() = Themes.accent(prefs)
@@ -116,35 +123,74 @@ class MainActivity : Activity() {
         val title = TextView(this)
         title.text = "CAPRI"
         title.typeface = tfTitle
-        title.textSize = 26f
+        title.textSize = 28f
+        title.letterSpacing = 0.12f
         title.setTextColor(Color.WHITE)
         head.addView(title)
+        val pill = TextView(this)
+        pill.text = t("Settings", "الإعدادات")
+        pill.typeface = tfMono
+        pill.textSize = 11f
+        pill.setTextColor(Night.cyan)
+        pill.setPadding(dp(12), dp(4), dp(12), dp(4))
+        pill.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.deep); setStroke(dp(1), Night.deepEdge) }
+        head.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12) })
         val ver = TextView(this)
-        ver.text = "  mobile \u00B7 v" + Updater.current(this)
+        ver.text = "  v" + Updater.current(this)
         ver.typeface = tfMono
         ver.textSize = 12f
         ver.setTextColor(muted)
         head.addView(ver)
+        head.addView(View(this), LinearLayout.LayoutParams(0, 1, 1f))
+        val magnifier = TextView(this)
+        magnifier.text = "\u2315"
+        magnifier.textSize = 22f
+        magnifier.setTextColor(Night.cyan)
+        magnifier.setPadding(dp(10), dp(2), dp(10), dp(2))
+        magnifier.setOnClickListener {
+            if (searchBar.visibility == View.VISIBLE) { closeSearch() }
+            else { searchIdx = null; searchBar.visibility = View.VISIBLE; searchBar.requestFocus(); (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).showSoftInput(searchBar, 0) }
+        }
+        head.addView(magnifier)
+        statusDot = TextView(this)
+        statusDot.typeface = tfMono
+        statusDot.textSize = 12f
+        head.addView(statusDot)
         rootCol.addView(head)
+        searchBar = EditText(this)
+        searchBar.hint = t("Search settings...", "ابحث في الإعدادات...")
+        searchBar.typeface = tfMono
+        searchBar.textSize = 14f
+        searchBar.setTextColor(Color.WHITE)
+        searchBar.setHintTextColor(muted)
+        searchBar.setSingleLine(true)
+        searchBar.setPadding(dp(14), dp(8), dp(14), dp(8))
+        searchBar.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(Night.well); setStroke(dp(1), Night.cyan) }
+        searchBar.visibility = View.GONE
+        searchBar.addTextChangedListener(object : TextWatcher {
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun afterTextChanged(e: Editable?) { if (!searchMute) showSearch(e?.toString()?.trim() ?: "") }
+        })
+        rootCol.addView(searchBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(dp(16), dp(2), dp(16), dp(6)) })
 
-        val tabScroll = HorizontalScrollView(this)
-        tabScroll.isHorizontalScrollBarEnabled = false
         tabBar = LinearLayout(this)
         tabBar.orientation = LinearLayout.HORIZONTAL
-        tabBar.setPadding(dp(10), 0, dp(10), 0)
-        tabScroll.addView(tabBar)
-        rootCol.addView(tabScroll)
-        val line = View(this)
-        line.setBackgroundColor(edge)
-        rootCol.addView(line, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        tabBar.setBackgroundColor(Night.band)
 
         val scroll = ScrollView(this)
+        scroller = scroll
         page = LinearLayout(this)
         page.orientation = LinearLayout.VERTICAL
-        page.setPadding(dp(12), dp(8), dp(12), dp(48))
+        page.setPadding(dp(14), dp(8), dp(12), dp(48))
         scroll.addView(page)
         rootCol.addView(scroll, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, 0, 1f))
-        setContentView(rootCol)
+        val line = View(this)
+        line.setBackgroundColor(Night.rule)
+        rootCol.addView(line, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(1)))
+        rootCol.addView(tabBar, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+        rootCol.setPadding(dp(4), 0, dp(4), dp(3))
+        setContentView(neonWrap(this, rootCol))
         showTab(tab)
     }
 
@@ -152,25 +198,32 @@ class MainActivity : Activity() {
         tab = i
         prefs.putI("lastTab", i)
         tabBar.removeAllViews()
+        val glyphs = listOf("\u2302", "\u2726", "\u266A", "\u263A", "\u2725", "\u2630")
         for ((n, name) in tabNames.withIndex()) {
             val col = LinearLayout(this)
             col.orientation = LinearLayout.VERTICAL
-            col.setPadding(dp(12), dp(10), dp(12), 0)
-            val v = TextView(this)
-            v.text = name
-            v.typeface = tfMono
-            v.textSize = 13f
-            v.setTextColor(if (n == i) Color.WHITE else muted)
-            col.addView(v)
+            col.gravity = Gravity.CENTER_HORIZONTAL
+            col.setPadding(dp(2), dp(6), dp(2), dp(8))
             val bar = View(this)
             bar.setBackgroundColor(if (n == i) accent else Color.TRANSPARENT)
-            val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, dp(3))
-            lp.topMargin = dp(8)
-            col.addView(bar, lp)
-            if (n == i) v.typeface = tfBold
+            col.addView(bar, LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(4) })
+            val g = TextView(this)
+            g.text = glyphs[n]
+            g.textSize = 19f
+            g.gravity = Gravity.CENTER
+            g.setTextColor(if (n == i) Night.cyan else muted)
+            col.addView(g)
+            val v = TextView(this)
+            v.text = name
+            v.typeface = if (n == i) tfBold else tfMono
+            v.textSize = 10f
+            v.maxLines = 1
+            v.gravity = Gravity.CENTER
+            v.setTextColor(if (n == i) Color.WHITE else muted)
+            col.addView(v)
             col.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(50, 255, 255, 255)), null, null)
-            col.setOnClickListener { showTab(n) }
-            tabBar.addView(col)
+            col.setOnClickListener { if (n != tab) showTab(n) }
+            tabBar.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
         page.removeAllViews()
         refreshers.clear()
@@ -184,33 +237,164 @@ class MainActivity : Activity() {
             else -> buildMore()
         }
         refresh()
+        page.alpha = 0f
+        page.translationY = dp(10).toFloat()
+        page.animate().alpha(1f).translationY(0f).setDuration(180).start()
+        val jump = pendingJump
+        if (jump != null) {
+            pendingJump = null
+            page.post {
+                for (k in 0 until page.childCount) {
+                    val outer = page.getChildAt(k) as? LinearLayout ?: continue
+                    val hd = (outer.getChildAt(0) as? LinearLayout)?.getChildAt(0)
+                    if (hd?.tag == jump) { scroller.smoothScrollTo(0, (outer.top - dp(8)).coerceAtLeast(0)); break }
+                }
+            }
+        }
+    }
+
+    // ---- settings search: builds every tab off-screen once, then matches the words on it ----
+
+    private var searchMute = false
+
+    private fun closeSearch() {
+        searchMute = true
+        searchBar.setText("")
+        searchMute = false
+        searchBar.visibility = View.GONE
+        (getSystemService(INPUT_METHOD_SERVICE) as android.view.inputmethod.InputMethodManager).hideSoftInputFromWindow(searchBar.windowToken, 0)
+        showTab(tab)
+    }
+
+    private fun collectText(v: View, sb: StringBuilder) {
+        if (v is TextView) { sb.append(v.text).append('\n'); if (v is EditText && !v.hint.isNullOrEmpty()) sb.append(v.hint).append('\n') }
+        if (v is ViewGroup) for (i in 0 until v.childCount) collectText(v.getChildAt(i), sb)
+    }
+
+    private fun buildIndex(): List<SearchHit> {
+        val savedPage = page
+        val savedRefreshers = ArrayList(refreshers)
+        val out = ArrayList<SearchHit>()
+        try {
+            for (n in 0..5) {
+                val tmp = LinearLayout(this)
+                page = tmp
+                refreshers.clear()
+                when (n) { 0 -> buildHome(); 1 -> buildBrain(); 2 -> buildVoice(); 3 -> buildBehavior(); 4 -> buildHands(); else -> buildMore() }
+                for (i in 0 until tmp.childCount) {
+                    val outer = tmp.getChildAt(i) as? LinearLayout ?: continue
+                    val col = outer.getChildAt(0) as? LinearLayout ?: continue
+                    val head = col.getChildAt(0) as? TextView ?: continue
+                    val raw = head.tag as? String ?: continue
+                    val sb = StringBuilder()
+                    collectText(col, sb)
+                    out.add(SearchHit(n, tabNames[n], raw, head.text.toString().removeSuffix("  +"), sb.toString()))
+                }
+            }
+        } catch (e: Throwable) {
+            Diag.log("search", e.toString())
+        } finally {
+            page = savedPage
+            refreshers.clear(); refreshers.addAll(savedRefreshers)
+        }
+        return out
+    }
+
+    private fun showSearch(q: String) {
+        if (q.isEmpty()) { page.removeAllViews(); refreshers.clear(); showTab(tab); return }
+        val idx = searchIdx ?: buildIndex().also { searchIdx = it }
+        page.removeAllViews()
+        refreshers.clear()
+        val words = q.lowercase().split(" ").filter { it.isNotEmpty() }
+        val hits = idx.filter { h -> val low = (h.title + "\n" + h.text).lowercase(); words.all { low.contains(it) } }.take(30)
+        val box = section(t("RESULTS", "النتائج") + " (" + hits.size + ")")
+        if (hits.isEmpty()) note(box, t("Nothing matches. Try another word.", "ما لقيت شي. جرّب كلمة ثانية."))
+        for (h in hits) {
+            val line = h.text.split('\n').firstOrNull { l -> words.any { l.lowercase().contains(it) } && l.isNotBlank() && !l.equals(h.title, true) } ?: h.text.lineSequence().firstOrNull { it.isNotBlank() && !it.equals(h.title, true) } ?: ""
+            val row = LinearLayout(this)
+            row.orientation = LinearLayout.VERTICAL
+            row.setPadding(dp(4), dp(8), dp(4), dp(8))
+            val a = TextView(this); a.text = h.tabName + "  \u203A  " + h.title; a.typeface = tfBold; a.textSize = 13f; a.setTextColor(Night.amber)
+            row.addView(a)
+            val b = TextView(this); b.text = line.take(110); b.typeface = tfBody; b.textSize = 13f; b.setTextColor(muted)
+            row.addView(b)
+            row.setOnClickListener {
+                pendingJump = h.raw
+                prefs.putB("fold_" + h.raw, false)
+                tab = h.tab
+                closeSearch()
+            }
+            box.addView(row)
+        }
     }
 
     // ---- building blocks ----
 
     // A panel with the red edge and a yellow "TITLE >" label, like the desktop.
-    private fun section(title: String?): LinearLayout {
+    private fun section(title: String?, open: Boolean = true): LinearLayout {
         val outer = LinearLayout(this)
         outer.orientation = LinearLayout.HORIZONTAL
-        outer.background = NeonPanel(resources.displayMetrics.density, Color.argb(246, 17, 16, 28))
+        outer.background = RuleBar(resources.displayMetrics.density)
         val bar = View(this)
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
-        col.setPadding(dp(14), dp(12), dp(14), dp(12))
+        col.setPadding(dp(16), dp(6), dp(6), dp(8))
         outer.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.setMargins(0, dp(7), 0, dp(7))
+        lp.setMargins(0, dp(10), 0, dp(10))
         page.addView(outer, lp)
-        if (title != null) heading(col, "$title >")
+        if (title != null) {
+            val h = heading(col, "$title >")
+            h.tag = title
+            val base = h.text.toString()
+            val key = "fold_" + title
+            fun paint(folded: Boolean) {
+                h.text = base + (if (folded) "  +" else "")
+                for (k in 1 until col.childCount) col.getChildAt(k).visibility = if (folded) View.GONE else View.VISIBLE
+            }
+            h.setOnClickListener {
+                val now = !prefs.getB(key, !open)
+                prefs.putB(key, now)
+                paint(now)
+            }
+            h.setPadding(0, dp(2), 0, dp(8))
+            col.post { paint(prefs.getB(key, !open)) }
+        }
         return col
+    }
+
+    // A grid of big tap targets, two per row.
+    private fun tiles(p: LinearLayout, items: List<Triple<String, String, () -> Unit>>) {
+        var row: LinearLayout? = null
+        for ((i, it) in items.withIndex()) {
+            if (i % 2 == 0) {
+                row = LinearLayout(this)
+                row.orientation = LinearLayout.HORIZONTAL
+                p.addView(row, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT))
+            }
+            val tile = LinearLayout(this)
+            tile.orientation = LinearLayout.VERTICAL
+            tile.gravity = Gravity.CENTER
+            tile.setPadding(dp(8), dp(14), dp(8), dp(12))
+            tile.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.hover); setStroke(dp(1), Night.edge) }
+            tile.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 94, 240, 246)), null, null)
+            val g = TextView(this)
+            g.text = it.first; g.textSize = 26f; g.gravity = Gravity.CENTER; g.setTextColor(Night.cyan)
+            tile.addView(g)
+            val l = TextView(this)
+            l.text = it.second; l.typeface = tfMono; l.textSize = 12f; l.gravity = Gravity.CENTER; l.setTextColor(Night.white)
+            tile.addView(l)
+            tile.setOnClickListener { _ -> tile.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY); it.third() }
+            row!!.addView(tile, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(4), dp(4), dp(4), dp(4)) })
+        }
     }
 
     private fun heading(p: LinearLayout, s: String): TextView {
         val v = TextView(this)
-        v.text = "\u25A0 " + (if (L.ar) s.removeSuffix(" >") else s.removeSuffix(" >").uppercase())
+        v.text = (if (L.ar) s else s.uppercase())
         v.typeface = tfBold
-        v.textSize = 14f
-        v.setTextColor(Night.rose)
+        v.textSize = 15f
+        v.setTextColor(Night.amber)
         v.setPadding(0, 0, 0, dp(8))
         p.addView(v)
         return v
@@ -245,12 +429,12 @@ class MainActivity : Activity() {
         v.typeface = tfMono
         v.textSize = 13f
         v.gravity = Gravity.CENTER
-        v.setTextColor(Night.white)
-        v.setPadding(dp(14), dp(12), dp(14), dp(12))
+        v.setTextColor(if (primary) Night.cyan else Night.white)
+        v.setPadding(dp(16), dp(12), dp(16), dp(12))
         v.background = GradientDrawable().apply {
-            cornerRadius = dp(22).toFloat()
-            setColor(if (primary) Night.hot else Night.hover)
-            setStroke(dp(2), if (primary) Night.hot else Night.edge)
+            cornerRadius = dp(24).toFloat()
+            setColor(if (primary) Night.deep else Night.field)
+            setStroke(dp(if (primary) 2 else 1), if (primary) Night.cyan else Night.deepEdge)
         }
         v.minHeight = dp(48)
         v.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
@@ -272,8 +456,8 @@ class MainActivity : Activity() {
         e.setPadding(dp(12), dp(10), dp(12), dp(10))
         e.background = GradientDrawable().apply {
             cornerRadius = dp(6).toFloat()
-            setColor(bg)
-            setStroke(dp(1), edge)
+            setColor(Night.well)
+            setStroke(dp(1), Night.deepEdge)
         }
         e.inputType = when {
             password -> InputType.TYPE_CLASS_TEXT or InputType.TYPE_TEXT_VARIATION_PASSWORD
@@ -302,7 +486,7 @@ class MainActivity : Activity() {
         sw.thumbTintList = ColorStateList.valueOf(cyan)
         sw.trackTintList = ColorStateList.valueOf(Color.argb(120, 94, 240, 246))
         sw.minHeight = dp(48)
-        sw.setOnCheckedChangeListener { _, on -> prefs.putB(k, on); extra?.invoke(on) }
+        sw.setOnCheckedChangeListener { v, on -> v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); prefs.putB(k, on); extra?.invoke(on) }
         sw.setPadding(0, dp(8), 0, dp(8))
         p.addView(sw)
     }
@@ -349,7 +533,7 @@ class MainActivity : Activity() {
             for (i in dotsV.indices) {
                 dotsV[i].text = if (i == sel) "\u25C9" else "\u25CB"
                 dotsV[i].setTextColor(if (i == sel) cyan else muted)
-                names[i].setTextColor(if (i == sel) Night.rose else text)
+                names[i].setTextColor(if (i == sel) Night.cyan else text)
             }
         }
         for ((i, o) in items.withIndex()) {
@@ -393,7 +577,7 @@ class MainActivity : Activity() {
 
     private fun pickDialog(titleText: String, items: List<String>, onPick: (Int) -> Unit) {
         if (items.isEmpty()) { toast(t("Nothing found.", "ما لقيت شي.")); return }
-        AlertDialog.Builder(this).setTitle(titleText).setItems(items.toTypedArray()) { _, i -> onPick(i) }.show()
+        darkDialog(AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(titleText).setItems(items.toTypedArray()) { _, i -> onPick(i) }.create())
     }
 
     private fun toast(s: String) = Toast.makeText(this, s, Toast.LENGTH_LONG).show()
@@ -405,6 +589,9 @@ class MainActivity : Activity() {
     }
 
     private fun openUrl(url: String) = startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+
+    private fun notifOk() = Build.VERSION.SDK_INT < 33 || checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) == PackageManager.PERMISSION_GRANTED
+    private fun appsVisible() = try { packageManager.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0).size >= 8 } catch (e: Throwable) { false }
 
     private fun hasMic() = checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED
     private fun askMic() {
@@ -436,7 +623,6 @@ class MainActivity : Activity() {
         pb.progressTintList = ColorStateList.valueOf(accent)
         col.addView(pb)
         val startBtn = btn(col, "", true) { toggleService() }
-        btn(col, t("PLAY CHESS WITH HER", "العب شطرنج معها")) { startActivity(Intent(this, ChessActivity::class.java)) }
         row.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         hero.addView(row)
         refreshers.add {
@@ -448,6 +634,18 @@ class MainActivity : Activity() {
             pb.progress = Charm.progress(c)
         }
 
+        val play = section(t("PLAY AND TRY", "العب وجرّب"))
+        tiles(play, listOf(
+            Triple("\u265E", t("CHESS", "شطرنج")) { startActivity(Intent(this, ChessActivity::class.java)) },
+            Triple("\u25A6", t("GAMES", "ألعاب")) { startActivity(Intent(this, GamesActivity::class.java).putExtra("game", "c4")) },
+            Triple("\u266B", t("TEST VOICE", "جرّب الصوت")) { testVoice() },
+            Triple("\u270B", t("TEST HANDS", "جرّب اليدين")) {
+                if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
+                else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
+                else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
+            }
+        ))
+
         // setup assistant, like the desktop's numbered steps
         val setup = section(t("SETUP", "التجهيز"))
         class Step(val name: () -> String, val ok: () -> Boolean, val fix: () -> Unit, val optional: Boolean = false)
@@ -456,7 +654,9 @@ class MainActivity : Activity() {
                 startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION, Uri.parse("package:$packageName")))
             }),
             Step({ t("Give her a brain", "أعطها عقل") }, { Brain(this, prefs).anyReady() }, { showTab(1) }),
-            Step({ t("Microphone and notifications", "المايك والإشعارات") }, { hasMic() }, { askMic() }),
+            Step({ t("Microphone and notifications (reminders need them)", "المايك والإشعارات (التذكيرات تحتاجها)") }, { hasMic() && notifOk() }, { askMic() }),
+            Step({ t("She can see your apps (to open them)", "تشوف تطبيقاتك (عشان تفتحها)") }, { appsVisible() },
+                { toast(t("Open Permissions and allow \"Installed apps\" if it is there.", "افتح الصلاحيات وفعّل «التطبيقات المثبتة» إذا موجودة.")); startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }, true),
             Step({ t("Her hands: accessibility (optional)", "اليدين: صلاحية الوصول (اختياري)") }, { CapriAccess.instance != null }, { showTab(4) }, true),
             Step({ t("Keep her alive in the background (battery)", "خلّها تشتغل بالخلفية (البطارية)") },
                 { (getSystemService(POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(packageName) },
@@ -504,7 +704,7 @@ class MainActivity : Activity() {
             Opt(t("TRUSTED", "موثوق"), t("She does what's asked without asking again", "تسوي المطلوب بدون ما تسأل مرة ثانية"))
         ), order.indexOf(prefs.getI("security", 1)).coerceAtLeast(0)) { prefs.putI("security", order[it]) }
 
-        val hands = section(t("TRY HER HANDS", "جرّب يدينها"))
+        val hands = section(t("TRY HER HANDS", "جرّب يدينها"), false)
         note(hands, t("Say or type: \"open WhatsApp and type hi\", \"scroll down\", \"tap Send\", \"go back\", \"take a screenshot\".",
             "قل أو اكتب: \"افتح واتساب واكتب مرحبا\"، \"انزل\"، \"اضغط إرسال\"، \"ارجع\"، \"لقطة شاشة\"."))
         btn(hands, t("TEST HER HANDS", "اختبار اليدين")) {
@@ -563,7 +763,7 @@ class MainActivity : Activity() {
             }
         }
 
-        val noai = section(t("NO AI MODE", "وضع بدون ذكاء اصطناعي"))
+        val noai = section(t("NO AI MODE", "وضع بدون ذكاء اصطناعي"), false)
         note(noai, t("She still opens apps, types, scrolls and sets timers from your commands, and answers chat with a few canned lines. Nothing leaves the phone and nothing costs anything.",
             "تبقى تفتح التطبيقات وتكتب وتسحب وتضبط المؤقتات من أوامرك، وترد على السوالف بكم جملة جاهزة. ما يطلع شي من الجوال وما يكلّف شي."))
         toggle(noai, t("No AI mode", "وضع بدون ذكاء اصطناعي"), "noAI", false)
@@ -577,7 +777,7 @@ class MainActivity : Activity() {
             }
         }
 
-        val r = section(t("NEVER GO SILENT", "ما تسكت أبداً"))
+        val r = section(t("NEVER GO SILENT", "ما تسكت أبداً"), false)
         toggle(r, t("When one provider fails, switch to another that has a key", "إذا تعطّل مزوّد، انتقل لمزوّد ثاني عندك له مفتاح"), "fallback", true)
         toggle(r, t("Use the offline model as a last resort", "استخدم الموديل المحلي كحل أخير"), "offlineFallback", true)
         toggle(r, t("Let offline mode use online brains when the offline model fails (off keeps everything on the phone)", "اسمح للوضع المحلي يستخدم مزوّدات أونلاين إذا فشل الموديل المحلي (إذا طفّيته يبقى كل شي على الجوال)"), "localToCloud", false)
@@ -646,14 +846,60 @@ class MainActivity : Activity() {
     // ---- VOICE ----
 
     private fun buildVoice() {
-        val o = section(t("HER VOICE", "صوتها"))
-        note(o, t("The phone voice is basic. Groq's Orpheus is free and has a Saudi Arabic voice, Gemini is free with your Gemini key, ElevenLabs is what the Windows version uses.",
-            "صوت الجوال عادي. Groq Orpheus مجاني وفيه صوت سعودي، وGemini مجاني بمفتاحك، وElevenLabs هو اللي تستخدمه نسخة الويندوز."))
-        toggle(o, t("She talks out loud", "تتكلم بصوت مسموع"), "voice", true)
+        // ---- 1. quick setup: one button gets both offline voices, one button gives her the Capri sound ----
+        val q = section(t("QUICK SETUP", "تجهيز سريع"))
+        note(q, t("Two voices on your phone, no key, no internet after the download: Kokoro (the same voice as the Windows version) for English, and an Arabic voice. One button gets both (about 190 MB).",
+            "صوتين على جوالك، بدون مفتاح وبدون نت بعد التنزيل: Kokoro (نفس صوت نسخة الويندوز) للإنجليزي، وصوت عربي. زر واحد ينزّلهم الثنين (حوالي ١٩٠ ميجا)."))
+        val qst = body(q, "", 14f, cyan)
+        val qbtn = btn(q, t("GET BOTH OFFLINE VOICES", "نزّل الصوتين الأوفلاين"), true) { }
+        fun quickState() {
+            val k = Kokoro.ready(this, prefs.getB("kokoroHd", false))
+            val a = ArabicTts.ready(this, prefs.getB("arabicHd", false))
+            qst.text = (if (k) "\u25CF " else "\u25CB ") + t("English (Kokoro)", "الإنجليزي (Kokoro)") + "     " + (if (a) "\u25CF " else "\u25CB ") + t("Arabic", "العربي")
+        }
+        qbtn.setOnClickListener {
+            qbtn.isEnabled = false
+            bg("voices-download", this) {
+                var err: String? = null
+                if (!Kokoro.ready(this, prefs.getB("kokoroHd", false)))
+                    err = Kokoro.download(this, prefs.getB("kokoroHd", false)) { p, name -> runOnUiThread { qst.text = t("English voice... ", "الصوت الإنجليزي... ") + p + "%  (" + name + ")" } }
+                if (err == null && !ArabicTts.ready(this, prefs.getB("arabicHd", false)))
+                    err = ArabicTts.download(this, prefs.getB("arabicHd", false)) { p, name -> runOnUiThread { qst.text = t("Arabic voice... ", "الصوت العربي... ") + p + "%  (" + name + ")" } }
+                runOnUiThread {
+                    qbtn.isEnabled = true
+                    if (err == null) {
+                        prefs.putI("ttsEngine", Voice.KOKORO)
+                        if (prefs.getS("kokoroVoice", "").isBlank()) prefs.putS("kokoroVoice", "af_heart")
+                        if (prefs.getI("arVoice", 0) == 0 && prefs.getSecret("voiceKey").isEmpty()) prefs.putI("arVoice", 4)
+                        toast(t("Done. English uses Kokoro and Arabic uses the offline voice. Press Test.", "تم. الإنجليزي يستخدم Kokoro والعربي الصوت الأوفلاين. اضغط جرّب."))
+                        showTab(2)
+                    } else { quickState(); qst.text = t("Failed: ", "فشل: ") + err }
+                }
+            }
+        }
+        quickState()
+        btn(q, t("GIVE HER THE CAPRI SOUND (young, playful, a bit glitchy)", "اعطها صوت كابري (صغيرة، مشاكسة، شوية قلتش)")) {
+            prefs.putI("ttsSpeed", 106); prefs.putI("ttsPitch", 100); prefs.putI("arPitch", 130)
+            prefs.putI("voiceLayers", 25); prefs.putI("voiceGlitch", 6); prefs.putI("voiceRobot", 0)
+            toast(t("Done. Press Test to hear her.", "تم. اضغط جرّب تسمعها."))
+            showTab(2)
+        }
+        toggle(q, t("She talks out loud", "تتكلم بصوت مسموع"), "voice", true)
+        toggle(q, t("Start with her voice off every time (privacy)", "تبدأ وصوتها مقفل كل مرة (للخصوصية)"), "startSilent", false)
+        btn(q, t("TEST THE VOICE", "جرّب الصوت"), true) { testVoice() }
 
-        val k = section(t("THE WINDOWS VOICE (KOKORO), ON YOUR PHONE", "صوت الويندوز (Kokoro) على جوالك"))
-        note(k, t("The Windows version speaks with Kokoro. Download it once and it works offline, in English (Arabic text still uses the phone voice). About 150 MB.",
-            "نسخة الويندوز تتكلم بـKokoro. نزّله مرة وحدة ويشتغل بدون نت، بالإنجليزي (النص العربي يستخدم صوت الجوال). حوالي ١٥٠ ميجا."))
+        // ---- 2. which engine ----
+        val o = section(t("VOICE ENGINE", "محرّك الصوت"), false)
+        note(o, t("Offline = Kokoro and the Arabic voice above. Cloud = Groq, Gemini, ElevenLabs, OpenAI with your key (further down). The phone voice is the basic fallback.",
+            "أوفلاين = Kokoro والصوت العربي فوق. سحابي = Groq وGemini وElevenLabs وOpenAI بمفتاحك (تحت). صوت الجوال هو الاحتياط الأساسي."))
+        spin(o, Voice.engines, prefs.getI("ttsEngine", 0)) {
+            prefs.putI("ttsEngine", it)
+            voiceNameE?.setText(prefs.getS(voiceKeyOf(it), if (it == Voice.KOKORO) "af_heart" else ""))
+        }
+
+        // ---- 3. English ----
+        val k = section(t("ENGLISH: THE WINDOWS VOICE (KOKORO)", "الإنجليزي: صوت الويندوز (Kokoro)"))
+        note(k, t("The same model the Windows version speaks with. English only.", "نفس الموديل اللي تتكلم فيه نسخة الويندوز. إنجليزي فقط."))
         val kst = body(k, "", 14f, cyan)
         val kbtn = btn(k, "", true) { }
         fun kokoroState() {
@@ -681,18 +927,20 @@ class MainActivity : Activity() {
             }
         }
         toggle(k, t("Full quality model (310 MB instead of 88 MB)", "الموديل الكامل (310 ميجا بدل 88)"), "kokoroHd", false) { kokoroState() }
-        note(k, t("Kokoro can't speak Arabic. For Arabic she uses the best voice you have a key for:", "Kokoro ما يتكلم عربي. للعربي تستخدم أحسن صوت عندك له مفتاح:"))
-        spin(k, listOf(t("Automatic (Groq Saudi, else Gemini, else the offline voice, else phone)", "تلقائي (Groq سعودي، وإلا Gemini، وإلا الصوت الأوفلاين، وإلا الجوال)"), t("Phone voice", "صوت الجوال"), t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"), t("Groq Saudi voice (free key)", "صوت Groq السعودي (مفتاح مجاني)"), t("Offline Arabic voice (no key, download below)", "الصوت العربي الأوفلاين (بدون مفتاح، نزّله تحت)")), prefs.getI("arVoice", 0)) { prefs.putI("arVoice", it) }
-        note(k, t("Groq asks you to accept the Orpheus terms once in console.groq.com before its voice works. Your Groq or Gemini key from the brain section is reused.", "Groq يطلب منك الموافقة على شروط Orpheus مرة وحدة من console.groq.com قبل ما يشتغل صوته. يستخدم مفتاح Groq أو Gemini اللي حطيته في قسم العقل."))
-        slider(k, t("Robot %", "روبوت %"), "voiceRobot", 0, 100, 0)
-        slider(k, t("Glitch %", "قلتش %"), "voiceGlitch", 0, 100, 0)
-        note(k, t("Voice names: af_* and am_* are American women and men, bf_* and bm_* are British. Use PICK A VOICE below. Speed and pitch sliders work too.",
-            "أسماء الأصوات: af_* و am_* أمريكي نساء ورجال، وbf_* و bm_* بريطاني. استخدم «اختر صوتاً» تحت. ومنزلقات السرعة والحدّة تشتغل."))
+        toggle(k, t("Full quality model (310 MB instead of 88 MB)", "الموديل الكامل (310 ميجا بدل 88)"), "kokoroHd", false) { kokoroState(); quickState() }
+        btn(k, t("PICK A KOKORO VOICE", "اختر صوت Kokoro")) {
+            val list = Kokoro.voices(this)
+            if (list.isEmpty()) toast(t("Download the Kokoro voice first.", "نزّل صوت Kokoro أول."))
+            else pickDialog(t("Pick a voice", "اختر صوتاً"), list) { prefs.putS("kokoroVoice", list[it]); kokoroState(); toast(list[it]) }
+        }
+        note(k, t("af_* and am_* are American women and men, bf_* and bm_* are British.", "af_* و am_* أمريكي نساء ورجال، وbf_* و bm_* بريطاني."))
         kokoroState()
 
-        val ar = section(t("ARABIC VOICE ON YOUR PHONE (NO KEY)", "صوت عربي على جوالك (بدون مفتاح)"))
-        note(ar, t("A neural Arabic voice (Meta MMS) that works offline with no key. About 40 MB. It reads Standard Arabic clearly, so dialect words sound like a news reader. Choose it in the list above or pick the engine \"Arabic voice on this phone\".",
-            "صوت عربي عصبي (Meta MMS) يشتغل بدون نت وبدون مفتاح. حوالي ٤٠ ميجا. ينطق الفصحى بوضوح، فالكلمات العامية تطلع بنطق مذيع. اخترته من القائمة فوق أو اختر المحرّك «صوت عربي على الجوال»."))
+        // ---- 4. Arabic ----
+        val ar = section(t("ARABIC", "العربي"))
+        note(ar, t("Kokoro has no Arabic, so Arabic text uses the voice chosen here. The offline one (Meta MMS, about 40 MB) reads Standard Arabic clearly, so dialect words sound like a news reader; the pitch slider makes it younger.",
+            "Kokoro ما يدعم العربي، فالنص العربي يستخدم الصوت اللي تختاره هنا. الأوفلاين (Meta MMS، حوالي ٤٠ ميجا) ينطق الفصحى بوضوح، فالعامية تطلع بنطق مذيع؛ وشريط النبرة يخليه أصغر."))
+        spin(ar, listOf(t("Automatic (Groq Saudi, else Gemini, else the offline voice, else phone)", "تلقائي (Groq سعودي، وإلا Gemini، وإلا الصوت الأوفلاين، وإلا الجوال)"), t("Phone voice", "صوت الجوال"), t("Gemini voice (free key)", "صوت Gemini (مفتاح مجاني)"), t("Groq Saudi voice (free key)", "صوت Groq السعودي (مفتاح مجاني)"), t("Offline Arabic voice (no key)", "الصوت العربي الأوفلاين (بدون مفتاح)")), prefs.getI("arVoice", 0)) { prefs.putI("arVoice", it) }
         val ast = body(ar, "", 14f, cyan)
         val abtn = btn(ar, "", true) { }
         fun arabicState() {
@@ -719,22 +967,32 @@ class MainActivity : Activity() {
             }
         }
         slider(ar, t("Her Arabic voice pitch (130 = young and playful)", "نبرة صوتها بالعربي (130 = صغيرة ومشاكسة)"), "arPitch", 80, 160, 130)
-        toggle(ar, t("Full quality model (114 MB instead of 39 MB)", "الموديل الكامل (114 ميجا بدل 39)"), "arabicHd", false) { arabicState() }
+        toggle(ar, t("Full quality model (114 MB instead of 39 MB)", "الموديل الكامل (114 ميجا بدل 39)"), "arabicHd", false) { arabicState(); quickState() }
         arabicState()
-        spin(o, Voice.engines, prefs.getI("ttsEngine", 0)) {
-            prefs.putI("ttsEngine", it)
-            voiceNameE?.setText(prefs.getS(voiceKeyOf(it), if (it == Voice.KOKORO) "af_heart" else ""))
-        }
-        edit(o, t("Voice key (empty = use the brain key)", "مفتاح الصوت (فاضي = يستخدم مفتاح العقل)"), prefs.getSecret("voiceKey"), password = true) { prefs.putSecret("voiceKey", it) }
-        voiceNameE = edit(o, t("Voice (ElevenLabs id, Gemini name, or OpenAI/Groq voice)", "الصوت (معرّف ElevenLabs أو اسم صوت Gemini أو صوت OpenAI/Groq)"),
+
+        // ---- 5. effects (same sliders as the desktop) ----
+        val fx = section(t("EFFECTS", "المؤثرات"))
+        slider(fx, t("Volume %", "مستوى الصوت %"), "ttsVolume", 20, 100, 100)
+        slider(fx, t("Speed %", "السرعة %"), "ttsSpeed", 60, 160, 100)
+        slider(fx, t("Pitch %", "حدّة الصوت %"), "ttsPitch", 60, 160, 100)
+        slider(fx, t("Voice layers % (a higher and a lower copy of her voice, like the desktop)", "طبقات الصوت % (نسخة أعلى ونسخة أوطى من صوتها، مثل الديسكتوب)"), "voiceLayers", 0, 100, 0)
+        slider(fx, t("Robot %", "روبوت %"), "voiceRobot", 0, 100, 0)
+        slider(fx, t("Glitch %", "قلتش %"), "voiceGlitch", 0, 100, 0)
+
+        // ---- 6. cloud voices ----
+        val c = section(t("CLOUD VOICES (OPTIONAL, NEED A KEY)", "أصوات سحابية (اختياري، تحتاج مفتاح)"), false)
+        note(c, t("Groq's Orpheus is free and has a Saudi Arabic voice. Gemini is free with your Gemini key. ElevenLabs and OpenAI are paid. Groq asks you to accept the Orpheus terms once at console.groq.com.",
+            "Groq Orpheus مجاني وفيه صوت سعودي. Gemini مجاني بمفتاحك. ElevenLabs وOpenAI مدفوعين. Groq يطلب منك الموافقة على شروط Orpheus مرة وحدة من console.groq.com."))
+        edit(c, t("Voice key (empty = use the brain key)", "مفتاح الصوت (فاضي = يستخدم مفتاح العقل)"), prefs.getSecret("voiceKey"), password = true) { prefs.putSecret("voiceKey", it) }
+        voiceNameE = edit(c, t("Voice (ElevenLabs id, Gemini name, or OpenAI/Groq voice)", "الصوت (معرّف ElevenLabs أو اسم صوت Gemini أو صوت OpenAI/Groq)"),
             prefs.getS(voiceKeyOf(prefs.getI("ttsEngine", 0)), if (prefs.getI("ttsEngine", 0) == Voice.KOKORO) "af_heart" else "")) {
             prefs.putS(voiceKeyOf(prefs.getI("ttsEngine", 0)), it.trim())
         }
-        voiceModelE = edit(o, t("Voice model (optional)", "موديل الصوت (اختياري)"), prefs.getS("voiceModel", "")) { prefs.putS("voiceModel", it.trim()) }
-        voiceUrlE = edit(o, t("Server URL (Groq / OpenAI / Kokoro only)", "عنوان السيرفر (فقط لـ Groq / OpenAI / Kokoro)"), prefs.getS("voiceUrl", "")) { prefs.putS("voiceUrl", it.trim()) }
-        note(o, t("Other options: a Kokoro server on your PC, Groq, OpenAI. Kokoro has no Arabic; for Arabic use Groq (Saudi) or Gemini.",
+        voiceModelE = edit(c, t("Voice model (optional)", "موديل الصوت (اختياري)"), prefs.getS("voiceModel", "")) { prefs.putS("voiceModel", it.trim()) }
+        voiceUrlE = edit(c, t("Server URL (Groq / OpenAI / Kokoro only)", "عنوان السيرفر (فقط لـ Groq / OpenAI / Kokoro)"), prefs.getS("voiceUrl", "")) { prefs.putS("voiceUrl", it.trim()) }
+        note(c, t("Other options: a Kokoro server on your PC, Groq, OpenAI. Kokoro has no Arabic; for Arabic use Groq (Saudi) or Gemini.",
             "خيارات ثانية: سيرفر Kokoro على الكمبيوتر، أو Groq، أو OpenAI. Kokoro ما يدعم العربي، للعربي استخدم Groq (سعودي) أو Gemini."))
-        btn(o, t("PRESETS: GROQ, OPENAI, KOKORO", "إعدادات جاهزة: Groq وOpenAI وKokoro")) {
+        btn(c, t("PRESETS: GROQ, OPENAI, KOKORO", "إعدادات جاهزة: Groq وOpenAI وKokoro")) {
             val names = listOf(t("Groq Orpheus (free, English + Saudi Arabic)", "Groq Orpheus (مجاني، إنجليزي وعربي سعودي)"), "OpenAI tts-1", t("Kokoro server on this phone or PC", "سيرفر Kokoro على الجوال أو الكمبيوتر"))
             pickDialog(t("Pick a preset", "اختر إعداداً جاهزاً"), names) { n ->
                 prefs.putI("ttsEngine", Voice.OPENAI)
@@ -747,12 +1005,20 @@ class MainActivity : Activity() {
                 showTab(2)
             }
         }
-        btn(o, t("PICK A VOICE", "اختر صوتاً")) { pickVoice() }
-        slider(o, t("Volume %", "مستوى الصوت %"), "ttsVolume", 20, 100, 100)
-        toggle(o, t("Start with her voice off every time (privacy)", "تبدأ وصوتها مقفل كل مرة (للخصوصية)"), "startSilent", false)
-        slider(o, t("Speed %", "السرعة %"), "ttsSpeed", 60, 160, 100)
-        slider(o, t("Pitch %", "حدّة الصوت %"), "ttsPitch", 60, 160, 100)
-        btn(o, t("TEST THE VOICE", "جرّب الصوت"), true) { testVoice() }
+        btn(c, t("PRESETS: GROQ, OPENAI, KOKORO SERVER", "إعدادات جاهزة: Groq وOpenAI وسيرفر Kokoro")) {
+            val names = listOf(t("Groq Orpheus (free, English + Saudi Arabic)", "Groq Orpheus (مجاني، إنجليزي وعربي سعودي)"), "OpenAI tts-1", t("Kokoro server on this phone or PC", "سيرفر Kokoro على الجوال أو الكمبيوتر"))
+            pickDialog(t("Pick a preset", "اختر إعداداً جاهزاً"), names) { n ->
+                prefs.putI("ttsEngine", Voice.OPENAI)
+                when (n) {
+                    0 -> { voiceUrlE?.setText("https://api.groq.com/openai/v1"); voiceModelE?.setText(if (L.ar) "canopylabs/orpheus-arabic-saudi" else "canopylabs/orpheus-v1-english"); voiceNameE?.setText(Voice.groqVoices[0]) }
+                    1 -> { voiceUrlE?.setText("https://api.openai.com/v1"); voiceModelE?.setText("tts-1"); voiceNameE?.setText("nova") }
+                    else -> { voiceUrlE?.setText("http://127.0.0.1:8880/v1"); voiceModelE?.setText("kokoro"); voiceNameE?.setText("af_heart") }
+                }
+                toast(if (n == 0) t("Groq asks you to accept the Orpheus terms once in its console before it works.", "Groq يطلب منك الموافقة على شروط Orpheus مرة وحدة من الكونسول قبل ما يشتغل.") else t("Done. Press Test the voice.", "تم. اضغط «جرّب الصوت»."))
+                showTab(2)
+            }
+        }
+        btn(c, t("PICK A CLOUD VOICE", "اختر صوتاً سحابياً")) { pickVoice() }
 
         val e = section(t("HER EARS", "أذنها"))
         note(e, t("The phone's recogniser is free but weaker for Arabic dialects. \"Her own ears\" use Whisper (Groq is free and fast).",
@@ -814,10 +1080,68 @@ class MainActivity : Activity() {
         body(look, t("Theme", "الثيم"), 14f, muted)
         spin(look, Themes.names, prefs.getI("theme", 0)) { prefs.putI("theme", it); prefs.putS("modAccent", ""); showTab(3) }
         toggle(look, t("She dances when music is playing", "ترقص لما تشتغل موسيقى"), "dance", true)
+        toggle(look, t("Mini music player (needs notification access)", "مشغّل موسيقى صغير (يحتاج صلاحية الإشعارات)"), "miniPlayer", true)
+        toggle(look, t("Glitch-in intro when she wakes up", "مقدمة قلتش لما تصحى"), "intro", true)
         toggle(look, t("A small blip sound when she speaks", "صوت تنبيه صغير لما تتكلم"), "chimes", false)
         toggle(look, t("Low-power mode: fewer frames, no floating, no glow", "وضع توفير الطاقة: إطارات أقل وبدون طفو وبدون هالة"), "lowPower", false)
 
-        val cols = section(t("HER COLORS", "ألوانها"))
+        val sets = section(t("COLOR SETS", "مجموعات الألوان"))
+        note(sets, t("One tap recolors her, like the desktop's colour mods. It applies the next time you start her.", "ضغطة وحدة تلوّنها، مثل مودات الألوان في الويندوز. تتطبّق عند التشغيل الجاي."))
+        class CSet(val en: String, val ar: String, val hair: String, val accent: String, val eyes: String, val edges: String, val body: String)
+        val colorSets = listOf(
+            CSet("BUBBLEGUM", "علكة", "#FF7AC6", "#7DF9FF", "#B14CFF", "#FFFFFF", "#3A1B3F"),
+            CSet("CYBER CYAN", "سايبر سيان", "#00D8FF", "#FF2BD6", "#FFD000", "#7A5CFF", ""),
+            CSet("ROYAL", "ملكي", "#8A2BE2", "#FFD54A", "#00C2FF", "#FF4FA3", "#120A26"),
+            CSet("TOXIC", "سام", "#7CFF00", "#FF2E63", "#00E5FF", "#00A86B", "#0B1F12"),
+            CSet("NIGHT CITY", "الأصلي", "", "", "", "", "")
+        )
+        for (c in colorSets) {
+            val edgeC = if (c.hair.isEmpty()) Night.hot else Color.parseColor(c.hair)
+            val card = LinearLayout(this)
+            card.orientation = LinearLayout.VERTICAL
+            card.setPadding(dp(16), dp(14), dp(16), dp(16))
+            card.background = CardDrawable(resources.displayMetrics.density, edgeC)
+            card.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(50, 255, 255, 255)), null, null)
+            val nm = TextView(this)
+            nm.text = t(c.en, c.ar)
+            nm.typeface = if (L.ar) tfBold else tfTitle
+            nm.textSize = 24f
+            nm.setTextColor(edgeC)
+            card.addView(nm)
+            val ul = View(this)
+            ul.setBackgroundColor(edgeC)
+            card.addView(ul, LinearLayout.LayoutParams(dp(26), dp(3)).apply { topMargin = dp(4); bottomMargin = dp(8) })
+            if (c.hair.isEmpty()) {
+                val d = TextView(this); d.text = t("Her original colours.", "ألوانها الأصلية."); d.typeface = tfBody; d.textSize = 13f; d.setTextColor(muted); card.addView(d)
+            } else {
+                val rows = listOf(Triple(t("HAIR", "الشعر"), c.hair, 0), Triple(t("ACCENTS", "التفاصيل"), c.accent, 0), Triple(t("EYES", "العيون"), c.eyes, 0), Triple(t("EDGES", "الحواف"), c.edges, 0), Triple(t("BODY", "الجسم"), c.body, 0))
+                for (r in rows) {
+                    val line = LinearLayout(this); line.orientation = LinearLayout.HORIZONTAL; line.gravity = Gravity.CENTER_VERTICAL
+                    val sw = View(this)
+                    sw.setBackgroundColor(if (r.second.isEmpty()) Night.ground else Color.parseColor(r.second))
+                    line.addView(sw, LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginEnd = dp(8) })
+                    val a = TextView(this); a.text = r.first; a.typeface = tfMono; a.textSize = 11f; a.setTextColor(muted)
+                    line.addView(a, LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT))
+                    val b2 = TextView(this); b2.text = if (r.second.isEmpty()) t("usual", "الأصلي") else r.second; b2.typeface = tfMono; b2.textSize = 11f; b2.setTextColor(Night.white)
+                    line.addView(b2)
+                    card.addView(line)
+                }
+            }
+            val tag = TextView(this)
+            tag.text = t("TAP TO USE", "اضغط للتطبيق")
+            tag.typeface = tfMono; tag.textSize = 10f; tag.setTextColor(muted)
+            tag.setPadding(0, dp(8), 0, 0)
+            card.addView(tag)
+            card.setOnClickListener {
+                prefs.putS("col_hair", c.hair); prefs.putS("col_accent", c.accent); prefs.putS("col_eyes", c.eyes)
+                prefs.putS("col_edges", c.edges); prefs.putS("col_body", c.body)
+                toast(t("${c.en} is set. Restart her to see it.", "${c.ar} انضبطت. أعد تشغيلها عشان تشوفها."))
+                showTab(3)
+            }
+            sets.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
+        }
+
+        val cols = section(t("HER COLORS", "ألوانها"), false)
         note(cols, t("Recolor her like the desktop version. It applies the next time you start her.", "لوّنها مثل نسخة الويندوز. يتطبّق عند التشغيل الجاي."))
         val slotNames = listOf(t("Hair", "الشعر"), t("Accents", "التفاصيل"), t("Eyes", "العيون"), t("Edges", "الحواف"), t("Body", "الجسم"))
         for ((i, slot) in Recolor.slots.withIndex()) {
@@ -840,7 +1164,7 @@ class MainActivity : Activity() {
             showTab(3)
         }
 
-        val tone = section(t("HER TONE", "أسلوبها"))
+        val tone = section(t("HER TONE", "أسلوبها"), false)
         radios(tone, listOf(
             Opt("CAPRI", t("Her usual teasing chaos", "أسلوبها المعتاد: شقاوة وتحدّي")),
             Opt(t("CALM", "هادئ"), t("Gentle and supportive", "لطيفة وداعمة")),
@@ -899,7 +1223,7 @@ class MainActivity : Activity() {
         btn(a, t("1. OPEN APP INFO", "١. معلومات التطبيق")) { startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }
         btn(a, t("2. OPEN ACCESSIBILITY SETTINGS", "٢. إعدادات إمكانية الوصول"), true) { startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS)) }
 
-        val tools = section(t("TOOLS SHE MAY USE", "الأدوات المسموحة لها"))
+        val tools = section(t("TOOLS SHE MAY USE", "الأدوات المسموحة لها"), false)
         note(tools, t("Switch off anything you don't want her touching, on top of the Security level.", "أطفئ أي شي ما تبيها تستخدمه، فوق مستوى الأمان."))
         toggle(tools, t("Open apps and links", "فتح التطبيقات والروابط"), "tool_apps", true)
         toggle(tools, t("Look at my screen", "رؤية شاشتي"), "tool_screen", true)
@@ -931,7 +1255,7 @@ class MainActivity : Activity() {
         toggle(n, t("Include a short bit of the message text", "تضيف جزءاً قصيراً من نص الرسالة"), "readNotifContent", false)
         btn(n, t("OPEN NOTIFICATION ACCESS", "افتح صلاحية الإشعارات")) { startActivity(Intent(Settings.ACTION_NOTIFICATION_LISTENER_SETTINGS)) }
 
-        val x = section(t("EXTRAS", "إضافات"))
+        val x = section(t("EXTRAS", "إضافات"), false)
         note(x, t("Select any text in any app and choose \"Ask Capri\" (or use Share). Add the Capri tile to your quick settings to start and stop her. Hold her to talk, tap her to type, tap the menu button for games, dictation and pranks.",
             "حدّد أي نص في أي تطبيق واختر «Ask Capri» (أو من قائمة المشاركة) عشان تشرحه أو تترجمه. أضف مربع Capri للإعدادات السريعة عشان تشغلها وتوقفها. اضغط عليها مطوّلاً للكلام، واضغط عليها للكتابة، وزر القائمة فيه الألعاب والإملاء والمقالب. وامسح على راسها وشوف وش يصير."))
     }
@@ -964,7 +1288,7 @@ class MainActivity : Activity() {
             showTab(5)
         }
 
-        val d = section(t("DATA", "البيانات"))
+        val d = section(t("DATA", "البيانات"), false)
         btn(d, t("COPY MY SETTINGS (no keys)", "انسخ إعداداتي (بدون المفاتيح)")) { clip(prefs.dump(false)); toast(t("Copied.", "تم النسخ.")) }
         btn(d, t("COPY MY SETTINGS WITH KEYS", "انسخ إعداداتي مع المفاتيح")) { clip(prefs.dump(true)); toast(t("Copied. Keep it private.", "تم النسخ. لا تشاركه مع أحد.")) }
         btn(d, t("PASTE SETTINGS FROM CLIPBOARD", "الصق الإعدادات من الحافظة")) {
@@ -978,7 +1302,7 @@ class MainActivity : Activity() {
         btn(d, t("CLEAR OUR CHAT HISTORY", "امسح سجل المحادثة")) { prefs.putS("history", "[]"); toast(t("Cleared. Restart her to apply.", "انمسح. أعد تشغيلها عشان يتطبّق.")) }
         btn(d, t("RESET THE BOND TO ZERO", "صفّر العلاقة")) { prefs.putI("charm", 0); refresh() }
 
-        val dg = section(t("SOMETHING WRONG?", "في مشكلة؟"))
+        val dg = section(t("SOMETHING WRONG?", "في مشكلة؟"), false)
         note(dg, t("Copy a setup report (no keys, no chats) and paste it to whoever is helping you.", "انسخ تقرير الإعدادات (بدون مفاتيح وبدون محادثات) والصقه لمن يساعدك."))
         btn(dg, t("COPY SETUP REPORT", "انسخ تقرير الإعدادات"), true) { clip(Diag.report(this, prefs)); toast(t("Copied.", "تم النسخ.")) }
 
@@ -997,7 +1321,7 @@ class MainActivity : Activity() {
                 val info = Updater.check(this)
                 runOnUiThread {
                     if (info == null) toast(t("You have the latest version.", "عندك آخر نسخة."))
-                    else android.app.AlertDialog.Builder(this).setTitle(t("New version ", "نسخة جديدة ") + info.version)
+                    else android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("New version ", "نسخة جديدة ") + info.version)
                         .setMessage(t("Download it and install over the old one. Your settings stay.", "نزّلها وثبّتها فوق القديمة. إعداداتك تبقى."))
                         .setPositiveButton(t("Download", "تنزيل")) { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apk ?: info.page))) }
                         .setNegativeButton(t("Later", "لاحقاً"), null).show()
@@ -1005,11 +1329,11 @@ class MainActivity : Activity() {
             }
         }
 
-        val news = section(t("WHAT'S NEW", "الجديد"))
+        val news = section(t("WHAT'S NEW", "الجديد"), false)
         note(news, t("\u2022 Fixed the crash on start\n\u2022 She can watch your screen and tell you when something finishes (\"tell me when the download is done\")\n\u2022 She can circle things on your screen, and spawn glitchy clones\n\u2022 Share pictures, PDFs and text files to her\n\u2022 Error reports you can copy, and an update checker\n\u2022 Dances, pats, doomscroll guard, no-AI mode, setup report",
             "\u2022 إصلاح الكراش عند التشغيل\n\u2022 تراقب شاشتك وتقول لك إذا خلص شي (\"قولي إذا خلص التنزيل\")\n\u2022 تأشّر على أشياء في الشاشة، وتسوّي نسخ مشوّشة منها\n\u2022 شارك لها صور وPDF وملفات نصية\n\u2022 تقارير أخطاء تنسخها، ومدقّق تحديثات\n\u2022 رقص، مسح على الراس، حارس التصفّح، وضع بدون ذكاء اصطناعي، تقرير الإعدادات"))
 
-        val c = section(t("CREDITS", "الشكر"))
+        val c = section(t("CREDITS", "الشكر"), false)
         val tv = body(c, "Unofficial fan project, free for non-commercial use only. Based on Capri by Lachy: https://github.com/lachydotmcg/capri-desktop " +
             "(PolyForm Noncommercial 1.0.0). Her art, animations and the Mainframe look are from the desktop app. Fonts: Share Tech Mono, Barlow and Tajawal (SIL OFL). " +
             "Not approved or endorsed by CD PROJEKT RED, the anime's rights holders or its voice actors.", 13f, muted)
@@ -1037,7 +1361,12 @@ class MainActivity : Activity() {
         page.postDelayed({ refresh() }, 800)
     }
 
-    private fun refresh() { for (r in refreshers) r() }
+    private fun refresh() {
+        for (r in refreshers) r()
+        val on = CapriService.running
+        statusDot.text = if (on) "\u25CF " + t("AWAKE", "صاحية") else "\u25CB " + t("ASLEEP", "نايمة")
+        statusDot.setTextColor(if (on) Night.cyan else muted)
+    }
 
     private var autoRebindTried = false
 
@@ -1052,7 +1381,7 @@ class MainActivity : Activity() {
         val crash = CrashLog.unseen(this)
         if (crash != null) {
             CrashLog.markSeen(this)
-            android.app.AlertDialog.Builder(this)
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert)
                 .setTitle(t("Capri hit a problem last time", "كابري واجه مشكلة المرة الماضية"))
                 .setMessage(crash.take(1500))
                 .setPositiveButton(t("Copy", "نسخ")) { _, _ -> clip(crash); toast(t("Copied.", "تم النسخ.")) }

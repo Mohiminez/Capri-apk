@@ -90,3 +90,19 @@ GitHub → repo → *Settings → Secrets and variables → Actions* → add `CA
 Based on **Capri** by Lachy — <https://github.com/lachydotmcg/capri-desktop>. Art and animations are by Capri's artist. Licensed **PolyForm Noncommercial 1.0.0** (see `LICENSE.md`): do not sell it or use it in a paid product. Fonts: Share Tech Mono, Barlow, Tajawal (SIL OFL). Not approved or endorsed by CD PROJEKT RED, the anime's rights holders or its voice actors.
 
 `tools/prepare_assets.py` regenerates sprite sheets and persona text from a checkout of the desktop repo.
+
+
+## Troubleshooting: "no such app" / scrolling videos does nothing
+
+Android 11+ hides installed apps. Capri now asks for the installed-apps permission and also tries well-known package names, but on Xiaomi/POCO/HyperOS, Oppo and some Samsung phones you may have to allow it once: Settings > Apps > Capri > Permissions > Installed apps (or "Get installed apps") > Allow. The report in the app shows how many apps Capri can see.
+
+
+## New in this update
+
+- **More games with her:** Connect four, tic-tac-toe (she never loses on Hard) and rock-paper-scissors, next to chess. Say "play connect four", «نلعب اكس او», «العب حجر ورقة مقص».
+- **Works with no AI at all:** «كم الساعة»، «اي يوم اليوم» (with the Hijri date), «كم البطارية», «شغل الكشاف», «ارفع الصوت», «مؤقت 5 دقايق», «صحيني الساعة 6», and the English versions.
+- **Reminders that ring** (see above), a tidier Voice tab with a one-button offline setup, voice layers, and a fix for "no such app".
+
+- **New look:** a bottom navigation bar, sections you can fold (tap a title; advanced ones start folded), tap-tiles for chess / games / test voice / test hands, an AWAKE / ASLEEP badge, and a setup checklist that also checks notifications and whether she can see your apps.
+- **Mainframe look:** flat sections with the red rule and yellow `TITLE >` labels, pill buttons with cyan edges, a neon frame around every screen, and colour-set cards (Bubblegum, Cyber Cyan, Royal, Toxic) like the desktop mod cards.
+- **Mini music player** like the desktop's (title, artist, progress, prev / play / next) while music plays; needs notification access. A **glitch-in intro** when she wakes up. A **search box** (the magnifier at the top) that finds any setting and jumps to it. Both can be switched off in Behavior.
