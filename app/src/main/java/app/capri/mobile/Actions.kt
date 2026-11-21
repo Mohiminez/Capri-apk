@@ -282,7 +282,7 @@ object QuickAsks {
         if (Regex("^(resume|play|unpause)$").matches(t)) return "Playing. [[media:play]]"
         if (Regex("^(next|skip|next song|skip song|skip this|next track)$").matches(t)) return "Skipping. [[media:next]]"
         if (Regex("^(previous|prev|previous song|last song|previous track)$").matches(t)) return "Going back. [[media:previous]]"
-        Regex("^play (.+)$").find(t)?.let { return "On it. [[music:${it.groupValues[1]}]]" }
+        Regex("^play (?!(?:a |some )?(?:game of )?chess(?: with me)?$)(.+)$").find(t)?.let { return "On it. [[music:${it.groupValues[1]}]]" }
         Regex("^(?:set )?(?:a )?timer (?:for )?(\\d+) ?(seconds?|secs?|minutes?|mins?|hours?)$").find(t)?.let {
             val n = it.groupValues[1].toInt()
             val unit = it.groupValues[2]
