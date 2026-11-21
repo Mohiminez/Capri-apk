@@ -108,6 +108,8 @@ class ChessActivity : Activity() {
     private var level = 2
     private var thinking = false
     private var over = false
+    private lateinit var talk: ChessTalk
+    private var spoken = false
     private val ui = android.os.Handler(android.os.Looper.getMainLooper())
 
     private fun dp(v: Int) = (v * resources.displayMetrics.density).toInt()
@@ -118,6 +120,9 @@ class ChessActivity : Activity() {
         prefs = Prefs(this)
         L.init(prefs)
         level = prefs.getI("chessLevel", 2).clampTo(1, 3)
+        talk = ChessTalk(L.ar)
+        talk.enabled = ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet()
+        spoken = prefs.getB("chessVoice", false)
         val accent = Themes.accent(prefs)
 
         val root = LinearLayout(this)
@@ -175,8 +180,14 @@ class ChessActivity : Activity() {
         }
         side.text = t("YOU: WHITE", "أنت: الأبيض")
         row2.addView(side, weight())
+        val row3 = LinearLayout(this); row3.orientation = LinearLayout.HORIZONTAL
+        val vb = button("") { spoken = !spoken; prefs.putB("chessVoice", spoken); (it as TextView).text = voiceLabel() }
+        vb.text = voiceLabel()
+        row3.addView(vb, weight())
+        row3.addView(button(t("COMMENTS", "التعليقات")) { talkDialog() }, weight())
         root.addView(row1)
         root.addView(row2)
+        root.addView(row3)
         setContentView(neonWrap(this, root))
 
         sprite.play("idle")
@@ -206,6 +217,29 @@ class ChessActivity : Activity() {
 
     private fun say(en: String, ar: String) { says.text = "CAPRI: " + t(en, ar) }
 
+    private fun voiceLabel() = t("VOICE: ", "الصوت: ") + if (spoken) t("ON", "شغال") else t("OFF", "مطفي")
+
+    // Shows her remark and, if you switched her voice on, has the pet speak it too.
+    private fun remark(line: String?) {
+        if (line.isNullOrBlank()) return
+        says.text = "CAPRI: $line"
+        if (spoken) ChessBridge.speaker?.invoke(line)
+    }
+
+    private fun talkDialog() {
+        val names = mapOf("capture" to t("Captures", "الأكل"), "check" to t("Check", "كش"), "castle" to t("Castling", "التبييت"),
+            "promotion" to t("Promotion", "الترقية"), "mate" to t("Checkmate", "كش مات"), "draw" to t("Draw", "التعادل"),
+            "start" to t("Game start", "بداية اللعبة"), "aside" to t("Small remarks", "ملاحظات عامة"))
+        val keys = ChessEvents.all
+        val on = BooleanArray(keys.size) { talk.enabled.contains(keys[it]) }
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("She comments on", "تعلّق على"))
+            .setMultiChoiceItems(keys.map { names[it] ?: it }.toTypedArray(), on) { _, i, c -> on[i] = c }
+            .setPositiveButton(t("OK", "تمام")) { _, _ ->
+                keys.forEachIndexed { i, k -> prefs.putB("chessTalk_$k", on[i]) }
+                talk.enabled = keys.filterIndexed { i, _ -> on[i] }.toSet()
+            }.show()
+    }
+
     private fun newGame() {
         pos = Chess.start()
         history.clear(); moves.clear()
@@ -215,8 +249,9 @@ class ChessActivity : Activity() {
         board.last = null
         clearSel()
         refresh()
-        if (Math.random() < 0.5) say("Let's play. Don't go easy on me.", "يلا نلعب. لا تهوّن علي.")
-        else say("White moves first. Show me what you've got.", "الأبيض يبدأ. وريني شطارتك.")
+        talk.reset()
+        remark(talk.start(playerWhite) ?: "")
+        if (says.text.isEmpty() || says.text == "CAPRI: ") says.text = "CAPRI: ..."
         if (!playerWhite) aiMove()
     }
 
@@ -246,16 +281,14 @@ class ChessActivity : Activity() {
     }
 
     private fun play(m: Move) {
-        val captured = pos.b[m.to] != 0 || (abs(pos.b[m.from]) == 1 && m.to == pos.ep)
+        val before = pos
         history.add(pos); moves.add(m)
         pos = Chess.make(pos, m)
         board.last = m
         clearSel()
         refresh()
-        if (finished(true)) return
-        if (captured && Math.random() < 0.5) say("Ouch. Fine, you got that one.", "آخ. ماشي، هذي لك.")
-        else if (Chess.inCheck(pos, pos.white)) say("Check? I saw that coming.", "كش؟ كنت متوقعتها.")
-        else if (Math.random() < 0.25) say(listOf("Hmm, interesting.", "Let me think...", "Not bad.").random(), listOf("همم، مثير.", "خلني أفكر...", "مو سيئة.").random())
+        if (finished(true)) { remark(talk.react(before, m, pos, false)); return }
+        remark(talk.react(before, m, pos, false))
         aiMove()
     }
 
@@ -271,14 +304,13 @@ class ChessActivity : Activity() {
                 sprite.glitchFx = false
                 thinking = false
                 if (isFinishing || m == null || pos !== snapshot) return@postDelayed
-                val cap = snapshot.b[m.to] != 0
                 history.add(pos); moves.add(m)
                 pos = Chess.make(pos, m)
                 board.last = m
                 refresh()
-                if (finished(false)) return@postDelayed
-                if (cap) say("Mine now.", "صارت لي.")
-                else if (Chess.inCheck(pos, pos.white)) say("Check. Watch your king.", "كش. دير بالك على الملك.")
+                val line = talk.react(snapshot, m, pos, true)
+                if (finished(false)) { remark(line); return@postDelayed }
+                remark(line)
             }, 350)
         }
     }
@@ -287,12 +319,8 @@ class ChessActivity : Activity() {
         val st = Chess.status(pos)
         if (st == "playing") return false
         over = true
-        when (st) {
-            "mate" -> if (playerJustMoved) { say("Checkmate. You got me... good game.", "كش مات. غلبتني... لعبة حلوة."); sprite.play("glitch", false) { sprite.play("idle") } }
-                      else { say("Checkmate. Better luck next time, choom.", "كش مات. حظ أوفر المرة الجاية."); sprite.play("grin", false) { sprite.play("idle") } }
-            "stalemate" -> say("Stalemate. A draw, I'll take it.", "تعادل بالجمود. ماشي.")
-            else -> say("Not enough pieces left. A draw.", "ما بقى قطع كافية. تعادل.")
-        }
+        if (st == "mate") sprite.play(if (playerJustMoved) "glitch" else "grin", false) { sprite.play("idle") }
+        if ("mate" !in talk.enabled && st == "mate" || "draw" !in talk.enabled && st != "mate") says.text = "CAPRI: " + (if (st == "mate") t("Checkmate.", "كش مات.") else t("A draw.", "تعادل."))
         refresh()
         return true
     }
@@ -309,6 +337,26 @@ class ChessActivity : Activity() {
         say("Okay, take it back.", "ماشي، رجّعها.")
     }
 
+    // Pieces each side has lost, as small glyphs, plus the material lead (pawn = 1).
+    private fun capturedLine(): String {
+        val start = mapOf(1 to 8, 2 to 2, 3 to 2, 4 to 2, 5 to 1)
+        val worth = mapOf(1 to 1, 2 to 3, 3 to 3, 4 to 5, 5 to 9)
+        fun lost(white: Boolean): String {
+            val sb = StringBuilder()
+            for (code in intArrayOf(5, 4, 3, 2, 1)) {
+                val have = pos.b.count { it == (if (white) code else -code) }
+                repeat(maxOf(0, start.getValue(code) - have)) { sb.append('\u265A' + when (code) { 5 -> 1; 4 -> 2; 3 -> 3; 2 -> 4; else -> 5 }) }
+            }
+            return sb.toString()
+        }
+        var lead = 0
+        for (v in pos.b) if (v != 0 && kotlin.math.abs(v) != 6) lead += (if (v > 0) 1 else -1) * worth.getValue(kotlin.math.abs(v))
+        if (!playerWhite) lead = -lead
+        val mine = lost(!playerWhite); val hers = lost(playerWhite)
+        if (mine.isEmpty() && hers.isEmpty()) return ""
+        return "\n$mine  |  $hers  " + (if (lead > 0) "+$lead" else if (lead < 0) "$lead" else "=")
+    }
+
     private fun refresh() {
         board.pos = pos
         board.invalidate()
@@ -318,7 +366,7 @@ class ChessActivity : Activity() {
             Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
             pos.white == playerWhite -> t("Your move", "دورك")
             else -> t("Her move", "دورها")
-        }
+        } + capturedLine()
     }
 
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }

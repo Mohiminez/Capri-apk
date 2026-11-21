@@ -17,6 +17,7 @@ import android.view.View
 import org.json.JSONObject
 import android.graphics.Typeface
 import kotlin.math.sin
+import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.random.Random
 
@@ -50,7 +51,7 @@ object SpriteBank {
                 val opts = BitmapFactory.Options().apply { inMutable = true }
                 val custom = CustomLook.active(ctx)
                 val bmp = (if (custom) CustomLook.file(ctx, name)?.inputStream()?.use { BitmapFactory.decodeStream(it, null, opts) }
-                    else ctx.assets.open("sprites/$name.png").use { BitmapFactory.decodeStream(it, null, opts) }) ?: return null
+                    else ctx.assets.open("sprites/$name.webp").use { BitmapFactory.decodeStream(it, null, opts) }) ?: return null
                 if (!custom) Recolor.apply(prefs, bmp)
                 val c = SpriteClip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), o.optDouble("sx", 0.0).toFloat(), bmp)
                 clips[name] = c
@@ -134,6 +135,29 @@ class SpriteView(ctx: Context) : View(ctx) {
     var glitchFx = false      // RGB split while she thinks or is thrown
     var bob = true            // slow float
     var lowPower = false      // fewer frames per second
+    var shadow = true         // soft shadow on the ground under her
+    private val shadowPaint = Paint(Paint.ANTI_ALIAS_FLAG)
+
+    // Squash and stretch from her feet: a landing, a hop, a surprise.
+    fun squash(strength: Float = 1f) {
+        pivotX = width / 2f; pivotY = height.toFloat()
+        animate().cancel()
+        animate().scaleX(1f + 0.10f * strength).scaleY(1f - 0.12f * strength).setDuration(70).withEndAction {
+            animate().scaleX(1f).scaleY(1f).setDuration(180).start()
+        }.start()
+    }
+
+    // A little jump up and back.
+    fun hop() {
+        animate().cancel()
+        pivotX = width / 2f; pivotY = height.toFloat()
+        animate().translationY(-height * 0.07f).scaleY(1.05f).setDuration(120).withEndAction {
+            animate().translationY(0f).scaleY(1f).setDuration(160).withEndAction { squash(0.6f) }.start()
+        }.start()
+    }
+
+    // Leans into her walk (degrees; the service keeps it smooth).
+    fun lean(deg: Float) { if (abs(rotation - deg) > 0.2f) { pivotX = width / 2f; pivotY = height.toFloat(); rotation = deg } }
 
     init {
         ghostA.colorFilter = ColorMatrixColorFilter(ColorMatrix(floatArrayOf(
@@ -180,6 +204,10 @@ class SpriteView(ctx: Context) : View(ctx) {
             "heart" -> for (i in 0 until 7) puffs.add(Puff(now + i * 170L, "\u2665", if (i % 2 == 0) pink else red, rnd.nextFloat() * 2 - 1, rnd.nextFloat() * 6, 1800, 0.5f))
             "sleep" -> for (i in 0 until 3) puffs.add(Puff(now + i * 600L, if (i == 2) "Z" else "z", Color.parseColor("#5EF0F6"), 0.5f + i * 0.15f, i.toFloat(), 2200, 0.35f))
             "glitch" -> glitchUntil = now + 900
+            "star" -> for (i in 0 until 6) puffs.add(Puff(now + i * 140L, if (i % 2 == 0) "\u2726" else "\u2605", Color.parseColor("#FCEE0A"), rnd.nextFloat() * 2 - 1, rnd.nextFloat() * 6, 1500, 0.5f))
+            "surprise" -> { puffs.add(Puff(now, "!", Color.parseColor("#FCEE0A"), 0.1f, 1f, 1100, 0.25f)); puffs.add(Puff(now + 120, "!", Color.parseColor("#E84246"), -0.2f, 2f, 1100, 0.25f)) }
+            "question" -> puffs.add(Puff(now, "?", Color.parseColor("#5EF0F6"), 0.1f, 1f, 1500, 0.3f))
+            "angry" -> for (i in 0 until 3) puffs.add(Puff(now + i * 150L, "\u2716", Color.parseColor("#E84246"), rnd.nextFloat() * 1.6f - 0.8f, rnd.nextFloat() * 6, 1200, 0.3f))
             else -> for (i in 0 until 5) puffs.add(Puff(now + i * 200L, listOf("\u266A", "\u266B", "\u266C").random(), pink, rnd.nextFloat() * 2 - 1, rnd.nextFloat() * 6, 1500, 0.45f))
         }
         invalidate()
@@ -245,6 +273,16 @@ class SpriteView(ctx: Context) : View(ctx) {
             canvas.drawCircle(width / 2f, height - 384 * k * 0.55f, r, glowPaint)
         }
 
+        // soft ground shadow: smaller and fainter while she floats up
+        if (shadow && current != "laydown_sleep") {
+            val lift = (-floatY / (384 * k * 0.012f + 0.001f)).coerceIn(-1f, 1f)
+            val sw = 384 * k * (0.20f - 0.02f * lift)
+            shadowPaint.color = Color.argb((70 - 18 * lift).toInt().coerceIn(30, 90), 0, 0, 0)
+            canvas.drawOval(RectF(width / 2f - sw, height - 384 * k * 0.03f, width / 2f + sw, height - 384 * k * 0.005f), shadowPaint)
+        }
+        // breathing: a very slight rise and fall of her chest, anchored at her feet
+        val breathe = if (bob && (current == "idle" || current == "idle_blink" || current == "idle_mouth")) 1f + 0.008f * sin(now / 1100.0).toFloat() else 1f
+        canvas.save(); canvas.scale(1f, breathe, width / 2f, height.toFloat())
         if (flip) { canvas.save(); canvas.scale(-1f, 1f, width / 2f, height / 2f) }
         if (glitchFx || now < glitchUntil) {
             val step = (now / 70) % 9
@@ -267,6 +305,7 @@ class SpriteView(ctx: Context) : View(ctx) {
             }
         }
         if (flip) canvas.restore()
+        canvas.restore()
 
         val rp = ripple
         var rippling = false

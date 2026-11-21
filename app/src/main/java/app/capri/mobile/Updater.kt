@@ -41,7 +41,11 @@ object Updater {
             val assets = j.optJSONArray("assets")
             if (assets != null) for (i in 0 until assets.length()) {
                 val a = assets.getJSONObject(i)
-                if (a.optString("name").endsWith(".apk")) { apk = a.optString("browser_download_url"); break }
+                val nm = a.optString("name")
+                if (!nm.endsWith(".apk")) continue
+                // two files per release: arm64 (almost every phone) and arm32 (old phones); take the one that fits this phone
+                val want64 = android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
+                if (apk == null || (want64 && nm.contains("arm64")) || (!want64 && nm.contains("arm32"))) apk = a.optString("browser_download_url")
             }
             Info(tag.trimStart('v'), j.optString("html_url", "https://github.com/$REPO/releases"), apk)
         } catch (e: Exception) { null }

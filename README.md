@@ -21,7 +21,7 @@
 
 ## Install in 1 minute / التثبيت بدقيقة
 
-1. Open **[Releases](../../releases/latest)** and download `Capri-x.y.z.apk`. / افتح صفحة **Releases** ونزّل ملف الـAPK.
+1. Open **[Releases](../../releases/latest)** and download `Capri-x.y.z-arm64.apk` (almost every phone; if it says it can't install, use `-arm32`). / افتح صفحة **Releases** ونزّل ملف الـAPK.
 2. Install it (allow "install unknown apps" if asked). / ثبّته (واسمح بتثبيت التطبيقات المجهولة إذا طلب).
 3. Open Capri and follow the numbered steps. / افتح كابري واتبع الخطوات المرقمة.
 
@@ -106,3 +106,17 @@ Android 11+ hides installed apps. Capri now asks for the installed-apps permissi
 - **New look:** a bottom navigation bar, sections you can fold (tap a title; advanced ones start folded), tap-tiles for chess / games / test voice / test hands, an AWAKE / ASLEEP badge, and a setup checklist that also checks notifications and whether she can see your apps.
 - **Mainframe look:** flat sections with the red rule and yellow `TITLE >` labels, pill buttons with cyan edges, a neon frame around every screen, and colour-set cards (Bubblegum, Cyber Cyan, Royal, Toxic) like the desktop mod cards.
 - **Mini music player** like the desktop's (title, artist, progress, prev / play / next) while music plays; needs notification access. A **glitch-in intro** when she wakes up. A **search box** (the magnifier at the top) that finds any setting and jumps to it. Both can be switched off in Behavior.
+- **Mods, rebuilt:** a gallery of mod cards (built in: Bubblegum, Cyber Cyan, Royal, Toxic, Robo Capri, Gulf Gremlin, Study Buddy, Business Mode) plus your own `.json` mods. One tap turns a mod on, one tap puts your old settings back. Colours, a few personality lines, nickname, tone and voice effects are all supported, and mods are data only (see [docs/MODS.md](docs/MODS.md)). A **WHO SHE IS** card describes her and shows your bond with her.
+- **Smaller download:** the release now has `-arm64` and `-arm32` APKs (instead of one huge file with every CPU type), and her animation images are compressed with no quality loss.
+
+## Chess commentary (new)
+Capri now comments while you play chess, like CapriCore's chess skill: game start, captures, check, castling,
+promotion, checkmate, draws, and short remarks about the opening / queen / endgame. Lines never repeat until the pool is used.
+On the chess screen: **COMMENTS** picks which events she reacts to, **VOICE** makes the pet speak them aloud (needs the pet running).
+Code: `ChessReactions.kt` (pure logic, tested in `ChessReactionsTest`).
+
+## Pet motion polish (new)
+Soft ground shadow, slow breathing, squash-and-stretch on landings and pets, a lean while she walks, a "!" when you pick her up,
+new emotes (star / surprise / question / angry) and a Sparkle item in her menu. Chess shows captured pieces and the material lead.
+
+Her AI brain can now float reactions (heart, star, surprise, question, angry) with the [[emote:x]] tag.

@@ -211,6 +211,7 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
+        ChessBridge.speaker = null
         try { miniPlayer.hide() } catch (e: Throwable) { }
         CapriAccess.onForeground = null
         CapriAccess.onScrolled = null
@@ -348,6 +349,7 @@ class CapriService : Service(), Actions.Hooks {
             { line -> h.post { say(line, false) } },
             { line -> h.post { busy = false; say(line); settle() } })
         ReminderReceiver.speaker = { t -> h.post { say(t) } }
+        ChessBridge.speaker = { t -> h.post { say(t) } }
         CapriAccess.onForeground = { p -> h.post { foregroundChanged(p) } }
         CapriAccess.onScrolled = { p -> h.post { scrolled(p) } }
         notifier = { line -> h.post { if (!quiet && !hidden && !busy) say(line) } }
@@ -631,11 +633,12 @@ class CapriService : Service(), Actions.Hooks {
             if (fy < dp(24).toFloat()) { fy = dp(24).toFloat(); vy = -vy * 0.5f }
             if (fy > floor) {
                 fy = floor
+                if (vy > 500f * d) s.post { s.squash(minOf(1.4f, vy / (1500f * d))) }
                 vy = -vy * 0.42f
                 vx *= 0.72f
                 if (abs(vy) < 300f * d) vy = 0f
             }
-            if (fy >= floor - 1f && vy == 0f && abs(vx) < 40f * d) { mode = 0; settle() }
+            if (fy >= floor - 1f && vy == 0f && abs(vx) < 40f * d) { mode = 0; s.lean(0f); settle() }
         } else if (mode == 2) {
             val dx = walkTx - fx
             val dy = walkTy - fy
@@ -647,10 +650,12 @@ class CapriService : Service(), Actions.Hooks {
             if (dist < sp * dt + 2f) {
                 fx = walkTx; fy = walkTy
                 mode = 0
+                s.lean(0f)
                 settle()
             } else {
                 fx += dx / dist * sp * dt
                 fy += dy / dist * sp * dt
+                s.lean((dx / dist * 5f * (sp / top).coerceAtMost(1f)))
             }
         }
         val nx = fx.toInt()
@@ -794,6 +799,7 @@ class CapriService : Service(), Actions.Hooks {
                         moved = true
                         h.removeCallbacks(longPress)
                         dragging = true
+                        sprite?.emote("surprise")
                         settle()
                     }
                     if (moved) moveTo(startX + ox.toInt(), startY + oy.toInt())
@@ -1355,6 +1361,7 @@ class CapriService : Service(), Actions.Hooks {
         if (now - lastPet < 5000) return
         lastPet = now
         sprite?.emote("heart")
+        sprite?.hop()
         Charm.add(prefs, 1)
         clip("grin", false) { settle() }
         say(petLines.random(), false)
@@ -1815,6 +1822,7 @@ class CapriService : Service(), Actions.Hooks {
             L.t("\uD83D\uDDE3 Conversation mode", "\uD83D\uDDE3 وضع المحادثة الصوتية") to { convoActive = true; startListening() },
             (if (quiet) L.t("\uD83D\uDD0A Unmute", "\uD83D\uDD0A إلغاء الصمت") else L.t("\uD83E\uDD2B Quiet mode", "\uD83E\uDD2B وضع الصمت")) to { toggleQuiet() },
             L.t("\u2764 Heart", "\u2764 قلب") to { emote("heart") },
+            L.t("\u2726 Sparkle", "\u2726 نجوم") to { emote("star"); sprite?.hop() },
             L.t("\uD83D\uDCA4 Zzz", "\uD83D\uDCA4 نوم") to { emote("sleep") },
             L.t("\uD83D\uDC83 Dance (stop with the same)", "\uD83D\uDC83 ارقصي (وقّفيها بنفس الزر)") to { if (danceAsked) emote("stop") else emote("dance") },
             L.t("\uD83D\uDCFA Scroll my videos for me", "\uD83D\uDCFA تصفّحي فيديوهاتي") to { watchAlong(!alongOn) },

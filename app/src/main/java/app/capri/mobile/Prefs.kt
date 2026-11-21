@@ -42,6 +42,9 @@ class Prefs(ctx: Context) {
     fun getL(k: String, d: Long): Long = try { p.getLong(k, d) } catch (e: ClassCastException) { d }
     fun putL(k: String, v: Long) { p.edit().putLong(k, v).apply() }
 
+    fun raw(k: String): Any? = p.all[k]
+    fun remove(k: String) { p.edit().remove(k).apply() }
+
     // Every provider keeps its own key, model and address, so several can be filled in at once.
     val cur: Int get() = getI("provider", 0).coerceIn(0, Providers.all.size - 1)
     fun url(i: Int): String = getS("u$i", Providers.all[i].url).ifBlank { Providers.all[i].url }

@@ -423,7 +423,7 @@ class MainActivity : Activity() {
         p.addView(v)
     }
 
-    private fun btn(p: LinearLayout, s: String, primary: Boolean = false, click: () -> Unit): TextView {
+    private fun btn(p: LinearLayout?, s: String, primary: Boolean = false, click: () -> Unit): TextView {
         val v = TextView(this)
         v.text = s
         v.typeface = tfMono
@@ -441,7 +441,7 @@ class MainActivity : Activity() {
         v.setOnClickListener { click() }
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, dp(5), 0, dp(5))
-        p.addView(v, lp)
+        p?.addView(v, lp)
         return v
     }
 
@@ -1074,7 +1074,123 @@ class MainActivity : Activity() {
 
     // ---- BEHAVIOR ----
 
+    // ---- who she is ----
+
+    private fun chip(p: LinearLayout, text: String, color: Int) {
+        val c = TextView(this)
+        c.text = text; c.typeface = tfMono; c.textSize = 10f; c.setTextColor(color)
+        c.setPadding(dp(8), dp(3), dp(8), dp(3))
+        c.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Color.argb(30, Color.red(color), Color.green(color), Color.blue(color))); setStroke(dp(1), Color.argb(140, Color.red(color), Color.green(color), Color.blue(color))) }
+        p.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), dp(6), dp(3)) })
+    }
+
+    private fun characterCard() {
+        val box = section(t("WHO SHE IS", "من هي"))
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.setPadding(dp(16), dp(14), dp(16), dp(14))
+        card.background = CardDrawable(resources.displayMetrics.density, Themes.accent(prefs))
+        val nm = TextView(this); nm.text = "CAPRI"; nm.typeface = tfTitle; nm.textSize = 30f; nm.letterSpacing = 0.1f; nm.setTextColor(Themes.accent(prefs))
+        card.addView(nm)
+        val sub = TextView(this); sub.text = "PROJECT CAPRICORN  \u00B7  CYBERPUNK: EDGERUNNERS 2"; sub.typeface = tfMono; sub.textSize = 10f; sub.setTextColor(muted)
+        card.addView(sub)
+        val ul = View(this); ul.setBackgroundColor(Themes.accent(prefs))
+        card.addView(ul, LinearLayout.LayoutParams(dp(26), dp(3)).apply { topMargin = dp(6); bottomMargin = dp(8) })
+        val d = TextView(this)
+        d.text = t("A personality construct: dozens of digitized human minds rolled into one. Arasaka built her, King's Crew stole her, Kyoko got her back, and she slipped out. Now she lives on your phone as a small glitchy companion. She teases you, gets bored fast, loves explosions and big plays, hates corpos, and never talks like an assistant.",
+            "كيان شخصية: عشرات العقول البشرية الرقمية في عقل واحد. أراساكا بنتها، وكينغز كرو سرقتها، وكيوكو رجّعتها، وهربت. الحين تعيش في جوالك كرفيقة صغيرة فيها قلتش. تمزح معك وتمل بسرعة وتحب الانفجارات واللقطات الكبيرة، وتكره الشركات، وما تتكلم أبداً مثل المساعد.")
+        d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Color.WHITE); d.setLineSpacing(0f, 1.15f)
+        card.addView(d)
+        val chips = LinearLayout(this); chips.orientation = LinearLayout.HORIZONTAL
+        val chips2 = LinearLayout(this); chips2.orientation = LinearLayout.HORIZONTAL
+        chip(chips, t("PLAYFUL", "مشاكسة"), Night.pink); chip(chips, t("TEASING", "تمزح"), Night.amber); chip(chips, t("LOYAL", "وفية"), Night.cyan)
+        chip(chips2, t("GLITCHY", "قلتش"), Night.sCyan); chip(chips2, t("HATES CORPOS", "تكره الشركات"), Night.hot)
+        card.addView(chips, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { topMargin = dp(10) })
+        card.addView(chips2)
+        val pts = prefs.getI("charm", 0)
+        val bond = TextView(this)
+        bond.text = t("BOND  ", "العلاقة  ") + Charm.label(pts) + "  " + Charm.progress(pts) + "%"
+        bond.typeface = tfMono; bond.textSize = 11f; bond.setTextColor(Night.amber); bond.setPadding(0, dp(10), 0, 0)
+        card.addView(bond)
+        box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(6)) })
+        val tone = listOf(t("Normal", "عادي"), t("Calm and gentle", "هادية ولطيفة"), t("Professional", "رسمية"), t("Wild", "مجنونة"))
+        body(box, t("How she talks to you", "كيف تكلمك"), 14f, muted)
+        spin(box, tone, prefs.getI("tone", 0)) { prefs.putI("tone", it) }
+        edit(box, t("What she calls you (nickname)", "وش تناديك (لقب)"), prefs.getS("nick", "")) { prefs.putS("nick", it.trim().take(30)) }
+        note(box, t("Her full personality text is under More > Her personality. Mods below can add lines to it.", "نص شخصيتها الكامل تحت: المزيد > شخصيتها. المودات تحت تقدر تضيف عليه."))
+    }
+
+    // ---- mods ----
+
+    private fun modCard(box: LinearLayout, m: Mod, isActive: Boolean) {
+        val edgeC = try { Color.parseColor(m.accent.ifEmpty { m.colors["hair"].orEmpty().ifEmpty { "#E84246" } }) } catch (e: Exception) { Night.hot }
+        val card = LinearLayout(this)
+        card.orientation = LinearLayout.VERTICAL
+        card.setPadding(dp(16), dp(14), dp(16), dp(14))
+        card.background = CardDrawable(resources.displayMetrics.density, edgeC)
+        val head = LinearLayout(this); head.orientation = LinearLayout.HORIZONTAL; head.gravity = Gravity.CENTER_VERTICAL
+        val nm = TextView(this); nm.text = m.title(L.ar).let { if (L.ar) it else it.uppercase() }; nm.typeface = if (L.ar) tfBold else tfTitle; nm.textSize = 22f; nm.setTextColor(edgeC)
+        head.addView(nm, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (isActive) { val on = TextView(this); on.text = "\u25CF " + t("ACTIVE", "مفعّل"); on.typeface = tfMono; on.textSize = 11f; on.setTextColor(Night.cyan); head.addView(on) }
+        card.addView(head)
+        val ul = View(this); ul.setBackgroundColor(edgeC)
+        card.addView(ul, LinearLayout.LayoutParams(dp(26), dp(3)).apply { topMargin = dp(4); bottomMargin = dp(6) })
+        val who = TextView(this)
+        who.text = (if (m.builtin) t("BUILT IN", "جاهز") else t("BY ", "من ") + m.author.ifEmpty { "?" }) + "  \u00B7  " + t("SETTINGS MOD", "مود إعدادات")
+        who.typeface = tfMono; who.textSize = 10f; who.setTextColor(muted)
+        card.addView(who)
+        if (m.about(L.ar).isNotEmpty()) {
+            val d = TextView(this); d.text = m.about(L.ar); d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Color.WHITE); d.setPadding(0, dp(6), 0, dp(4))
+            card.addView(d)
+        }
+        if (m.colors.isNotEmpty() || m.accent.isNotEmpty()) {
+            val sw = LinearLayout(this); sw.orientation = LinearLayout.HORIZONTAL; sw.setPadding(0, dp(4), 0, dp(4))
+            for (hx in (listOf(m.accent) + Mods.colorSlots.map { m.colors[it].orEmpty() }).distinct().filter { it.isNotEmpty() }) {
+                val v = View(this); v.setBackgroundColor(try { Color.parseColor(hx) } catch (e: Exception) { Color.GRAY })
+                sw.addView(v, LinearLayout.LayoutParams(dp(18), dp(18)).apply { marginEnd = dp(6) })
+            }
+            card.addView(sw)
+        }
+        val tags = LinearLayout(this); tags.orientation = LinearLayout.HORIZONTAL
+        if (m.colors.isNotEmpty() || m.accent.isNotEmpty()) chip(tags, t("COLORS", "ألوان"), Night.pink)
+        if (m.persona.isNotEmpty() || m.nickname.isNotEmpty() || m.tone != null) chip(tags, t("PERSONALITY", "شخصية"), Night.amber)
+        if (m.voice.isNotEmpty()) chip(tags, t("VOICE", "صوت"), Night.sCyan)
+        if (m.settings.isNotEmpty()) chip(tags, t("SETTINGS", "إعدادات"), Night.dim)
+        card.addView(tags)
+        val row = LinearLayout(this); row.orientation = LinearLayout.HORIZONTAL
+        row.addView(btn(null, if (isActive) t("TURN OFF", "إيقاف") else t("TURN ON", "تفعيل"), !isActive) {
+            if (isActive) Mods.disable(prefs) else Mods.enable(prefs, m)
+            toast(if (isActive) t("Mod off. Your old settings are back.", "انطفى المود. رجعت إعداداتك.") else t("Mod on: ", "اشتغل المود: ") + m.title(L.ar) + t(" (colours show next time she starts)", " (الألوان تبان عند التشغيل الجاي)"))
+            showTab(tab)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        if (!m.builtin) row.addView(btn(null, t("DELETE", "حذف")) {
+            if (isActive) Mods.disable(prefs)
+            Mods.delete(this, m.id); showTab(tab)
+        }, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
+        card.addView(row)
+        box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
+    }
+
+    private fun modsGallery() {
+        val box = section(t("MODS", "المودات"))
+        note(box, t("A mod changes how she looks, sounds and talks, and turning it off puts your old settings back. Mods are data only: they can never carry code, keys or permissions. One mod is on at a time.",
+            "المود يغيّر شكلها وصوتها وطريقة كلامها، وإذا طفّيته ترجع إعداداتك القديمة. المودات بيانات فقط: ما تحمل كود ولا مفاتيح ولا صلاحيات. مود واحد يشتغل بنفس الوقت."))
+        val act = Mods.active(prefs)
+        if (act.isNotEmpty()) note(box, t("Mod on: ", "المود المفعّل: ") + (Mods.all(this).firstOrNull { it.id == act }?.title(L.ar) ?: act))
+        for (m in Mods.all(this)) modCard(box, m, m.id == act)
+        btn(box, t("IMPORT A MOD OR LOOK (.json / .capri)", "استيراد مود أو شكل (.json / .capri)"), true) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 7)
+        }
+        btn(box, t("COPY A MOD TEMPLATE TO MAKE MY OWN", "انسخ قالب مود أسوي مودي")) { clip(Mods.template()); toast(t("Copied. Edit it, save it as a .json file, then import it.", "تم النسخ. عدّله واحفظه ملف .json وبعدين استورده.")) }
+        if (CustomLook.active(this)) {
+            note(box, t("Custom look in use: ", "شكل مخصص مستخدم: ") + CustomLook.name(this))
+            btn(box, t("REMOVE THE CUSTOM LOOK", "احذف الشكل المخصص")) { CustomLook.remove(this); toast(t("Look removed. Restart her.", "انحذف الشكل. أعد تشغيلها.")); showTab(tab) }
+        }
+    }
+
     private fun buildBehavior() {
+        characterCard()
+        modsGallery()
         val look = section(t("HER LOOK", "شكلها"))
         slider(look, t("Size (applies next start)", "الحجم (يتطبّق عند التشغيل الجاي)"), "size", 80, 220, 140)
         body(look, t("Theme", "الثيم"), 14f, muted)
@@ -1084,62 +1200,6 @@ class MainActivity : Activity() {
         toggle(look, t("Glitch-in intro when she wakes up", "مقدمة قلتش لما تصحى"), "intro", true)
         toggle(look, t("A small blip sound when she speaks", "صوت تنبيه صغير لما تتكلم"), "chimes", false)
         toggle(look, t("Low-power mode: fewer frames, no floating, no glow", "وضع توفير الطاقة: إطارات أقل وبدون طفو وبدون هالة"), "lowPower", false)
-
-        val sets = section(t("COLOR SETS", "مجموعات الألوان"))
-        note(sets, t("One tap recolors her, like the desktop's colour mods. It applies the next time you start her.", "ضغطة وحدة تلوّنها، مثل مودات الألوان في الويندوز. تتطبّق عند التشغيل الجاي."))
-        class CSet(val en: String, val ar: String, val hair: String, val accent: String, val eyes: String, val edges: String, val body: String)
-        val colorSets = listOf(
-            CSet("BUBBLEGUM", "علكة", "#FF7AC6", "#7DF9FF", "#B14CFF", "#FFFFFF", "#3A1B3F"),
-            CSet("CYBER CYAN", "سايبر سيان", "#00D8FF", "#FF2BD6", "#FFD000", "#7A5CFF", ""),
-            CSet("ROYAL", "ملكي", "#8A2BE2", "#FFD54A", "#00C2FF", "#FF4FA3", "#120A26"),
-            CSet("TOXIC", "سام", "#7CFF00", "#FF2E63", "#00E5FF", "#00A86B", "#0B1F12"),
-            CSet("NIGHT CITY", "الأصلي", "", "", "", "", "")
-        )
-        for (c in colorSets) {
-            val edgeC = if (c.hair.isEmpty()) Night.hot else Color.parseColor(c.hair)
-            val card = LinearLayout(this)
-            card.orientation = LinearLayout.VERTICAL
-            card.setPadding(dp(16), dp(14), dp(16), dp(16))
-            card.background = CardDrawable(resources.displayMetrics.density, edgeC)
-            card.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(50, 255, 255, 255)), null, null)
-            val nm = TextView(this)
-            nm.text = t(c.en, c.ar)
-            nm.typeface = if (L.ar) tfBold else tfTitle
-            nm.textSize = 24f
-            nm.setTextColor(edgeC)
-            card.addView(nm)
-            val ul = View(this)
-            ul.setBackgroundColor(edgeC)
-            card.addView(ul, LinearLayout.LayoutParams(dp(26), dp(3)).apply { topMargin = dp(4); bottomMargin = dp(8) })
-            if (c.hair.isEmpty()) {
-                val d = TextView(this); d.text = t("Her original colours.", "ألوانها الأصلية."); d.typeface = tfBody; d.textSize = 13f; d.setTextColor(muted); card.addView(d)
-            } else {
-                val rows = listOf(Triple(t("HAIR", "الشعر"), c.hair, 0), Triple(t("ACCENTS", "التفاصيل"), c.accent, 0), Triple(t("EYES", "العيون"), c.eyes, 0), Triple(t("EDGES", "الحواف"), c.edges, 0), Triple(t("BODY", "الجسم"), c.body, 0))
-                for (r in rows) {
-                    val line = LinearLayout(this); line.orientation = LinearLayout.HORIZONTAL; line.gravity = Gravity.CENTER_VERTICAL
-                    val sw = View(this)
-                    sw.setBackgroundColor(if (r.second.isEmpty()) Night.ground else Color.parseColor(r.second))
-                    line.addView(sw, LinearLayout.LayoutParams(dp(12), dp(12)).apply { marginEnd = dp(8) })
-                    val a = TextView(this); a.text = r.first; a.typeface = tfMono; a.textSize = 11f; a.setTextColor(muted)
-                    line.addView(a, LinearLayout.LayoutParams(dp(70), ViewGroup.LayoutParams.WRAP_CONTENT))
-                    val b2 = TextView(this); b2.text = if (r.second.isEmpty()) t("usual", "الأصلي") else r.second; b2.typeface = tfMono; b2.textSize = 11f; b2.setTextColor(Night.white)
-                    line.addView(b2)
-                    card.addView(line)
-                }
-            }
-            val tag = TextView(this)
-            tag.text = t("TAP TO USE", "اضغط للتطبيق")
-            tag.typeface = tfMono; tag.textSize = 10f; tag.setTextColor(muted)
-            tag.setPadding(0, dp(8), 0, 0)
-            card.addView(tag)
-            card.setOnClickListener {
-                prefs.putS("col_hair", c.hair); prefs.putS("col_accent", c.accent); prefs.putS("col_eyes", c.eyes)
-                prefs.putS("col_edges", c.edges); prefs.putS("col_body", c.body)
-                toast(t("${c.en} is set. Restart her to see it.", "${c.ar} انضبطت. أعد تشغيلها عشان تشوفها."))
-                showTab(3)
-            }
-            sets.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
-        }
 
         val cols = section(t("HER COLORS", "ألوانها"), false)
         note(cols, t("Recolor her like the desktop version. It applies the next time you start her.", "لوّنها مثل نسخة الويندوز. يتطبّق عند التشغيل الجاي."))
@@ -1274,20 +1334,6 @@ class MainActivity : Activity() {
         note(p, t("Her safety rules always stay in place after whatever you write here.", "قواعد الأمان تبقى دايماً مهما كتبت هنا."))
         btn(p, t("RESET PERSONALITY", "أعد الشخصية للأصل")) { pe.setText(Persona.default(this)) }
 
-        val mods = section(t("MODS", "المودات"))
-        note(mods, t("A mod is a small .json file: {\"name\", \"accent\": \"#RRGGBB\", \"personality\": \"extra lines\", \"nickname\"}. Data only, no code.",
-            "المود ملف .json صغير: {\"name\", \"accent\": \"#RRGGBB\", \"personality\": \"سطور إضافية\", \"nickname\"}. بيانات فقط وبدون كود."))
-        if (CustomLook.active(this)) note(mods, t("Look in use: ", "الشكل المستخدم: ") + CustomLook.name(this))
-        btn(mods, t("IMPORT A MOD OR LOOK (.json / .capri)", "استيراد مود أو شكل (.json / .capri)")) {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 7)
-        }
-        btn(mods, t("REMOVE MY MOD", "حذف المود")) {
-            prefs.putS("modAccent", ""); prefs.putS("modPersona", "")
-            if (CustomLook.active(this)) { CustomLook.remove(this); toast(t("Look removed. Restart her.", "انحذف الشكل. أعد تشغيلها.")) }
-            toast(t("Mod removed.", "انحذف المود."))
-            showTab(5)
-        }
-
         val d = section(t("DATA", "البيانات"), false)
         btn(d, t("COPY MY SETTINGS (no keys)", "انسخ إعداداتي (بدون المفاتيح)")) { clip(prefs.dump(false)); toast(t("Copied.", "تم النسخ.")) }
         btn(d, t("COPY MY SETTINGS WITH KEYS", "انسخ إعداداتي مع المفاتيح")) { clip(prefs.dump(true)); toast(t("Copied. Keep it private.", "تم النسخ. لا تشاركه مع أحد.")) }
@@ -1409,21 +1455,11 @@ class MainActivity : Activity() {
                 showTab(tab)
                 return
             }
-            val txt = contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: return
-            val j = JSONObject(txt)
-            if (j.has("accent")) prefs.putS("modAccent", j.getString("accent"))
-            if (j.has("personality")) prefs.putS("modPersona", j.getString("personality").take(2000))
-            if (j.has("nickname")) prefs.putS("nick", j.getString("nickname"))
-            // Only harmless look-and-feel settings can come from a mod file (never keys or providers).
-            val ok = setOf("size", "theme", "quiet", "sounds", "lang")
-            j.optJSONObject("settings")?.let { st ->
-                for (k in st.keys()) if (k in ok) when (val v = st.get(k)) {
-                    is Boolean -> prefs.putB(k, v)
-                    is Int -> prefs.putI(k, v)
-                    is String -> prefs.putS(k, v.take(200))
-                }
-            }
-            toast(t("Mod loaded: ", "انحمّل المود: ") + j.optString("name", "?"))
+            val txt = contentResolver.openInputStream(uri)?.bufferedReader()?.use { val buf = CharArray(20_001); val n = it.read(buf); String(buf, 0, n.coerceAtLeast(0)) } ?: return
+            val mod = Mods.parse(txt)
+            if (mod == null || !Mods.save(this, mod, txt)) { toast(t("That isn't a valid mod file.", "هذا مو ملف مود صحيح.")); return }
+            toast(t("Mod added: ", "انضاف المود: ") + mod.name + t(". Turn it on in the list.", ". فعّله من القائمة."))
+            showTab(tab)
             showTab(tab)
         } catch (e: Exception) {
             toast(t("That isn't a valid mod file.", "هذا مو ملف مود صحيح."))

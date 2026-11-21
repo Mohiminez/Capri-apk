@@ -35,6 +35,23 @@ android {
             signingConfig = signingConfigs.getByName("capri")
         }
     }
+    // One small APK per CPU type instead of one giant APK carrying four copies of the AI runtimes (arm64, 32-bit arm, x86, x86_64).
+    // Nearly every phone is arm64; older or 32-bit-only phones use the arm32 file.
+    splits {
+        abi {
+            isEnable = true
+            reset()
+            include("arm64-v8a", "armeabi-v7a")
+            isUniversalApk = false
+        }
+    }
+    packaging {
+        // Compress the native libraries inside the APK: a smaller download (they are unpacked on install).
+        jniLibs { useLegacyPackaging = true }
+        resources {
+            excludes += setOf("/META-INF/{AL2.0,LGPL2.1}", "/META-INF/*.version", "/META-INF/*.kotlin_module", "/META-INF/LICENSE*", "/META-INF/NOTICE*", "/META-INF/DEPENDENCIES", "DebugProbesKt.bin", "kotlin-tooling-metadata.json")
+        }
+    }
     lint {
         checkReleaseBuilds = false
         abortOnError = false

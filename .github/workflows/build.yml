@@ -29,9 +29,21 @@ jobs:
         with:
           gradle-version: 8.9
 
-      - name: Unit tests (a failure here does not stop the build)
+      - name: Unit tests (a failing test stops the release)
         run: gradle testDebugUnitTest --no-daemon
-        continue-on-error: true
+
+      - name: Use my own signing key (only if the secrets exist)
+        env:
+          KS_B64: ${{ secrets.CAPRI_KEYSTORE_B64 }}
+        run: |
+          if [ -n "$KS_B64" ]; then
+            echo "$KS_B64" | base64 -d > "$RUNNER_TEMP/release.keystore"
+            echo "CAPRI_KEYSTORE_FILE=$RUNNER_TEMP/release.keystore" >> "$GITHUB_ENV"
+            echo "CAPRI_KEYSTORE_PASSWORD=${{ secrets.CAPRI_KEYSTORE_PASSWORD }}" >> "$GITHUB_ENV"
+            echo "CAPRI_KEY_ALIAS=${{ secrets.CAPRI_KEY_ALIAS }}" >> "$GITHUB_ENV"
+          else
+            echo "No private key set: using the public key from the repo."
+          fi
 
       - name: Build the release APK
         run: gradle assembleRelease --no-daemon --stacktrace
@@ -41,9 +53,10 @@ jobs:
         run: |
           VERSION="0.5.${{ github.run_number }}"
           mkdir -p dist
-          cp app/build/outputs/apk/release/*.apk "dist/Capri-${VERSION}.apk"
+          ls -la app/build/outputs/apk/release/
+          cp app/build/outputs/apk/release/*arm64-v8a*.apk "dist/Capri-${VERSION}-arm64.apk"
+          cp app/build/outputs/apk/release/*armeabi-v7a*.apk "dist/Capri-${VERSION}-arm32.apk"
           echo "version=${VERSION}" >> "$GITHUB_OUTPUT"
-          echo "file=dist/Capri-${VERSION}.apk" >> "$GITHUB_OUTPUT"
 
       - uses: actions/upload-artifact@v4
         with:
@@ -56,7 +69,7 @@ jobs:
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
-          gh release create "v${{ steps.apk.outputs.version }}" "${{ steps.apk.outputs.file }}" \
+          gh release create "v${{ steps.apk.outputs.version }}" dist/*.apk \
             --title "Capri ${{ steps.apk.outputs.version }}" \
             --generate-notes \
             --target "${{ github.sha }}" \
