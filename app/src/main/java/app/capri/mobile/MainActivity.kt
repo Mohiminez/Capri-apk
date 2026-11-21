@@ -785,6 +785,8 @@ class MainActivity : Activity() {
         val opts = listOf(t("Same as chat", "نفس عقل المحادثة")) + Providers.all.indices.filter { it != Providers.LOCAL }.map { Providers.all[it].name }
         val idxs = listOf(-1) + Providers.all.indices.filter { it != Providers.LOCAL }
         spin(r, opts, idxs.indexOf(prefs.getI("jobProvider", -1)).coerceAtLeast(0)) { prefs.putI("jobProvider", idxs[it]) }
+        body(r, t("Fast brain (short, simple chat goes here; longer or harder questions stay with the main brain)", "العقل السريع (الدردشة القصيرة والبسيطة تروح له، والأسئلة الأصعب تبقى مع العقل الرئيسي)"), 14f, muted)
+        spin(r, listOf(t("Off, use the main brain", "مطفي، استخدم العقل الرئيسي")) + opts.drop(1), idxs.indexOf(prefs.getI("fastProvider", -1)).coerceAtLeast(0)) { prefs.putI("fastProvider", idxs[it]) }
     }
 
     private fun buildOffline() {
@@ -1302,6 +1304,8 @@ class MainActivity : Activity() {
         toggle(w, t("She watches my screen and comments (uses your key)", "تراقب شاشتي وتعلّق (تستهلك مفتاحك)"), "watch", false)
         slider(w, t("Seconds between glances", "الثواني بين كل نظرة"), "watchSecs", 20, 180, 60)
         toggle(w, t("Send screenshots too, not just screen text (needs a model that sees images)", "أرسل لقطات شاشة وليس النص فقط (يحتاج موديل يفهم الصور)"), "vision", false)
+        toggle(w, t("Show me a short plan and wait for my yes before bigger phone jobs", "اعرض لي خطة قصيرة وانتظر موافقتي قبل المهام الكبيرة على الجوال"), "planFirst", true)
+        toggle(w, t("Privacy shield: hide card numbers, emails, phone numbers and codes from the screen text before it goes to an online model", "درع الخصوصية: أخفي أرقام البطاقات والايميلات والأرقام والرموز من نص الشاشة قبل ما يروح لموديل أونلاين"), "shield", true)
         note(w, t("Game mode (Home tab) makes her comment only while a game is open. Online brains receive what is on your screen when she looks; password fields are never read. The offline model keeps everything on the phone.",
             "وضع اللعب (في الرئيسية) يخليها تعلّق فقط وقت ما تكون لعبة مفتوحة. المزوّدات الأونلاين تستلم اللي على شاشتك لما تشوف، وحقول كلمات المرور ما تنقرأ أبداً. الموديل المحلي يبقي كل شي على جوالك."))
 
@@ -1325,6 +1329,25 @@ class MainActivity : Activity() {
     private fun buildMore() {
         val m = section(t("HER NOTES ABOUT YOU", "ملاحظاتها عنك"))
         edit(m, t("Nothing yet. She adds things as you chat.", "ما فيه شي للحين. تضيف أشياء وانت تسولف معها."), prefs.getS("notes", ""), multiline = true) { prefs.putS("notes", it) }
+
+        val kb = section(t("HER LIBRARY", "مكتبتها"), false)
+        note(kb, t("Add text or notes files (.txt, .md). When you ask something, the best matching passages are used to answer. Stored only on this phone.", "أضف ملفات نصية أو ملاحظات (.txt و .md). لما تسألها، تستخدم أقرب المقاطع للجواب. تنحفظ على هذا الجوال بس."))
+        for (d in Knowledge.docs(this)) btn(kb, "\u2715  $d") { Knowledge.remove(this, d); showTab(tab) }
+        btn(kb, t("ADD A FILE", "أضف ملف")) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/*"), 8)
+        }
+        toggle(kb, t("Let other apps (Tasker, MacroDroid) make her talk or answer, through her plugin API", "اسمح لتطبيقات ثانية (Tasker وMacroDroid) تخليها تتكلم أو ترد، عن طريق واجهة الإضافات"), "pluginApi", false)
+        note(kb, t("Home screen: long-press your wallpaper > Widgets > Capri.", "الشاشة الرئيسية: اضغط مطولاً على الخلفية > ويدجت > Capri."))
+
+        val sk = section(t("YOUR OWN COMMANDS", "أوامرك الخاصة"), false)
+        note(sk, t("One per line:  phrase => what she does. Use {x} for the rest of the sentence. Example:\ngood morning => Morning! [[weather:Baghdad]]\nwork mode => On it. [[open:Slack]] [[music:lofi]]\nsearch {x} => Looking. [[search:{x}]]",
+            "سطر لكل أمر:  العبارة => وش تسوي. استخدم {x} لبقية الجملة. مثال:\nصباح الخير => صباح النور! [[weather:Baghdad]]\nوضع الشغل => تمام. [[open:Slack]] [[music:lofi]]\nدوري {x} => أدور. [[search:{x}]]"))
+        edit(sk, "phrase => answer", prefs.getS("skills", ""), multiline = true) { prefs.putS("skills", it) }
+
+        val lg = section(t("WHAT SHE DID", "وش سوّت على جوالك"), false)
+        val logText = ActionLog.text(prefs)
+        body(lg, if (logText.isBlank()) t("Nothing yet. Every action she takes on your phone is listed here (what she types is never saved).", "ما فيه شي للحين. كل شي تسويه على جوالك يظهر هنا (اللي تكتبه ما ينحفظ).") else logText.split("\n").reversed().joinToString("\n"), 12f, muted)
+        btn(lg, t("CLEAR THE LOG", "امسح السجل")) { ActionLog.clear(prefs); toast(t("Cleared.", "انمسح.")) }
 
         val p = section(t("HER PERSONALITY", "شخصيتها"))
         val custom = prefs.getS("personality", "")
@@ -1443,6 +1466,17 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 8 && resultCode == RESULT_OK) {
+            val u = data?.data ?: return
+            try {
+                val name = contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "notes"
+                val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { val buf = CharArray(200_001); val n = it.read(buf); String(buf, 0, n.coerceAtLeast(0)) } ?: return
+                val n = Knowledge.add(this, name.take(40), txt)
+                toast(if (n > 0) t("Added: $name", "انضاف: $name") else t("That file has no text.", "الملف ما فيه نص."))
+                showTab(tab)
+            } catch (e: Exception) { toast(t("Couldn't read that file.", "ما قدرت أقرأ الملف.")) }
+            return
+        }
         if (requestCode != 7 || resultCode != RESULT_OK) return
         val uri = data?.data ?: return
         try {

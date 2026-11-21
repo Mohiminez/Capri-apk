@@ -120,3 +120,24 @@ Soft ground shadow, slow breathing, squash-and-stretch on landings and pets, a l
 new emotes (star / surprise / question / angry) and a Sparkle item in her menu. Chess shows captured pieces and the material lead.
 
 Her AI brain can now float reactions (heart, star, surprise, question, angry) with the [[emote:x]] tag.
+
+## Safety pass (new)
+- She never types into a password box (`typeText` refuses), whoever asks.
+- "Submit" is allowed for an explicit send/post/reply goal; a search goal may only submit a search box, not a chat or comment box.
+- **WHAT SHE DID** (More tab): a log of every phone action she takes. What she types or copies is never stored in it.
+- Signing key: releases are signed with `capri.keystore`; set `CAPRI_KEYSTORE_FILE` / `CAPRI_KEYSTORE_PASSWORD` / `CAPRI_KEY_PASSWORD` in CI for your own key (changing it later means users must reinstall once).
+
+## Listening fix + new features
+- **Mic / wake word**: pauses up to ~2s no longer cut you off; she shows what she hears live; real error messages (no internet, mic busy, language not installed...) instead of "didn't catch that"; automatic quiet retry when the recogniser is busy; wake word answers as soon as she hears her name and you pause (no waiting for the end of the sentence); falls back from offline to normal recognition if the offline language isn't installed.
+- **Privacy shield** (Settings > Tools): card numbers, emails, phone numbers and codes are hidden from screen text before it goes to an online model.
+- **Your own commands** (More tab): `phrase => answer [[tags]]`, with `{x}` placeholders. Runs instantly, no AI.
+- **Plan first**: bigger phone jobs show a short plan and wait for your yes.
+- Not built yet from the review: model router, offline queue, multi-agent, knowledge base, sync, widgets, plugin API.
+
+## More from the review (new)
+- **Fast brain** (Brain tab): short, simple chat goes to a quick provider; harder or longer questions and anything with a picture stay with the main brain. The job brain already existed.
+- **Offline queue**: a message that fails for lack of internet is kept (up to 5) and sent when the connection is back.
+- **Her library** (More tab): add .txt/.md files; the best matching passages go along with your question. Stored on the phone only.
+- **Home-screen widget** (Capri): awake/asleep and waiting reminders; tap opens her.
+- **Plugin API** (off by default, switch on in More): `adb shell am broadcast -n app.capri.mobile/.PluginReceiver -a app.capri.mobile.PLUGIN --es cmd say --es text "Hello"` (cmd `say` or `ask`). Works with Tasker/MacroDroid.
+- Still not built: multi-agent review, cloud sync (use COPY MY SETTINGS), a visual skills studio.

@@ -267,6 +267,8 @@ class CapriAccess : AccessibilityService() {
             target = spot?.node
         }
         if (target == null) return false
+        // never type into a password box, whoever asked
+        if (target.isPassword) return false
         if (spot != null) point(spot.x, spot.y)
         if (!target.isFocused) {
             target.performAction(AccessibilityNodeInfo.ACTION_FOCUS)
@@ -285,6 +287,13 @@ class CapriAccess : AccessibilityService() {
     private fun Bundle.putCharSequenceArg(text: String): Bundle {
         putCharSequence(AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE, text)
         return this
+    }
+
+    // What the focused text box calls itself (its hint or description), to tell a search bar from a message box.
+    fun focusedLabel(): String {
+        val f = rootInActiveWindow?.findFocus(AccessibilityNodeInfo.FOCUS_INPUT) ?: return ""
+        val hint = if (Build.VERSION.SDK_INT >= 26) f.hintText?.toString() ?: "" else ""
+        return (hint + " " + (f.contentDescription ?: "") + " " + (f.viewIdResourceName ?: "")).lowercase()
     }
 
     fun submit(): Boolean {

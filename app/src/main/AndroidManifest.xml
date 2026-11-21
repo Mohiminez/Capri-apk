@@ -56,6 +56,16 @@
 
         <receiver android:name=".ReminderReceiver" android:exported="false" />
 
+        <receiver android:name=".CapriWidget" android:exported="false" android:label="Capri">
+            <intent-filter><action android:name="android.appwidget.action.APPWIDGET_UPDATE" /></intent-filter>
+            <meta-data android:name="android.appwidget.provider" android:resource="@xml/widget_info" />
+        </receiver>
+
+        <!-- Plugin API for Tasker-style apps; does nothing until it is switched on in Capri's settings -->
+        <receiver android:name=".PluginReceiver" android:exported="true">
+            <intent-filter><action android:name="app.capri.mobile.PLUGIN" /></intent-filter>
+        </receiver>
+
         <receiver android:name=".BootReceiver" android:exported="true">
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />

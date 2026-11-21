@@ -125,7 +125,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = complete(system(), past, text, image, prefs.cur)
+                val reply = complete(system() + (if (hidden) "" else Knowledge.context(ctx, text)), past, text, image, Router.pick(text, prefs.cur, prefs.getI("fastProvider", -1), image != null))
                 main.post {
                     if (!reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))

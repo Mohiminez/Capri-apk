@@ -89,6 +89,7 @@ object Actions {
     private fun execute(ctx: Context, prefs: Prefs, name: String, arg: String, hooks: Hooks?): String {
         val group = groups[name]
         if (group != null && !prefs.getB("tool_$group", true)) return L.t(" (That tool is switched off in my settings.)", " (هذي الأداة مطفية من إعداداتي.)")
+        if (name !in readOnly) ActionLog.tag(prefs, name, arg)
         try {
             when (name) {
                 "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app. If it is installed, your phone may be hiding apps from me: Settings > Apps > Capri > Permissions > Installed apps > Allow.", " ما لقيت هذا التطبيق. إذا هو منزّل، جوالك يمكن يخفي التطبيقات عني: الإعدادات > التطبيقات > Capri > الصلاحيات > التطبيقات المثبتة > سماح.")

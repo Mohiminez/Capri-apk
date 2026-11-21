@@ -52,20 +52,30 @@ class Agent(
         }.start()
     }
 
+    // A search may submit a search box, but never a box that looks like a chat or comment field. Only an explicit "send" may.
+    private fun submitAllowed(sendGoal: Boolean, searchGoal: Boolean, boxLabel: String): Boolean {
+        if (sendGoal) return true
+        return searchGoal && !Regex("messag|chat|reply|comment|compose|رسال|دردش|تعليق|رد").containsMatchIn(boxLabel)
+    }
+
+    // The steps she showed you and you approved. Only guidance for the model: never used to decide what is allowed.
+    @Volatile var plan = ""
+
     private fun loop(goal: String): String {
         val trail = ArrayList<String>()
         var bad = 0
         var lastHash = 0
         val riskyGoal = risky.containsMatchIn(goal)
-        val sendGoal = Regex("send|post|submit|search|find|look up|ابحث|ارسل|أرسل|دور|بحث", RegexOption.IGNORE_CASE).containsMatchIn(goal)
+        val sendGoal = Regex("send|post|submit|reply|ارسل|أرسل|رد على|انشر", RegexOption.IGNORE_CASE).containsMatchIn(goal)
+        val searchGoal = Regex("search|find|look up|ابحث|دور|بحث", RegexOption.IGNORE_CASE).containsMatchIn(goal)
         for (step in 1..16) {
             if (cancelled) return L.t("Stopped.", "وقفت.")
             val acc = CapriAccess.instance ?: return L.t("Lost my hands. Is accessibility still on?", "فقدت السيطرة. تأكد إن صلاحية الوصول للحين شغّالة.")
-            val screen = acc.dump(if (brain.isLocal()) 2200 else 3500)
+            val screen = acc.dump(if (brain.isLocal()) 2200 else 3500).let { if (!brain.isLocal() && prefs.getB("shield", true)) Shield.redact(it) else it }
             if (trail.isNotEmpty() && screen.hashCode() == lastHash && !trail.last().contains("didn't change")) trail[trail.size - 1] = trail.last() + " (the screen didn't change, try something else)"
             lastHash = screen.hashCode()
             val image = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
-            val user = "Goal: $goal\nSteps so far:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(8).joinToString("\n")) + "\n\nCurrent screen:\n$screen"
+            val user = "Goal: $goal\n" + (if (plan.isNotBlank()) "Approved plan (a guide, the goal still decides what is allowed):\n$plan\n" else "") + "Steps so far:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(8).joinToString("\n")) + "\n\nCurrent screen:\n$screen"
             val out = brain.completeBlocking(system, user, image)
             val j = parse(out)
             if (j == null) {
@@ -115,7 +125,7 @@ class Agent(
                         note = "type_in [$id]" + if (acc.typeText(j.optString("text"), false)) "" else " (couldn't type)"
                     }
                 }
-                "submit" -> note = if (sendGoal) { acc.submit(); "submit" } else "submit refused, the goal didn't ask to send or search"
+                "submit" -> note = if (submitAllowed(sendGoal, searchGoal, acc.focusedLabel())) { acc.submit(); "submit" } else "submit refused, the goal didn't ask to send, or this box looks like a message box"
                 "scroll_down" -> acc.scroll(true)
                 "scroll_up" -> acc.scroll(false)
                 "back" -> acc.back()
@@ -129,6 +139,7 @@ class Agent(
                 else -> note = "unknown act $act"
             }
             trail.add("${trail.size + 1}. $note")
+            ActionLog.add(prefs, "agent", note.take(60))
             try { Thread.sleep(1300) } catch (e: InterruptedException) { }
         }
         return L.t("That's taking too long, I'll stop here.", "طوّلت الموضوع، بوقف هنا.")

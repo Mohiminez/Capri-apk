@@ -55,6 +55,7 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_HIDE = "app.capri.mobile.HIDE"
         const val ACT_STOP = "app.capri.mobile.STOP"
         const val ACT_ASK = "app.capri.mobile.ASK"
+        const val ACT_PLUGIN = "app.capri.mobile.PLUGIN_CMD"
         const val ACT_QUIET = "app.capri.mobile.QUIET"
         const val ACT_TEST = "app.capri.mobile.TEST"
         @Volatile var notifier: ((String) -> Unit)? = null
@@ -186,6 +187,14 @@ class CapriService : Service(), Actions.Hooks {
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
+        if (intent?.action == ACT_PLUGIN && prefs.getB("pluginApi", false)) {
+            val pt = (intent.getStringExtra("text") ?: "").take(500)
+            val pc = intent.getStringExtra("cmd")
+            h.postDelayed({
+                if (hidden) toggleHidden()
+                if (pc == "say") say(pt) else ask("(Another app on this phone passed you this: \"${pt.replace("\"", "'")}\". Answer in one short line. Use no tags.)", true)
+            }, 600)
+        }
         if (intent?.action == ACT_ASK) {
             val t = intent.getStringExtra("text") ?: ""
             val kind = intent.getStringExtra("kind") ?: "text"
@@ -395,6 +404,7 @@ class CapriService : Service(), Actions.Hooks {
         h.postDelayed(careTask, 5 * 60_000L)
         h.postDelayed(mischiefTask, 30 * 60_000L)
         h.postDelayed(charmTask, 10 * 60_000L)
+        h.postDelayed(queueTask, 45_000L)
         h.postDelayed({
             if (!brainReady()) say(L.t("Hi. Open the Capri app and give me a brain first.", "هلا. افتح تطبيق كابري وأعطني عقل أشتغل فيه أول."), false)
             else ask("(You just booted up on the user's phone. Say hi in one short line.)", true)
@@ -527,6 +537,27 @@ class CapriService : Service(), Actions.Hooks {
             h.postDelayed(this, Random.nextLong(30 * 60_000L, 90 * 60_000L))
         }
     }
+
+    // Messages that couldn't be sent for lack of internet are tried again when it comes back.
+    private val queueTask = object : Runnable {
+        override fun run() {
+            try {
+                val q = prefs.getS("queue", "")
+                if (q.isNotBlank() && idleOk() && online()) {
+                    OfflineQueue.pop(q)?.let { (first, rest) ->
+                        prefs.putS("queue", rest)
+                        ask(first)
+                    }
+                }
+            } catch (e: Throwable) { CrashLog.record(this@CapriService, e, "offline queue") }
+            h.postDelayed(this, 45_000L)
+        }
+    }
+
+    private fun online(): Boolean = try {
+        val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
+        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+    } catch (e: Throwable) { false }
 
     private val charmTask = object : Runnable {
         override fun run() {
@@ -1232,7 +1263,7 @@ class CapriService : Service(), Actions.Hooks {
         poke()
         if (!hiddenPrompt) {
             Charm.add(prefs, 2)
-            val quick = QuickAsks.match(text)
+            val quick = Skills.match(prefs.getS("skills", ""), text) ?: QuickAsks.match(text)
             if (quick != null) {
                 say(Actions.run(this, prefs, quick, this, true))
                 return
@@ -1254,6 +1285,11 @@ class CapriService : Service(), Actions.Hooks {
                 reply != null && hiddenPrompt && reply.trim().equals("NOTHING", ignoreCase = true) -> settle()
                 reply != null -> say(Actions.run(this, prefs, reply, this))
                 skipNothing -> settle()
+                !hiddenPrompt && OfflineQueue.isNetworkError(err) -> {
+                    Diag.log("brain", err ?: "?")
+                    prefs.putS("queue", OfflineQueue.push(prefs.getS("queue", ""), text))
+                    say(L.t("No signal. I'll answer when you're back online.", "ما في نت. برد عليك أول ما يرجع."), false)
+                }
                 else -> { Diag.log("brain", err ?: "?"); say(L.t("Signal lost: ", "انقطعت الإشارة: ") + err, false) }
             }
         }
@@ -1263,10 +1299,33 @@ class CapriService : Service(), Actions.Hooks {
 
     override fun startJob(goal: String) {
         if (agent.running) return
+        // Bigger jobs: she shows a short plan first and waits for your yes.
+        if (prefs.getB("planFirst", true) && goal.length >= 40 && !brain.isLocal() && brainReady() && !prefs.getB("noAI", false)) {
+            busy = true
+            settle()
+            showBubble(L.t("Planning...", "أخطط..."), 60_000L, false)
+            brain.ask("(Write a numbered plan of at most 5 short steps for this phone job: $goal. Plain text, no tags, no extra words.)", true) { reply, _ ->
+                busy = false
+                val plan = reply?.trim().orEmpty().replace(Regex("\\[\\[.*?\\]\\]"), "").take(500)
+                if (plan.isBlank() || plan.equals("NOTHING", true)) { runJob(goal, ""); return@ask }
+                showConfirm(plan + "\n\n" + L.t("Go?", "أبدأ؟")) { runJob(goal, plan) }
+                settle()
+            }
+            return
+        }
+        runJob(goal, "")
+    }
+
+    private fun runJob(goal: String, plan: String) {
+        if (agent.running) return
         busy = true
         settle()
+        agent.plan = plan
         agent.start(goal)
     }
+
+    // Online models never see card numbers, emails, phone numbers or codes from the screen.
+    private fun shielded(t: String): String = if (!brain.isLocal() && prefs.getB("shield", true)) Shield.redact(t) else t
 
     override fun look(question: String) {
         val acc = CapriAccess.instance
@@ -1278,7 +1337,7 @@ class CapriService : Service(), Actions.Hooks {
         settle()
         showBubble("...", 90_000L, false)
         bg("job", this@CapriService) {
-            val txt = acc.dump(if (brain.isLocal()) 2500 else 4000)
+            val txt = shielded(acc.dump(if (brain.isLocal()) 2500 else 4000))
             val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
             h.post {
                 busy = false
@@ -1939,7 +1998,7 @@ class CapriService : Service(), Actions.Hooks {
         ask(t)
     }
 
-    private fun missed() {
+    private fun missed(code: Int = Listen.NO_MATCH) {
         dictating = false
         userListening = false
         missCount++
@@ -1950,7 +2009,9 @@ class CapriService : Service(), Actions.Hooks {
         } else if (convoActive) {
             h.postDelayed({ startListening() }, 300)
         } else {
-            say(L.t("Didn't catch that.", "ما سمعتك زين."), false)
+            val tip = if (missCount >= 3 && prefs.getI("sttEngine", 0) == 0 && Listen.silent(code))
+                L.t(" If this keeps happening, switch on her own ears in the Voice tab.", " إذا تتكرر، فعّل «أذنها الخاصة» من تبويب الصوت.") else ""
+            say(Listen.hint(code, L.ar) + tip, false)
         }
     }
 
@@ -1994,24 +2055,56 @@ class CapriService : Service(), Actions.Hooks {
         }
         recognizer?.destroy()
         val r = SpeechRecognizer.createSpeechRecognizer(this)
+        var partial = ""
+        val retries = listenRetries
         r.setRecognitionListener(object : RecognitionListener {
             override fun onReadyForSpeech(params: Bundle?) {}
-            override fun onBeginningOfSpeech() {}
+            override fun onBeginningOfSpeech() { if (!dictate) showBubble(L.t("Hearing you...", "أسمعك..."), 15_000L, false) }
             override fun onRmsChanged(rmsdB: Float) {}
             override fun onBufferReceived(buffer: ByteArray?) {}
             override fun onEndOfSpeech() {}
-            override fun onPartialResults(partialResults: Bundle?) {}
             override fun onEvent(eventType: Int, params: Bundle?) {}
-            override fun onError(error: Int) { missed() }
+            override fun onError(error: Int) {
+                if (recognizer !== r) return
+                // she heard something but the recogniser gave up: use what she had
+                if (partial.isNotBlank() && Listen.silent(error)) { listenRetries = 0; heard(partial); return }
+                if (Listen.retryable(error) && retries < 2) {
+                    listenRetries = retries + 1
+                    h.postDelayed({ startListening(dictate) }, 700)
+                    return
+                }
+                listenRetries = 0
+                missed(error)
+            }
+            override fun onPartialResults(partialResults: Bundle?) {
+                val p = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
+                if (p.isBlank()) return
+                partial = p
+                if (!dictate) showBubble(p, 15_000L, false)   // she shows what she is hearing, live
+            }
             override fun onResults(results: Bundle?) {
-                heard(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull())
+                listenRetries = 0
+                heard(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: partial.ifBlank { null })
             }
         })
         recognizer = r
-        r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
-            .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
+        try {
+            r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
+                .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
+                .putExtra(RecognizerIntent.EXTRA_MAX_RESULTS, 3)
+                // let you pause and think: don't cut in after a short gap
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_COMPLETE_SILENCE_LENGTH_MILLIS, 2200L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_POSSIBLY_COMPLETE_SILENCE_LENGTH_MILLIS, 1800L)
+                .putExtra(RecognizerIntent.EXTRA_SPEECH_INPUT_MINIMUM_LENGTH_MILLIS, 4000L)
+                .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
+        } catch (e: Throwable) {
+            CrashLog.record(this, e, "start listening")
+            missed(Listen.CLIENT)
+        }
     }
+
+    private var listenRetries = 0
 
     // ---- wake word: "Capri, open WhatsApp" ----
 
@@ -2022,7 +2115,10 @@ class CapriService : Service(), Actions.Hooks {
     private var wakeMuted = false
     private var userListening = false
     private var userListeningAt = 0L
-    private val wakeRe = Regex("(capri|kapri|cabri|capry|كابري|كابرى|كابريه|كابرة|كبري|كابر)", RegexOption.IGNORE_CASE)
+    private val wakeRe = Listen.wakeRe
+    private var wakeOffline = true
+    private var wakeRest = ""
+    private var wakeCommit: Runnable? = null
 
     private fun wakeWanted(): Boolean = prefs.getB("wakeWord", false) && screenOn && !talking && !busy && !cloudListening && !dictating &&
         !(userListening && System.currentTimeMillis() - userListeningAt < 25_000L) && !agent.running &&
@@ -2064,7 +2160,9 @@ class CapriService : Service(), Actions.Hooks {
             override fun onEvent(eventType: Int, params: Bundle?) {}
             override fun onError(error: Int) {
                 // silence and "no match" are normal while waiting; anything else backs off so it never spins the battery
-                if (error == SpeechRecognizer.ERROR_NO_MATCH || error == SpeechRecognizer.ERROR_SPEECH_TIMEOUT) wakeFails = 0 else wakeFails = minOf(wakeFails + 1, 8)
+                // an offline model that isn't installed: fall back to the normal recogniser instead of failing forever
+                if (error == Listen.LANG_UNSUPPORTED || error == Listen.LANG_UNAVAILABLE) wakeOffline = false
+                if (Listen.silent(error)) wakeFails = 0 else wakeFails = minOf(wakeFails + 1, 8)
                 wakeNextAt = System.currentTimeMillis() + 300L + wakeFails * 1500L
                 h.post { if (wake === r) stopWake() }
             }
@@ -2075,13 +2173,18 @@ class CapriService : Service(), Actions.Hooks {
             }
             private fun check(b: Bundle?, final: Boolean): Boolean {
                 val text = b?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return false
-                val m = wakeRe.find(text) ?: return false
-                var rest = text.substring(m.range.last + 1).trim().trimStart(',', '\u060C', '.', '!', ' ')
-                // while she is still hearing the sentence, wait for the end of it so the command is complete
-                if (!final && rest.isEmpty()) return false
-                if (!final) return false
-                h.post { if (wake === r) { stopWake(); onWake(rest) } }
-                return true
+                val rest = Listen.afterName(text) ?: return false
+                wakeCommit?.let { h.removeCallbacks(it) }
+                if (final) {
+                    h.post { if (wake === r) { stopWake(); onWake(rest) } }
+                    return true
+                }
+                // she doesn't wait for the end of the sentence: once her name is heard and you pause a moment, she answers
+                wakeRest = rest
+                val c = Runnable { if (wake === r) { stopWake(); onWake(wakeRest) } }
+                wakeCommit = c
+                h.postDelayed(c, 1100L)
+                return false
             }
         })
         try {
@@ -2089,7 +2192,7 @@ class CapriService : Service(), Actions.Hooks {
             r.startListening(Intent(RecognizerIntent.ACTION_RECOGNIZE_SPEECH)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE_MODEL, RecognizerIntent.LANGUAGE_MODEL_FREE_FORM)
                 .putExtra(RecognizerIntent.EXTRA_PARTIAL_RESULTS, true)
-                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, true)
+                .putExtra(RecognizerIntent.EXTRA_PREFER_OFFLINE, wakeOffline)
                 .putExtra(RecognizerIntent.EXTRA_LANGUAGE, L.locale(prefs).toLanguageTag()))
         } catch (e: Throwable) {
             wakeFails = minOf(wakeFails + 1, 8)
@@ -2099,6 +2202,8 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun stopWake() {
+        wakeCommit?.let { h.removeCallbacks(it) }
+        wakeCommit = null
         wakeActive = false
         val r = wake
         wake = null
