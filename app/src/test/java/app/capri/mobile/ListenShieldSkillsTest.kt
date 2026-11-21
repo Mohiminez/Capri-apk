@@ -47,3 +47,20 @@ class SkillsTest {
         assertEquals("صباح النور", Skills.match("صباح الخير => صباح النور", "صباح الخير!"))
     }
 }
+
+class ReviewFixesTest {
+    @Test fun nameMustOpenTheSentence() {
+        assertNull(Listen.afterName("my cousin Capri is late"))
+        assertNull(Listen.afterName("Capricorn is a sign"))
+        assertNull(Listen.afterName("مكابر وعنيد"))
+        assertEquals("افتح واتساب", Listen.afterName("اهلا يا كابري افتح واتساب"))
+        assertEquals("open maps", Listen.afterName("hey Capri open maps"))
+    }
+    @Test fun shieldKeepsDatesAndTimestamps() {
+        for (s in listOf("Due 2026-11-21", "Built 1763700000000", "Unicode 1234 supported", "Version 1.2.3-45", "Shopping 2024 deals", "Price 1,299.00 USD"))
+            assertEquals(s, Shield.redact(s))
+        assertFalse(Shield.redact("Card 4242424242424242").contains("4242"))
+        assertFalse(Shield.redact("Call 0770 123 4567 now").contains("123 4567"))
+        assertFalse(Shield.redact("Your code is 482913").contains("482913"))
+    }
+}

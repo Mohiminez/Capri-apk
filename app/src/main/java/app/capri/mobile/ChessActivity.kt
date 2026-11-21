@@ -26,6 +26,7 @@ class BoardView(ctx: Context) : View(ctx) {
     var last: Move? = null
     var accent = Color.parseColor("#FF2A6D")
     var onTap: (Int) -> Unit = {}
+    var hint: Move? = null
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT }
@@ -41,6 +42,28 @@ class BoardView(ctx: Context) : View(ctx) {
     private fun sqOf(r: Int, c: Int) = if (flipped) (7 - r) * 8 + (7 - c) else r * 8 + c
 
     override fun onDraw(canvas: Canvas) {
+        drawBoard(canvas)
+        val h = hint ?: return
+        val cell = width / 8f
+        fun cx(sq: Int): Float { var c = sq % 8; if (flipped) c = 7 - c; return (c + 0.5f) * cell }
+        fun cy(sq: Int): Float { var r = sq / 8; if (flipped) r = 7 - r; return (r + 0.5f) * cell }
+        val x1 = cx(h.from); val y1 = cy(h.from); val x2 = cx(h.to); val y2 = cy(h.to)
+        p.style = Paint.Style.STROKE; p.strokeWidth = cell * 0.16f; p.strokeCap = Paint.Cap.ROUND
+        p.color = Color.argb(200, 94, 240, 246)
+        val dx = x2 - x1; val dy = y2 - y1; val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(1f)
+        val ux = dx / len; val uy = dy / len
+        canvas.drawLine(x1, y1, x2 - ux * cell * 0.25f, y2 - uy * cell * 0.25f, p)
+        p.style = Paint.Style.FILL
+        val path = android.graphics.Path()
+        path.moveTo(x2, y2)
+        path.lineTo(x2 - ux * cell * 0.38f - uy * cell * 0.2f, y2 - uy * cell * 0.38f + ux * cell * 0.2f)
+        path.lineTo(x2 - ux * cell * 0.38f + uy * cell * 0.2f, y2 - uy * cell * 0.38f - ux * cell * 0.2f)
+        path.close()
+        canvas.drawPath(path, p)
+        p.strokeCap = Paint.Cap.BUTT
+    }
+
+    private fun drawBoard(canvas: Canvas) {
         val cell = width / 8f
         val checkSq = if (Chess.inCheck(pos, pos.white)) pos.kingSq(pos.white) else -1
         glyph.textSize = cell * 0.82f
@@ -106,6 +129,12 @@ class ChessActivity : Activity() {
     private val moves = ArrayList<Move?>()
     private var playerWhite = true
     private var level = 2
+    private lateinit var evalBar: EvalBar
+    private var suggest: Analysis? = null
+    private var suggestKey = 0L
+    private var auto = false
+    private var pendingJudge: Triple<Analysis, Pos, Move>? = null
+    private var hintLabel: TextView? = null
     private var thinking = false
     private var over = false
     private lateinit var talk: ChessTalk
@@ -119,7 +148,7 @@ class ChessActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         L.init(prefs)
-        level = prefs.getI("chessLevel", 2).clampTo(1, 3)
+        level = prefs.getI("chessLevel", 2).clampTo(1, 4)
         talk = ChessTalk(L.ar)
         talk.enabled = ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet()
         spoken = prefs.getB("chessVoice", false)
@@ -161,6 +190,9 @@ class ChessActivity : Activity() {
         status.setPadding(0, dp(8), 0, dp(8))
         root.addView(status)
 
+        evalBar = EvalBar(this)
+        root.addView(evalBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(18)).apply { bottomMargin = dp(6) })
+
         board = BoardView(this)
         board.accent = accent
         board.onTap = { tap(it) }
@@ -170,7 +202,7 @@ class ChessActivity : Activity() {
         val row2 = LinearLayout(this); row2.orientation = LinearLayout.HORIZONTAL
         row1.addView(button(t("NEW GAME", "لعبة جديدة")) { newGame() }, weight())
         row1.addView(button(t("UNDO", "تراجع")) { undo() }, weight())
-        val lvl = button("") { level = level % 3 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
+        val lvl = button("") { level = level % 4 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
         levelLabel(lvl)
         row2.addView(lvl, weight())
         val side = button("") {
@@ -185,9 +217,16 @@ class ChessActivity : Activity() {
         vb.text = voiceLabel()
         row3.addView(vb, weight())
         row3.addView(button(t("COMMENTS", "التعليقات")) { talkDialog() }, weight())
+        val row4 = LinearLayout(this); row4.orientation = LinearLayout.HORIZONTAL
+        row4.addView(button(t("HINT", "تلميح")) { showHint() }, weight())
+        row4.addView(button(t("PLAY FOR ME", "العب عني")) { playForMe() }, weight())
+        val ab = button("") { auto = !auto; (it as TextView).text = autoLabel(); if (auto) playForMe() }
+        ab.text = autoLabel(); row4.addView(ab, weight())
+        row4.addView(button("FEN") { fenDialog() }, weight())
         root.addView(row1)
         root.addView(row2)
         root.addView(row3)
+        root.addView(row4)
         setContentView(neonWrap(this, root))
 
         sprite.play("idle")
@@ -197,7 +236,7 @@ class ChessActivity : Activity() {
     private fun weight() = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), dp(6), dp(3), 0) }
 
     private fun levelLabel(v: TextView) {
-        v.text = t("LEVEL: ", "المستوى: ") + when (level) { 1 -> t("EASY", "سهل"); 2 -> t("MEDIUM", "متوسط"); else -> t("HARD", "صعب") }
+        v.text = t("LEVEL: ", "المستوى: ") + when (level) { 1 -> t("EASY", "سهل"); 2 -> t("MEDIUM", "متوسط"); 3 -> t("HARD", "صعب"); else -> t("MASTER", "خبير") }
     }
 
     private fun button(s: String, click: (View) -> Unit): TextView {
@@ -229,7 +268,7 @@ class ChessActivity : Activity() {
     private fun talkDialog() {
         val names = mapOf("capture" to t("Captures", "الأكل"), "check" to t("Check", "كش"), "castle" to t("Castling", "التبييت"),
             "promotion" to t("Promotion", "الترقية"), "mate" to t("Checkmate", "كش مات"), "draw" to t("Draw", "التعادل"),
-            "start" to t("Game start", "بداية اللعبة"), "aside" to t("Small remarks", "ملاحظات عامة"))
+            "start" to t("Game start", "بداية اللعبة"), "judge" to t("Judging your moves", "تقييم نقلاتك"), "aside" to t("Small remarks", "ملاحظات عامة"))
         val keys = ChessEvents.all
         val on = BooleanArray(keys.size) { talk.enabled.contains(keys[it]) }
         AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("She comments on", "تعلّق على"))
@@ -240,6 +279,100 @@ class ChessActivity : Activity() {
             }.show()
     }
 
+    private fun autoLabel() = t("AUTO: ", "تلقائي: ") + if (auto) t("ON", "شغال") else t("OFF", "مطفي")
+
+    private fun setEval(a: Analysis, whiteToMove: Boolean) {
+        evalBar.cp = if (whiteToMove) a.score else -a.score
+        evalBar.mate = a.mateIn?.let { if (whiteToMove) it else -it }
+        evalBar.invalidate()
+    }
+
+    // Think about the position while you think, so a hint is ready the moment you ask.
+    private fun think() {
+        if (over || pos.white != playerWhite) return
+        val snap = pos
+        val k = Engine.key(snap)
+        if (suggestKey == k) return
+        val ms = if (level >= 4) 3000L else 1500L
+        bg("chess", this) {
+            val a = Engine.analyse(snap, ms, 9)
+            ui.post {
+                if (isFinishing || pos !== snap || a == null) return@post
+                suggest = a; suggestKey = k
+                setEval(a, snap.white)
+            }
+        }
+    }
+
+    private fun suggestionFor(snap: Pos): Analysis? = if (suggestKey == Engine.key(snap)) suggest else null
+
+    private fun showHint() {
+        if (over || thinking || pos.white != playerWhite) return
+        val have = suggestionFor(pos)
+        if (have != null) { announceHint(have); return }
+        say("Let me look...", "خلني أشوف...")
+        val snap = pos
+        bg("chess", this) {
+            val a = Engine.analyse(snap, 2500, 10)
+            ui.post { if (!isFinishing && pos === snap && a != null) { suggest = a; suggestKey = Engine.key(snap); setEval(a, snap.white); announceHint(a) } }
+        }
+    }
+
+    private fun announceHint(a: Analysis) {
+        board.hint = a.move
+        board.invalidate()
+        val san = San.of(pos, a.move)
+        val line = a.pv.take(3).let { pv -> var q = pos; pv.joinToString(" ") { m -> val x = San.of(q, m); q = Chess.make(q, m); x } }
+        remark(t("I'd play $san.", "أنا بلعب $san.") + (a.mateIn?.takeIf { it > 0 }?.let { t(" Mate in $it!", " مات في $it!") } ?: "") + "  ($line)")
+    }
+
+    // She plays your move for you (the best she can find).
+    private fun playForMe() {
+        if (over || thinking || pos.white != playerWhite) return
+        val have = suggestionFor(pos)
+        if (have != null) { play(have.move); return }
+        val snap = pos
+        say("On it.", "على طول.")
+        bg("chess", this) {
+            val a = Engine.analyse(snap, 2000, 9)
+            ui.post { if (!isFinishing && pos === snap && a != null && !over) play(a.move) }
+        }
+    }
+
+    private fun fenDialog() {
+        val box = android.widget.EditText(this)
+        box.setText(Fen.write(pos)); box.setTextColor(Night.white); box.textSize = 12f; box.typeface = Typeface.MONOSPACE
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("FEN")
+            .setMessage(t("Copy this to take the position elsewhere, or paste a FEN from chess.com or Lichess to play from it.", "انسخه عشان تاخذ الوضع لمكان ثاني، أو الصق FEN من chess.com أو Lichess وتلعب منه."))
+            .setView(box)
+            .setPositiveButton(t("LOAD", "حمّل")) { _, _ ->
+                val p = Fen.parse(box.text.toString())
+                if (p == null) { say("That doesn't look like a real position.", "هذا مو وضع صحيح."); return@setPositiveButton }
+                pos = p; playerWhite = p.white
+                history.clear(); moves.clear(); over = false; thinking = false; auto = false
+                board.flipped = !playerWhite; board.last = null; board.hint = null; clearSel()
+                suggest = null; suggestKey = 0L
+                refresh(); say("Loaded. Your move.", "تم. دورك."); think()
+            }
+            .setNeutralButton(t("COPY", "انسخ")) { _, _ ->
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("FEN", box.text.toString()))
+            }.show()
+    }
+
+    // "1. e4 e5 2. Nf3 ..." for the last few moves
+    private fun moveText(): String {
+        if (moves.isEmpty()) return ""
+        val sb = StringBuilder()
+        val from = maxOf(0, moves.size - 8)
+        for (i in from until moves.size) {
+            val m = moves[i] ?: continue
+            val before = history[i]
+            if (before.white) sb.append(i / 2 + 1).append(". ") else if (i == from) sb.append("… ")
+            sb.append(San.of(before, m)).append(' ')
+        }
+        return "\n" + sb.toString().trim()
+    }
+
     private fun newGame() {
         pos = Chess.start()
         history.clear(); moves.clear()
@@ -247,12 +380,15 @@ class ChessActivity : Activity() {
         thinking = false
         board.flipped = !playerWhite
         board.last = null
+        board.hint = null
+        suggest = null; suggestKey = 0L; pendingJudge = null
+        evalBar.cp = 0; evalBar.mate = null; evalBar.invalidate()
         clearSel()
         refresh()
         talk.reset()
         remark(talk.start(playerWhite) ?: "")
         if (says.text.isEmpty() || says.text == "CAPRI: ") says.text = "CAPRI: ..."
-        if (!playerWhite) aiMove()
+        if (!playerWhite) aiMove() else think()
     }
 
     private fun clearSel() { board.selected = -1; board.targets = emptyList() }
@@ -282,6 +418,8 @@ class ChessActivity : Activity() {
 
     private fun play(m: Move) {
         val before = pos
+        board.hint = null
+        pendingJudge = suggestionFor(before)?.let { Triple(it, before, m) }
         history.add(pos); moves.add(m)
         pos = Chess.make(pos, m)
         board.last = m
@@ -298,8 +436,11 @@ class ChessActivity : Activity() {
         refresh()
         val snapshot = pos
         val lv = level
+        val judged = pendingJudge
+        pendingJudge = null
         bg("chess", this) {
-            val m = Chess.best(snapshot, lv)
+            val a = Engine.forLevel(snapshot, lv)
+            val m = a?.move
             ui.postDelayed({
                 sprite.glitchFx = false
                 thinking = false
@@ -307,10 +448,23 @@ class ChessActivity : Activity() {
                 history.add(pos); moves.add(m)
                 pos = Chess.make(pos, m)
                 board.last = m
+                if (a.depth >= 4) setEval(a, snapshot.white)
                 refresh()
                 val line = talk.react(snapshot, m, pos, true)
+                // judge your last move only when she searched properly, and only against her own best line
+                var verdict: String? = null
+                if (judged != null && a.depth >= 4 && lv >= 3) {
+                    val (sug, sugPos, played) = judged
+                    val yourScore = -a.score
+                    val loss = sug.score - yourScore
+                    if (played.toString() != sug.move.toString())
+                        verdict = talk.judge(loss, San.of(sugPos, sug.move), a.mateIn?.takeIf { it > 0 })
+                }
+                val both = listOfNotNull(verdict, line).joinToString("  ")
                 if (finished(false)) { remark(line); return@postDelayed }
-                remark(line)
+                remark(both)
+                think()
+                if (auto) ui.postDelayed({ if (auto && !isFinishing) playForMe() }, 900)
             }, 350)
         }
     }
@@ -331,9 +485,11 @@ class ChessActivity : Activity() {
         var n = if (pos.white == playerWhite) 2 else 1
         while (n-- > 0 && history.isNotEmpty()) { pos = history.removeAt(history.size - 1); moves.removeAt(moves.size - 1) }
         over = false
+        board.hint = null; suggest = null; suggestKey = 0L; pendingJudge = null
         board.last = moves.lastOrNull()
         clearSel()
         refresh()
+        think()
         say("Okay, take it back.", "ماشي، رجّعها.")
     }
 
@@ -366,8 +522,28 @@ class ChessActivity : Activity() {
             Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
             pos.white == playerWhite -> t("Your move", "دورك")
             else -> t("Her move", "دورها")
-        } + capturedLine()
+        } + capturedLine() + moveText()
     }
 
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
+}
+
+
+// A thin bar above the board: the lighter part is White's share, with the number from her search.
+class EvalBar(ctx: Context) : View(ctx) {
+    var cp = 0               // centipawns, White's view
+    var mate: Int? = null    // mate in N for White (positive) or Black (negative)
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; textSize = 24f }
+
+    override fun onDraw(canvas: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat()
+        val share = if (mate != null) (if (mate!! > 0) 1f else 0f) else (0.5f + Math.atan(cp / 400.0).toFloat() / Math.PI.toFloat()).coerceIn(0.03f, 0.97f)
+        p.color = Color.parseColor("#15101C"); canvas.drawRect(0f, 0f, w, h, p)
+        p.color = Color.parseColor("#E8E2EC"); canvas.drawRect(0f, 0f, w * share, h, p)
+        txt.textSize = h * 0.8f
+        val label = if (mate != null) "M" + kotlin.math.abs(mate!!) else (if (cp >= 0) "+" else "") + String.format(java.util.Locale.US, "%.1f", cp / 100f)
+        txt.color = if (share > 0.5f) Color.parseColor("#15101C") else Color.parseColor("#E8E2EC")
+        if (share > 0.5f) canvas.drawText(label, 6f, h * 0.82f, txt) else canvas.drawText(label, w - txt.measureText(label) - 6f, h * 0.82f, txt)
+    }
 }

@@ -86,6 +86,7 @@ class Prefs(ctx: Context) {
         val e = p.edit()
         val secret = Regex("^(k\\d+|voiceKey|sttKey|hfToken)$")
         for (k in o.keys()) {
+            if (k == "pluginApi" || k == "queue" || k == "actlog") continue   // never switched on or filled in from a pasted backup
             when (val v = o.get(k)) {
                 is String -> e.putString(k, if (secret.matches(k)) Secret.enc(v) else v)
                 is Boolean -> e.putBoolean(k, v)

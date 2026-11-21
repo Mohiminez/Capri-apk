@@ -46,7 +46,7 @@ object Chess {
 
     fun inCheck(p: Pos, white: Boolean): Boolean { val k = p.kingSq(white); return k >= 0 && attacked(p.b, k, !white) }
 
-    private fun pseudo(p: Pos): ArrayList<Move> {
+    fun pseudo(p: Pos): ArrayList<Move> {
         val out = ArrayList<Move>(48)
         val w = p.white; val s = if (w) 1 else -1; val b = p.b
         for (sq in 0..63) {
@@ -128,9 +128,9 @@ object Chess {
 
     // ---- the search ----
 
-    private val value = intArrayOf(0, 100, 320, 330, 500, 900, 0)
+    val value = intArrayOf(0, 100, 320, 330, 500, 900, 0)
 
-    private fun eval(p: Pos): Int {
+    fun eval(p: Pos): Int {
         var s = 0
         for (i in 0..63) {
             val pc = p.b[i]

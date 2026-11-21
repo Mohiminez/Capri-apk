@@ -48,3 +48,15 @@ class ChessReactionsTest {
         assertTrue(t.react(p, m, Chess.make(p, m), true)!!.any { it in '؀'..'ۿ' })
     }
 }
+
+class ChessJudgeTest {
+    @Test fun blunderAndMistakeAndSilence() {
+        val t = ChessTalk(false, java.util.Random(4))
+        assertTrue(t.judge(400, "Nf3", null)!!.contains("Nf3"))
+        assertTrue(t.judge(150, "Qd4", null)!!.contains("Qd4"))
+        assertNull(t.judge(30, "e4", null))
+        assertTrue(t.judge(0, "e4", 2)!!.contains("2"))
+        t.enabled = emptySet()
+        assertNull(t.judge(400, "Nf3", null))
+    }
+}

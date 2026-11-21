@@ -113,7 +113,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
 
     // done(reply, error): exactly one of them is non-null, always called on the main thread.
     // hidden = an instruction from the app, not something the user said, so it isn't kept in the chat.
-    fun ask(text: String, hidden: Boolean, image: String? = null, done: (String?, String?) -> Unit) {
+    fun ask(text: String, hidden: Boolean, image: String? = null, remember: Boolean = true, done: (String?, String?) -> Unit) {
         if (prefs.getB("noAI", false)) {
             // No AI mode: she answers from a handful of lines, so nothing leaves the phone and nothing costs anything.
             if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
@@ -125,9 +125,9 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = complete(system() + (if (hidden) "" else Knowledge.context(ctx, text)), past, text, image, Router.pick(text, prefs.cur, prefs.getI("fastProvider", -1), image != null))
+                val reply = complete(system() + (if (hidden) "" else Knowledge.context(ctx, text)), past, text, image, route(text, image != null))
                 main.post {
-                    if (!reply.trim().uppercase().startsWith("NOTHING")) {
+                    if (remember && !reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))
                         save()
                     }
@@ -148,7 +148,10 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val jobs = prefs.getI("jobProvider", -1)
         // A chat that runs on the phone never hands the screen to an online job brain unless you allow it.
         val offlineOnly = prefs.cur == Providers.LOCAL && !prefs.getB("localToCloud", false)
-        return complete(sys, emptyList(), user, image, if (jobs in 0 until Providers.all.size && !offlineOnly) jobs else prefs.cur)
+        val base = if (jobs in 0 until Providers.all.size && !offlineOnly) jobs else prefs.cur
+        // a picture goes to a brain that can see, when you have one set up
+        val first = if (image != null && !offlineOnly && prefs.getB("autoRoute", true)) AutoRoute.pick("", true, base, Providers.all.map { it.name }, { ready(it) }, Providers.LOCAL) else base
+        return complete(sys, emptyList(), user, image, first)
     }
 
     private fun ready(i: Int): Boolean = when (i) {
@@ -169,6 +172,15 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     }
 
     @Volatile var lastUsed = ""
+
+    // Your fast brain wins for short chat when you set one; otherwise, with auto on, the best ready provider for the topic.
+    private fun route(text: String, hasImage: Boolean): Int {
+        if (prefs.cur == Providers.LOCAL && !prefs.getB("localToCloud", false)) return prefs.cur   // offline stays offline
+        val fast = prefs.getI("fastProvider", -1)
+        if (fast >= 0) return Router.pick(text, prefs.cur, fast, hasImage)
+        if (!prefs.getB("autoRoute", true)) return prefs.cur
+        return AutoRoute.pick(text, hasImage, prefs.cur, Providers.all.map { it.name }, { ready(it) }, Providers.LOCAL)
+    }
 
     private fun complete(sys: String, past: List<Msg>, user: String, image: String?, first: Int = prefs.cur): String {
         var firstErr: Throwable? = null

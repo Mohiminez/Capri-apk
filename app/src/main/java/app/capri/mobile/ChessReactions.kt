@@ -8,7 +8,7 @@ import kotlin.math.abs
 object ChessBridge { @Volatile var speaker: ((String) -> Unit)? = null }
 
 object ChessEvents {
-    val all = listOf("capture", "check", "castle", "promotion", "mate", "draw", "start", "aside")
+    val all = listOf("capture", "check", "castle", "promotion", "mate", "draw", "start", "judge", "aside")
     private val order = listOf("mate", "draw", "promotion", "check", "capture", "castle")
 
     // Which things happened with this move. `after` is the position once it is played.
@@ -53,6 +53,15 @@ class ChessTalk(private val ar: Boolean, private val rnd: java.util.Random = jav
         if ("start" !in enabled) return null
         return pick(if (ar) listOf("يلا نلعب. لا تهوّن علي.", "ورّيني شطارتك يا ذكي.", "جاهزة. لا تبكي إذا خسرت.")
                     else listOf("Let's play. Don't go easy on me.", "Show me what you've got, choom.", "Ready. Try not to cry when you lose."))
+    }
+
+    // How good was your move? lossCp = what it cost you against the best move (only judged when she searched properly).
+    fun judge(lossCp: Int, bestSan: String, mateForHer: Int?): String? {
+        if ("judge" !in enabled) return null
+        if (mateForHer != null && mateForHer in 1..3) return pick(if (ar) listOf("أشوف مات في $mateForHer. بس أقول.", "مات في $mateForHer... لا تقول ما حذرتك.") else listOf("I see mate in $mateForHer. Just saying.", "Mate in $mateForHer. Don't say I didn't warn you."))
+        if (lossCp > 250) return pick(if (ar) listOf("آخ، غلطة كبيرة. $bestSan كانت أحسن.", "هذي غلطة قوية. كنت تقدر تلعب $bestSan.") else listOf("Ouch, that's a blunder. $bestSan was better.", "That one hurt. You could have played $bestSan."))
+        if (lossCp > 120) return pick(if (ar) listOf("مو أفضل نقلة. $bestSan أقوى.", "همم، $bestSan كانت أدق.") else listOf("Not your best. $bestSan was stronger.", "Hmm, $bestSan was more accurate."))
+        return null
     }
 
     // byHer = she just moved. Returns the line she says (or null for silence).

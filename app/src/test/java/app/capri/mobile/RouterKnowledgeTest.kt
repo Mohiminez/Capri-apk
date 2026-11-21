@@ -42,3 +42,31 @@ class KnowledgeTest {
         assertTrue(Knowledge.chunk("d", "word ".repeat(400), 600).all { it.text.length <= 600 })
     }
 }
+
+class AutoRouteTest {
+    private val names = listOf("Gemini (free key)", "Groq (free key, very fast)", "Claude", "DeepSeek", "On this phone (offline model)")
+    private val local = 4
+    @Test fun codeGoesToTheStrongest() {
+        assertEquals(2, AutoRoute.pick("fix this python bug", false, 1, names, { it != 4 }, local))
+    }
+    @Test fun quickChatGoesFast() {
+        assertEquals(1, AutoRoute.pick("hey", false, 2, names, { it != 4 }, local))
+    }
+    @Test fun keepsMainWhenAlreadyGood() {
+        assertEquals(2, AutoRoute.pick("fix this python bug", false, 2, names, { true }, local))
+    }
+    @Test fun skipsProvidersWithoutKeys() {
+        assertEquals(3, AutoRoute.pick("fix this python bug", false, 1, names, { it == 3 || it == 1 }, local))
+    }
+    @Test fun offlineStaysOffline() {
+        assertEquals(4, AutoRoute.pick("fix this python bug", false, 4, names, { true }, local))
+    }
+    @Test fun picturesGoToAVisionBrain() {
+        assertEquals(0, AutoRoute.pick("what is this", true, 1, names, { true }, local))
+    }
+    @Test fun topics() {
+        assertEquals(AutoRoute.Topic.WRITING, AutoRoute.topic("translate this to french", false))
+        assertEquals(AutoRoute.Topic.LONG, AutoRoute.topic("x".repeat(2000), false))
+        assertEquals(AutoRoute.Topic.CODE, AutoRoute.topic("اشرح لي هذا الكود", false))
+    }
+}

@@ -141,3 +141,24 @@ Her AI brain can now float reactions (heart, star, surprise, question, angry) wi
 - **Home-screen widget** (Capri): awake/asleep and waiting reminders; tap opens her.
 - **Plugin API** (off by default, switch on in More): `adb shell am broadcast -n app.capri.mobile/.PluginReceiver -a app.capri.mobile.PLUGIN --es cmd say --es text "Hello"` (cmd `say` or `ask`). Works with Tasker/MacroDroid.
 - Still not built: multi-agent review, cloud sync (use COPY MY SETTINGS), a visual skills studio.
+
+## Auto brain + review fixes
+- **Auto-pick brain** (Brain tab, on by default): code/maths, writing/translation, long text, pictures and quick chat each go to the best provider you have set up; the main brain is kept when it already fits. Offline stays offline. Short-chat "fast brain" still overrides if you set one.
+- Bigger jobs: plan -> a second reviewer pass warns about risky steps -> your yes. Planner/reviewer calls are not saved in chat history.
+- Backup file save/load (More tab) and one-tap command templates.
+- Fixes from an independent code review: network-state permission (offline queue), validated-network check, wake word must open the sentence, mic mute no longer sticks, stale recogniser callbacks ignored, privacy shield no longer eats dates/timestamps (cards need a valid Luhn check), backups can't switch on the plugin API.
+
+## Chess like CapriCore (new)
+- **Real engine**: iterative deepening with a clock, transposition table, killer moves, check extensions, quiescence and a smarter evaluation. Levels: Easy / Medium / Hard / **Master** (thinks up to 6 s). Tested on mate-in-1, hanging queen and fork positions.
+- **HINT** (arrow + best line in algebraic notation), **PLAY FOR ME** (she plays your move), **AUTO** (she plays your side every turn), live **eval bar**, last moves in notation, **FEN** copy/paste (take a position from chess.com or Lichess and play on from it).
+- She **judges your moves** (blunder / mistake, and "mate in N" warnings) when she has searched properly. Toggle under COMMENTS.
+- **Board on your screen**: say "what's the best move" while a chess app is open: she screenshots, a vision model reads the board as FEN, her engine finds the best move. Needs accessibility on and an online brain that sees images. A screenshot is read by an AI, so it can misread a piece: she says so, and you can paste the FEN on her chess screen to be sure. She does not tap the moves for you on other apps.
+
+## Playing inside other chess apps (new)
+Say **"play chess for me"** (or العبي عني) with a chess app open, **"coach me"** to only get pointers, **"stop chess"** to end it.
+- She finds the board by its checkerboard pattern and reads which squares hold white or black pieces **from your screenshot, on the phone, with no AI and no network** (`BoardVision.kt`, tested on synthetic screenshots: both orientations, different board colours, move dots, highlighted squares).
+- She follows the game from the opening position by working out which legal move explains each change (`ChessTracker`), also when the opponent replied between two looks. A game already under way needs an online vision brain once, to read its position.
+- Her engine (`Engine`) picks the move; in play mode she taps the piece and the square (promotion: taps the destination again for the queen); in coach mode she slides her pointer to the from/to squares and says the move.
+- Needs Android 11+ and her accessibility access. It stops itself if it loses the board or a move does not go through.
+- **Fair play:** use it for practice, bots, or games where engine help is allowed. Using it in rated games against people breaks chess.com / Lichess rules and can get the account banned. She asks you to confirm before she starts playing.
+- Not tested on a real device or real chess apps: piece themes, board borders, pop-ups and animations differ, so expect to tune thresholds in `BoardVision.kt` after trying it.

@@ -26,6 +26,8 @@ object Actions {
         fun point(label: String)
         fun clones(count: Int)
         fun chess()
+        fun chessScreen() {}
+        fun chessPilot(mode: String) {}
     }
 
     const val LOCKDOWN = 0
@@ -133,7 +135,7 @@ object Actions {
                 "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
                 "watch" -> hooks?.keepWatch(arg)
                 "point" -> hooks?.point(arg)
-                "chess" -> hooks?.chess()
+                "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
                 "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
         } catch (e: Exception) {
@@ -283,7 +285,7 @@ object QuickAsks {
         if (Regex("^(resume|play|unpause)$").matches(t)) return "Playing. [[media:play]]"
         if (Regex("^(next|skip|next song|skip song|skip this|next track)$").matches(t)) return "Skipping. [[media:next]]"
         if (Regex("^(previous|prev|previous song|last song|previous track)$").matches(t)) return "Going back. [[media:previous]]"
-        Regex("^play (?!(?:a |some )?(?:game of )?chess(?: with me)?$)(.+)$").find(t)?.let { return "On it. [[music:${it.groupValues[1]}]]" }
+        Regex("^play (?!(?:a |some |this |my |the )?(?:game of )?chess\\b|(?:this|my|the) game\\b)(.+)$").find(t)?.let { return "On it. [[music:${it.groupValues[1]}]]" }
         Regex("^(?:set )?(?:a )?timer (?:for )?(\\d+) ?(seconds?|secs?|minutes?|mins?|hours?)$").find(t)?.let {
             val n = it.groupValues[1].toInt()
             val unit = it.groupValues[2]
@@ -310,6 +312,15 @@ object QuickAsks {
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
+        if (Regex("^(?:play|finish|continue) (?:this |my |the )?(?:chess )?(?:game|chess)(?: for me| on (?:my )?screen)(?: for me)?$|^play chess for me(?: on (?:my )?screen)?$|^العبي? (?:لي |عني )?(?:الشطرنج|لعبة الشطرنج|اللعبة)(?: على الشاشة)?$|^العبي? عني$").matches(t))
+            return L.t("Okay, hands off the board. [[chess:auto]]", "تمام، لا تلمس الرقعة. [[chess:auto]]")
+        if (Regex("^(?:coach me|watch my (?:chess )?game(?: and help me)?|help me play(?: chess)?|be my chess coach)$|^(?:راقبي?|دربني|ساعدني) (?:في )?(?:لعبتي|الشطرنج|لعبة الشطرنج)$").matches(t))
+            return L.t("I'll watch and point. [[chess:coach]]", "بشوف وأشرلك. [[chess:coach]]")
+        if (Regex("^(?:stop (?:playing )?chess|stop the chess|stop playing for me|وقفي? (?:الشطرنج|اللعب)|بس لعب)$").matches(t))
+            return L.t("Okay, stopping. [[chess:stop]]", "تمام، وقفت. [[chess:stop]]")
+        if (Regex("^(?:what(?:s| is) the best move(?: on (?:my )?screen)?|what should i play(?: here)?|help me (?:with|in) (?:this|my) chess(?: game)?|play chess on (?:my )?screen|analy[sz]e (?:this|my) chess (?:board|game|position))$").matches(t) ||
+            Regex("^(?:شنو|وش|ايش) (?:افضل|أفضل) نقلة(?: على الشاشة| هنا)?$|^ساعدني (?:في|ب|بـ)?\\s*(?:هذي |هذه )?(?:لعبة )?الشطرنج$|^حلل (?:لي )?(?:الرقعة|الشطرنج)$").matches(t))
+            return L.t("Let me look at the board. [[chess:screen]]", "خلني أشوف الرقعة. [[chess:screen]]")
         if (Regex("^(?:let s |lets |can we |i want to |want to |wanna )?(?:play|have|do)(?: a| some)?(?: game of)? chess(?: with me)?(?: now)?$|^(?:play|chess) (?:with me|please)$|^chess$").matches(t) ||
             Regex("^(?:خلنا|يلا|تعالي|تعال|ابي|ابغى|أبغى|أبي|ممكن|هيا)?\\s*(?:نلعب|العب|لعب|العبي|نلعبو)\\s*(?:معي\\s*)?(?:لعبه |لعبة )?(?:شطرنج|الشطرنج)(?:\\s*معي)?$|^شطرنج$").matches(t))
             return L.t("Sure, let's play. [[chess:open]]", "يلا نلعب. [[chess:open]]")

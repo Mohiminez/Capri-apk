@@ -12,6 +12,43 @@ object Router {
     }
 }
 
+// Picks the best of YOUR ready providers for what you asked, by topic. Keeps the main brain when it is already a good fit.
+object AutoRoute {
+    enum class Topic { CODE, FAST, WRITING, LONG, VISION, GENERAL }
+
+    fun topic(text: String, hasImage: Boolean): Topic {
+        val t = text.trim()
+        if (hasImage) return Topic.VISION
+        if (t.length > 1500) return Topic.LONG
+        if (Regex("(?i)\\b(code|function|bug|error|python|kotlin|java|javascript|regex|sql|algorithm|calculate|equation|prove|math|debug)\\b|```|كود|برمجة|دالة|خطأ برمجي|معادلة|احسب").containsMatchIn(t)) return Topic.CODE
+        if (Regex("(?i)\\b(translate|essay|story|poem|email|letter|rewrite|summari[sz]e|write)\\b|ترجم|لخص|اكتب لي|قصة|قصيدة|رسالة|اعد صياغة").containsMatchIn(t)) return Topic.WRITING
+        if (t.length <= 60 && !t.contains('\n')) return Topic.FAST
+        return Topic.GENERAL
+    }
+
+    // provider-name keywords, best first
+    private fun rank(tp: Topic): List<String> = when (tp) {
+        Topic.CODE -> listOf("claude", "deepseek", "openai", "gemini", "xai", "nvidia", "groq")
+        Topic.FAST -> listOf("groq", "cerebras", "sambanova", "gemini", "mistral")
+        Topic.WRITING -> listOf("gemini", "claude", "openai", "mistral")
+        Topic.LONG -> listOf("gemini", "claude", "openai")
+        Topic.VISION -> listOf("gemini", "openai", "claude")
+        Topic.GENERAL -> emptyList()
+    }
+
+    // names: provider display names by index. ready(i): has a key/address. Returns an index.
+    fun pick(text: String, hasImage: Boolean, main: Int, names: List<String>, ready: (Int) -> Boolean, local: Int): Int {
+        if (main == local) return main                     // offline stays offline
+        val order = rank(topic(text, hasImage))
+        if (order.isEmpty()) return main
+        fun at(key: String) = names.indices.firstOrNull { it != local && names[it].lowercase().contains(key) && ready(it) }
+        val mainName = names.getOrElse(main) { "" }.lowercase()
+        if (order.take(2).any { mainName.contains(it) }) return main
+        for (k in order) at(k)?.let { return it }
+        return main
+    }
+}
+
 object OfflineQueue {
     private const val MAX = 5
 

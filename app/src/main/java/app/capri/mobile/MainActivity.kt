@@ -785,6 +785,8 @@ class MainActivity : Activity() {
         val opts = listOf(t("Same as chat", "نفس عقل المحادثة")) + Providers.all.indices.filter { it != Providers.LOCAL }.map { Providers.all[it].name }
         val idxs = listOf(-1) + Providers.all.indices.filter { it != Providers.LOCAL }
         spin(r, opts, idxs.indexOf(prefs.getI("jobProvider", -1)).coerceAtLeast(0)) { prefs.putI("jobProvider", idxs[it]) }
+        toggle(r, t("Auto-pick the best brain for each topic (code, writing, long text, pictures, quick chat) from the ones you set up", "اختيار العقل الأنسب تلقائياً لكل موضوع (برمجة، كتابة، نص طويل، صور، دردشة سريعة) من اللي جهّزتهم"), "autoRoute", true)
+        if (brainLast.isNotBlank()) note(r, t("Last answer came from: ", "آخر رد جاء من: ") + brainLast)
         body(r, t("Fast brain (short, simple chat goes here; longer or harder questions stay with the main brain)", "العقل السريع (الدردشة القصيرة والبسيطة تروح له، والأسئلة الأصعب تبقى مع العقل الرئيسي)"), 14f, muted)
         spin(r, listOf(t("Off, use the main brain", "مطفي، استخدم العقل الرئيسي")) + opts.drop(1), idxs.indexOf(prefs.getI("fastProvider", -1)).coerceAtLeast(0)) { prefs.putI("fastProvider", idxs[it]) }
     }
@@ -1326,6 +1328,8 @@ class MainActivity : Activity() {
 
     // ---- MORE ----
 
+    private val brainLast: String get() = CapriService.lastBrain
+
     private fun buildMore() {
         val m = section(t("HER NOTES ABOUT YOU", "ملاحظاتها عنك"))
         edit(m, t("Nothing yet. She adds things as you chat.", "ما فيه شي للحين. تضيف أشياء وانت تسولف معها."), prefs.getS("notes", ""), multiline = true) { prefs.putS("notes", it) }
@@ -1342,7 +1346,13 @@ class MainActivity : Activity() {
         val sk = section(t("YOUR OWN COMMANDS", "أوامرك الخاصة"), false)
         note(sk, t("One per line:  phrase => what she does. Use {x} for the rest of the sentence. Example:\ngood morning => Morning! [[weather:Baghdad]]\nwork mode => On it. [[open:Slack]] [[music:lofi]]\nsearch {x} => Looking. [[search:{x}]]",
             "سطر لكل أمر:  العبارة => وش تسوي. استخدم {x} لبقية الجملة. مثال:\nصباح الخير => صباح النور! [[weather:Baghdad]]\nوضع الشغل => تمام. [[open:Slack]] [[music:lofi]]\nدوري {x} => أدور. [[search:{x}]]"))
-        edit(sk, "phrase => answer", prefs.getS("skills", ""), multiline = true) { prefs.putS("skills", it) }
+        val skEdit = edit(sk, "phrase => answer", prefs.getS("skills", ""), multiline = true) { prefs.putS("skills", it) }
+        for ((label, line) in listOf(
+            t("+ Morning routine", "+ روتين الصباح") to t("good morning => Morning! [[weather:Baghdad]]", "صباح الخير => صباح النور! [[weather:Baghdad]]"),
+            t("+ Work mode", "+ وضع الشغل") to t("work mode => On it. [[open:Slack]] [[music:lofi]]", "وضع الشغل => تمام. [[open:Slack]] [[music:lofi]]"),
+            t("+ Quick search", "+ بحث سريع") to t("google {x} => Looking. [[search:{x}]]", "دوري {x} => أدور. [[search:{x}]]"),
+            t("+ Open a site", "+ افتح موقع") to t("news => Here. [[url:https://news.google.com]]", "الاخبار => تفضل. [[url:https://news.google.com]]")))
+            btn(sk, label) { skEdit.setText((skEdit.text.toString().trimEnd() + "\n" + line).trim()) }
 
         val lg = section(t("WHAT SHE DID", "وش سوّت على جوالك"), false)
         val logText = ActionLog.text(prefs)
@@ -1358,6 +1368,12 @@ class MainActivity : Activity() {
         btn(p, t("RESET PERSONALITY", "أعد الشخصية للأصل")) { pe.setText(Persona.default(this)) }
 
         val d = section(t("DATA", "البيانات"), false)
+        btn(d, t("SAVE A BACKUP FILE (no keys)", "احفظ ملف نسخة احتياطية (بدون المفاتيح)")) {
+            startActivityForResult(Intent(Intent.ACTION_CREATE_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("application/json").putExtra(Intent.EXTRA_TITLE, "capri-backup.json"), 9)
+        }
+        btn(d, t("LOAD A BACKUP FILE", "حمّل ملف نسخة احتياطية")) {
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 10)
+        }
         btn(d, t("COPY MY SETTINGS (no keys)", "انسخ إعداداتي (بدون المفاتيح)")) { clip(prefs.dump(false)); toast(t("Copied.", "تم النسخ.")) }
         btn(d, t("COPY MY SETTINGS WITH KEYS", "انسخ إعداداتي مع المفاتيح")) { clip(prefs.dump(true)); toast(t("Copied. Keep it private.", "تم النسخ. لا تشاركه مع أحد.")) }
         btn(d, t("PASTE SETTINGS FROM CLIPBOARD", "الصق الإعدادات من الحافظة")) {
@@ -1466,11 +1482,24 @@ class MainActivity : Activity() {
     @Deprecated("Deprecated in Java")
     override fun onActivityResult(requestCode: Int, resultCode: Int, data: Intent?) {
         super.onActivityResult(requestCode, resultCode, data)
+        if (requestCode == 9 && resultCode == RESULT_OK) {
+            val u = data?.data ?: return
+            try { contentResolver.openOutputStream(u)?.use { it.write(prefs.dump(false).toByteArray()) }; toast(t("Backup saved.", "انحفظت النسخة.")) } catch (e: Exception) { toast(t("Couldn't save it.", "ما قدرت أحفظ.")) }
+            return
+        }
+        if (requestCode == 10 && resultCode == RESULT_OK) {
+            val u = data?.data ?: return
+            try {
+                val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText().take(200_000) } ?: return
+                prefs.restore(txt); toast(t("Settings loaded.", "انحمّلت الإعدادات.")); showTab(tab)
+            } catch (e: Exception) { toast(t("That isn't a Capri backup.", "هذا مو ملف نسخة من كابري.")) }
+            return
+        }
         if (requestCode == 8 && resultCode == RESULT_OK) {
             val u = data?.data ?: return
             try {
                 val name = contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "notes"
-                val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { val buf = CharArray(200_001); val n = it.read(buf); String(buf, 0, n.coerceAtLeast(0)) } ?: return
+                val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText().take(200_000) } ?: return
                 val n = Knowledge.add(this, name.take(40), txt)
                 toast(if (n > 0) t("Added: $name", "انضاف: $name") else t("That file has no text.", "الملف ما فيه نص."))
                 showTab(tab)

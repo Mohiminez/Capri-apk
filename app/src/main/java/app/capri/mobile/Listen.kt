@@ -24,12 +24,14 @@ object Listen {
     }
 
     // Longer spellings first, so "كابريا" does not leave a stray "يا" behind.
-    val wakeRe = Regex("(capri|kapri|cabri|capry|capre|kapre|caprie|كابريه|كابريا|كابري|كابرى|كابرة|كابرا|قابري|كبري|كابر)", RegexOption.IGNORE_CASE)
-    private val lead = Regex("^(?:hey|hi|hello|ok|okay|yo|اهلا|أهلا|هلا|مرحبا|يا|هاي|هلو)[ ,،]*$", RegexOption.IGNORE_CASE)
+    val wakeRe = Regex("(?<![\\p{L}\\p{N}])(capri|kapri|cabri|capry|capre|kapre|caprie|كابريه|كابريا|كابري|كابرى|كابرة|كابرا|قابري|كبري|كابر)(?![\\p{L}\\p{N}])", RegexOption.IGNORE_CASE)
+    private val lead = Regex("^(?:(?:hey|hi|hello|ok|okay|yo|اهلا|أهلا|هلا|مرحبا|يا|هاي|هلو)[ ,،]*)+$", RegexOption.IGNORE_CASE)
 
     // "hey Capri open whatsapp" -> "open whatsapp"; "كابري" -> ""; no name -> null.
     fun afterName(text: String): String? {
         val m = wakeRe.find(text) ?: return null
+        // her name has to open the sentence (after a greeting at most), so "my cousin Capri is late" does not wake her
+        if (!onlyGreeting(text.substring(0, m.range.first))) return null
         return text.substring(m.range.last + 1).trim().trimStart(',', '،', '.', '!', ' ', '؟', '?')
     }
 

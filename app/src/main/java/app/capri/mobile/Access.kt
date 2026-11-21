@@ -144,6 +144,35 @@ class CapriAccess : AccessibilityService() {
         for (i in 0 until n.childCount) walk(n.getChild(i), out, depth + 1)
     }
 
+    class ShotPixels(val px: IntArray, val w: Int, val h: Int, val k: Float)   // k = real screen pixels per pixel here
+
+    // The screen as raw pixels, shrunk to about maxW wide, for her own board reading (nothing leaves the phone). Android 11+.
+    fun shotPixels(maxW: Int = 520): ShotPixels? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        var result: ShotPixels? = null
+        val latch = CountDownLatch(1)
+        takeScreenshot(Display.DEFAULT_DISPLAY, shots, object : AccessibilityService.TakeScreenshotCallback {
+            override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                try {
+                    val hw = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
+                    if (hw != null) {
+                        val soft = hw.copy(Bitmap.Config.ARGB_8888, false)
+                        val scale = if (soft.width > maxW) maxW.toFloat() / soft.width else 1f
+                        val small = if (scale < 1f) Bitmap.createScaledBitmap(soft, maxW, (soft.height * scale).toInt(), true) else soft
+                        val px = IntArray(small.width * small.height)
+                        small.getPixels(px, 0, small.width, 0, 0, small.width, small.height)
+                        result = ShotPixels(px, small.width, small.height, 1f / scale)
+                    }
+                    screenshot.hardwareBuffer.close()
+                } catch (e: Throwable) { }
+                latch.countDown()
+            }
+            override fun onFailure(errorCode: Int) { latch.countDown() }
+        })
+        latch.await(6, TimeUnit.SECONDS)
+        return result
+    }
+
     // A JPEG of the screen as base64, or null (needs Android 11+). Blocks up to 6 seconds.
     fun shotBlocking(): String? {
         if (Build.VERSION.SDK_INT < 30) return null

@@ -56,6 +56,7 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_STOP = "app.capri.mobile.STOP"
         const val ACT_ASK = "app.capri.mobile.ASK"
         const val ACT_PLUGIN = "app.capri.mobile.PLUGIN_CMD"
+        @Volatile var lastBrain = ""
         const val ACT_QUIET = "app.capri.mobile.QUIET"
         const val ACT_TEST = "app.capri.mobile.TEST"
         @Volatile var notifier: ((String) -> Unit)? = null
@@ -192,7 +193,7 @@ class CapriService : Service(), Actions.Hooks {
             val pc = intent.getStringExtra("cmd")
             h.postDelayed({
                 if (hidden) toggleHidden()
-                if (pc == "say") say(pt) else ask("(Another app on this phone passed you this: \"${pt.replace("\"", "'")}\". Answer in one short line. Use no tags.)", true)
+                if (pc == "say") say(pt) else brain.ask("(Another app on this phone passed you this: \"${pt.replace("\"", "'")}\". Answer in one short line. Use no tags.)", true, null, false) { r, _ -> if (r != null) say(Actions.strip(r)) }
             }, 600)
         }
         if (intent?.action == ACT_ASK) {
@@ -220,6 +221,7 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
+        pilot?.stop()
         ChessBridge.speaker = null
         try { miniPlayer.hide() } catch (e: Throwable) { }
         CapriAccess.onForeground = null
@@ -539,6 +541,8 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     // Messages that couldn't be sent for lack of internet are tried again when it comes back.
+    @Volatile private var replaying = false
+
     private val queueTask = object : Runnable {
         override fun run() {
             try {
@@ -546,6 +550,7 @@ class CapriService : Service(), Actions.Hooks {
                 if (q.isNotBlank() && idleOk() && online()) {
                     OfflineQueue.pop(q)?.let { (first, rest) ->
                         prefs.putS("queue", rest)
+                        replaying = true
                         ask(first)
                     }
                 }
@@ -556,7 +561,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun online(): Boolean = try {
         val cm = getSystemService(CONNECTIVITY_SERVICE) as android.net.ConnectivityManager
-        cm.getNetworkCapabilities(cm.activeNetwork)?.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) == true
+        cm.getNetworkCapabilities(cm.activeNetwork)?.let { it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_INTERNET) && it.hasCapability(android.net.NetworkCapabilities.NET_CAPABILITY_VALIDATED) } == true
     } catch (e: Throwable) { false }
 
     private val charmTask = object : Runnable {
@@ -1283,12 +1288,13 @@ class CapriService : Service(), Actions.Hooks {
             when {
                 reply != null && skipNothing && reply.trim().uppercase().startsWith("NOTHING") -> settle()
                 reply != null && hiddenPrompt && reply.trim().equals("NOTHING", ignoreCase = true) -> settle()
-                reply != null -> say(Actions.run(this, prefs, reply, this))
+                reply != null -> { replaying = false; lastBrain = brain.lastUsed; say(Actions.run(this, prefs, reply, this)) }
                 skipNothing -> settle()
                 !hiddenPrompt && OfflineQueue.isNetworkError(err) -> {
                     Diag.log("brain", err ?: "?")
                     prefs.putS("queue", OfflineQueue.push(prefs.getS("queue", ""), text))
-                    say(L.t("No signal. I'll answer when you're back online.", "ما في نت. برد عليك أول ما يرجع."), false)
+                    if (!replaying) say(L.t("No signal. I'll answer when you're back online.", "ما في نت. برد عليك أول ما يرجع."), false) else settle()
+                    replaying = false
                 }
                 else -> { Diag.log("brain", err ?: "?"); say(L.t("Signal lost: ", "انقطعت الإشارة: ") + err, false) }
             }
@@ -1304,12 +1310,19 @@ class CapriService : Service(), Actions.Hooks {
             busy = true
             settle()
             showBubble(L.t("Planning...", "أخطط..."), 60_000L, false)
-            brain.ask("(Write a numbered plan of at most 5 short steps for this phone job: $goal. Plain text, no tags, no extra words.)", true) { reply, _ ->
+            brain.ask("(Write a numbered plan of at most 5 short steps for this phone job: $goal. Plain text, no tags, no extra words.)", true, null, false) { reply, _ ->
                 busy = false
+                if (reply == null) { showConfirm(L.t("I couldn't plan it first. Do it anyway?\n", "ما قدرت أخطط قبل. أسويها على طول؟\n") + goal.take(120)) { runJob(goal, "") }; settle(); return@ask }
                 val plan = reply?.trim().orEmpty().replace(Regex("\\[\\[.*?\\]\\]"), "").take(500)
                 if (plan.isBlank() || plan.equals("NOTHING", true)) { runJob(goal, ""); return@ask }
-                showConfirm(plan + "\n\n" + L.t("Go?", "أبدأ؟")) { runJob(goal, plan) }
-                settle()
+                // a second look: a reviewer pass that only hunts for anything risky or irreversible in the plan
+                busy = true
+                brain.ask("(You are a careful reviewer. Goal: $goal\nPlan:\n$plan\nIf any step sends, buys, deletes, pays or changes settings, answer with one short warning line starting with WARNING. Otherwise answer OK. Plain text, no tags.)", true, null, false) { rev, _ ->
+                    busy = false
+                    val warn = rev?.trim().orEmpty().takeIf { it.uppercase().startsWith("WARNING") }?.take(160)
+                    showConfirm(plan + (if (warn != null) "\n\n\u26A0 " + warn.removePrefix("WARNING").trimStart(':', ' ', '-') else "") + "\n\n" + L.t("Go?", "أبدأ؟")) { runJob(goal, plan) }
+                    settle()
+                }
             }
             return
         }
@@ -1650,6 +1663,71 @@ class CapriService : Service(), Actions.Hooks {
 
     private class Clone(val view: SpriteView, val lp: WindowManager.LayoutParams)
     private val crowd = ArrayList<Clone>()
+
+    // She looks at a chess game on the screen (chess.com, Lichess...), reads the board from a screenshot, and tells you the best move.
+    override fun chessScreen() {
+        val acc = CapriAccess.instance
+        if (acc == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
+        if (brain.isLocal()) { say(L.t("Reading a board needs an online brain that can see pictures.", "قراءة الرقعة تحتاج عقل أونلاين يشوف الصور."), false); return }
+        busy = true
+        settle()
+        showBubble(L.t("Looking at the board...", "أشوف الرقعة..."), 90_000L, false)
+        bg("job", this@CapriService) {
+            val img = acc.shotBlocking()
+            var reply = ""
+            var err: String? = null
+            if (img == null) err = L.t("I couldn't take a screenshot.", "ما قدرت آخذ لقطة.")
+            else try {
+                reply = brain.completeBlocking("You read chess boards from screenshots and answer with exactly one line.",
+                    "Read the chess board in this screenshot. Answer ONLY with its FEN (all six fields). The side to move is the side whose pieces are at the bottom of the screen unless the screen clearly says otherwise. Use '-' for castling if unsure. If there is no chess board, answer NONE.", img)
+            } catch (e: Throwable) { err = L.t("The brain couldn't read it: ", "العقل ما قدر يقرأها: ") + (e.message ?: "") }
+            val fen = Regex("[1-8pnbrqkPNBRQK/]{15,}\\s+[wb](?:\\s+\\S+){0,4}").find(reply)?.value
+            val p = fen?.let { Fen.parse(it) }
+            val a = if (p != null) Engine.analyse(p, 3500, 12) else null
+            h.post {
+                busy = false
+                when {
+                    err != null -> say(err, false)
+                    p == null || a == null -> say(L.t("I couldn't read the board reliably. Try a clearer view, or paste the FEN into my chess screen.", "ما قدرت أقرأ الرقعة بدقة. جرب منظر أوضح، أو الصق الـFEN في شاشة الشطرنج."), false)
+                    else -> {
+                        val san = San.of(p, a.move)
+                        val from = Chess.name(a.move.from); val to = Chess.name(a.move.to)
+                        val mate = a.mateIn?.takeIf { it > 0 }?.let { L.t(" Mate in $it!", " مات في $it!") } ?: ""
+                        say(L.t("Best move: $san ($from to $to).$mate I read the board from a picture, so double-check it.", "أفضل نقلة: $san (من $from إلى $to).$mate قرأت الرقعة من صورة، فتأكد منها."), false)
+                        ActionLog.add(prefs, "chess", "analysed the board on screen")
+                    }
+                }
+            }
+        }
+    }
+
+    private var pilot: ChessPilot? = null
+
+    override fun chessPilot(mode: String) {
+        if (mode == "stop") { pilot?.stop(); return }
+        val acc = CapriAccess.instance
+        if (acc == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
+        if (pilot?.running == true) { say(L.t("I'm already on a game. Say stop chess first.", "أنا على لعبة. قل وقفي الشطرنج أول."), false); return }
+        val go = {
+            val pl = ChessPilot({ CapriAccess.instance }, prefs, { t -> say(t, false) }, { seedFromScreen() }, { pilot = null })
+            pilot = pl
+            pl.start(mode == "auto")
+        }
+        if (mode == "auto") showConfirm(L.t("I'll tap the pieces for you in your chess app. Use this for practice, bots or games where engine help is allowed: in rated games against people it breaks the site's rules and can get you banned. Start?",
+            "بلمس القطع عنك في تطبيق الشطرنج. استخدمها للتدريب أو ضد البوتات أو لعب يسمح بمساعدة المحرك: في اللعب المصنّف ضد ناس يخالف قوانين الموقع وممكن ينحظر حسابك. أبدأ؟")) { go() } else go()
+    }
+
+    // For a game that is already under way: a vision model reads the board once. Blocks, so only call it off the main thread.
+    private fun seedFromScreen(): Pos? {
+        val acc = CapriAccess.instance ?: return null
+        if (brain.isLocal()) return null
+        val img = acc.shotBlocking() ?: return null
+        return try {
+            val reply = brain.completeBlocking("You read chess boards from screenshots and answer with exactly one line.",
+                "Read the chess board in this screenshot. Answer ONLY with its FEN (all six fields). The side to move is the side whose pieces are at the bottom of the screen unless the screen clearly says otherwise. Use '-' for castling if unsure. If there is no chess board, answer NONE.", img)
+            Regex("[1-8pnbrqkPNBRQK/]{15,}\\s+[wb](?:\\s+\\S+){0,4}").find(reply)?.value?.let { Fen.parse(it) }
+        } catch (e: Throwable) { null }
+    }
 
     override fun chess() {
         try {
@@ -2054,6 +2132,7 @@ class CapriService : Service(), Actions.Hooks {
             return
         }
         recognizer?.destroy()
+        val myToken = ++listenToken
         val r = SpeechRecognizer.createSpeechRecognizer(this)
         var partial = ""
         val retries = listenRetries
@@ -2070,19 +2149,21 @@ class CapriService : Service(), Actions.Hooks {
                 if (partial.isNotBlank() && Listen.silent(error)) { listenRetries = 0; heard(partial); return }
                 if (Listen.retryable(error) && retries < 2) {
                     listenRetries = retries + 1
-                    h.postDelayed({ startListening(dictate) }, 700)
+                    h.postDelayed({ if (listenToken == myToken && !talking && !busy) startListening(dictate) }, 700)
                     return
                 }
                 listenRetries = 0
                 missed(error)
             }
             override fun onPartialResults(partialResults: Bundle?) {
+                if (recognizer !== r) return
                 val p = partialResults?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: return
                 if (p.isBlank()) return
                 partial = p
                 if (!dictate) showBubble(p, 15_000L, false)   // she shows what she is hearing, live
             }
             override fun onResults(results: Bundle?) {
+                if (recognizer !== r) return
                 listenRetries = 0
                 heard(results?.getStringArrayList(SpeechRecognizer.RESULTS_RECOGNITION)?.firstOrNull() ?: partial.ifBlank { null })
             }
@@ -2105,6 +2186,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private var listenRetries = 0
+    private var listenToken = 0
 
     // ---- wake word: "Capri, open WhatsApp" ----
 
@@ -2137,12 +2219,10 @@ class CapriService : Service(), Actions.Hooks {
     // The recogniser beeps when it starts; keep those small system sounds quiet while she waits for her name.
     private fun muteBeep(on: Boolean) {
         if (wakeMuted == on) return
-        try {
-            val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
-            for (st in intArrayOf(android.media.AudioManager.STREAM_SYSTEM, android.media.AudioManager.STREAM_NOTIFICATION))
-                am.adjustStreamVolume(st, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0)
-            wakeMuted = on
-        } catch (e: Throwable) { }
+        wakeMuted = on
+        val am = getSystemService(AUDIO_SERVICE) as android.media.AudioManager
+        // only the system stream: touching notification volume needs Do Not Disturb access and can throw halfway
+        try { am.adjustStreamVolume(android.media.AudioManager.STREAM_SYSTEM, if (on) android.media.AudioManager.ADJUST_MUTE else android.media.AudioManager.ADJUST_UNMUTE, 0) } catch (e: Throwable) { }
     }
 
     private fun startWake() {
