@@ -127,6 +127,7 @@ class ChessActivity : Activity() {
     private var pos = Chess.start()
     private val history = ArrayList<Pos>()
     private val moves = ArrayList<Move?>()
+    private val redo = ArrayList<Pair<Pos, Move?>>()
     private var playerWhite = true
     private var level = 3
     private var endReason = "playing"
@@ -204,6 +205,7 @@ class ChessActivity : Activity() {
         val row2 = LinearLayout(this); row2.orientation = LinearLayout.HORIZONTAL
         row1.addView(button(t("NEW GAME", "لعبة جديدة")) { newGame() }, weight())
         row1.addView(button(t("UNDO", "تراجع")) { undo() }, weight())
+        row1.addView(button(t("REDO", "إعادة")) { redoMove() }, weight())
         val lvl = button("") { level = level % 4 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
         levelLabel(lvl)
         row2.addView(lvl, weight())
@@ -219,6 +221,7 @@ class ChessActivity : Activity() {
         vb.text = voiceLabel()
         row3.addView(vb, weight())
         row3.addView(button(t("COMMENTS", "التعليقات")) { talkDialog() }, weight())
+        row3.addView(button(t("EXPLAIN", "اشرح")) { explain() }, weight())
         val row4 = LinearLayout(this); row4.orientation = LinearLayout.HORIZONTAL
         row4.addView(button(t("HINT", "تلميح")) { showHint() }, weight())
         row4.addView(button(t("PLAY FOR ME", "العب عني")) { playForMe() }, weight())
@@ -347,14 +350,30 @@ class ChessActivity : Activity() {
     private fun fenDialog() {
         val box = android.widget.EditText(this)
         box.setText(Fen.write(pos)); box.setTextColor(Night.white); box.textSize = 12f; box.typeface = Typeface.MONOSPACE
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("FEN")
-            .setMessage(t("Copy this to take the position elsewhere, or paste a FEN from chess.com or Lichess to play from it.", "انسخه عشان تاخذ الوضع لمكان ثاني، أو الصق FEN من chess.com أو Lichess وتلعب منه."))
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle("FEN / PGN")
+            .setMessage(t("Copy this to take the position elsewhere. Or paste a FEN, or a whole game (PGN) from chess.com or Lichess: you can step through it with UNDO and REDO, or play on from it.", "انسخه عشان تاخذ الوضع لمكان ثاني. أو الصق FEN، أو لعبة كاملة (PGN) من chess.com أو Lichess: تمشي فيها بتراجع وإعادة، أو تكمل لعب منها."))
             .setView(box)
             .setPositiveButton(t("LOAD", "حمّل")) { _, _ ->
-                val p = Fen.parse(box.text.toString())
-                if (p == null) { say("That doesn't look like a real position.", "هذا مو وضع صحيح."); return@setPositiveButton }
+                val txt = box.text.toString()
+                val p = Fen.parse(txt)
+                if (p == null) {
+                    val game = Pgn.parse(txt)
+                    if (game == null) { say("That doesn't look like a real position or game.", "هذا مو وضع ولا لعبة صحيحة."); return@setPositiveButton }
+                    history.clear(); moves.clear(); redo.clear()
+                    var cur = game.start
+                    for (m in game.moves) { history.add(cur); moves.add(m); cur = Chess.make(cur, m) }
+                    pos = cur; playerWhite = cur.white
+                    over = false; endReason = "playing"; thinking = false; auto = false
+                    board.flipped = !playerWhite; board.last = moves.lastOrNull(); board.hint = null; clearSel()
+                    suggest = null; suggestKey = 0L; pendingJudge = null
+                    refresh()
+                    say("Loaded ${game.moves.size} moves" + (if (game.badAt >= 0) " (stopped at a move I couldn't read)" else "") + ". UNDO walks back through it, or play on.",
+                        "حمّلت ${game.moves.size} نقلة" + (if (game.badAt >= 0) " (وقفت عند نقلة ما قدرت أقرأها)" else "") + ". تراجع يمشي بيك لورا، أو كمّل لعب.")
+                    if (!finished(false)) think()
+                    return@setPositiveButton
+                }
                 pos = p; playerWhite = p.white
-                history.clear(); moves.clear(); over = false; endReason = "playing"; thinking = false; auto = false
+                history.clear(); moves.clear(); redo.clear(); over = false; endReason = "playing"; thinking = false; auto = false
                 board.flipped = !playerWhite; board.last = null; board.hint = null; clearSel()
                 suggest = null; suggestKey = 0L
                 refresh(); say("Loaded. Your move.", "تم. دورك."); think()
@@ -380,7 +399,7 @@ class ChessActivity : Activity() {
 
     private fun newGame() {
         pos = Chess.start()
-        history.clear(); moves.clear()
+        history.clear(); moves.clear(); redo.clear()
         over = false; endReason = "playing"
         thinking = false
         board.flipped = !playerWhite
@@ -425,7 +444,7 @@ class ChessActivity : Activity() {
         val before = pos
         board.hint = null
         pendingJudge = suggestionFor(before)?.let { Triple(it, before, m) }
-        history.add(pos); moves.add(m)
+        history.add(pos); moves.add(m); redo.clear()
         pos = Chess.make(pos, m)
         board.last = m
         clearSel()
@@ -486,11 +505,48 @@ class ChessActivity : Activity() {
         return true
     }
 
+    // "Why is that the best move?": the engine finds the line, her brain puts it in words (without a brain she gives the line itself).
+    private fun explain() {
+        if (thinking || over) return
+        val snap = pos
+        val keys = keysNow()
+        say("Let me think it through...", "خليني أفكر...")
+        bg("chess", this) {
+            val a = Engine.analyse(snap, 2500, 30, keys)
+            if (a == null) return@bg
+            val sb = StringBuilder()
+            var p = snap
+            for (m in a.pv.take(6)) { sb.append(San.of(p, m)).append(' '); p = Chess.make(p, m) }
+            val line = sb.toString().trim()
+            val first = San.of(snap, a.move)
+            val ev = a.mateIn?.takeIf { it > 0 }?.let { "mate in $it" } ?: "%+.1f".format(a.score / 100.0)
+            val plain = "$first ($ev). $line"
+            val prompt = "(The user asked why this chess move is best. Position FEN: ${Fen.write(snap)}. The engine's best line: $line, evaluation $ev for the side to move. In two short sentences, in your own voice, say what the first move does and what it avoids or wins. Stick to the engine's line; no lists, no invented variations.)"
+            ui.post {
+                if (isFinishing) return@post
+                val ex = ChessBridge.explainer
+                if (ex == null) { says.text = "CAPRI: $plain" }
+                else ex(prompt) { r -> ui.post { if (!isFinishing) { if (r.isNullOrBlank() || r.trim() == "NOTHING") says.text = "CAPRI: $plain" else remark(r) } } }
+            }
+        }
+    }
+
+    // Steps forward again after UNDO (one move at a time), so an imported game can be walked through.
+    private fun redoMove() {
+        if (thinking || redo.isEmpty()) return
+        val (after, m) = redo.removeAt(redo.size - 1)
+        history.add(pos); moves.add(m); pos = after
+        board.last = m; board.hint = null; suggest = null; suggestKey = 0L; pendingJudge = null
+        over = false; endReason = "playing"
+        clearSel(); refresh()
+        finished(false)
+    }
+
     private fun undo() {
         if (thinking || history.isEmpty()) return
         // take back her move and yours, so it is your turn again
         var n = if (pos.white == playerWhite) 2 else 1
-        while (n-- > 0 && history.isNotEmpty()) { pos = history.removeAt(history.size - 1); moves.removeAt(moves.size - 1) }
+        while (n-- > 0 && history.isNotEmpty()) { val m = moves.removeAt(moves.size - 1); redo.add(Pair(pos, m)); pos = history.removeAt(history.size - 1) }
         over = false; endReason = "playing"
         board.hint = null; suggest = null; suggestKey = 0L; pendingJudge = null
         board.last = moves.lastOrNull()

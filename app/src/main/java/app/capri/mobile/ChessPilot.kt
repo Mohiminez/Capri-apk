@@ -11,9 +11,13 @@ interface PilotScreen {
     fun tap(x: Int, y: Int)
     fun point(x: Int, y: Int)
     fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { }      // some apps want the piece dragged, not tapped
+    fun arrow(x1: Int, y1: Int, x2: Int, y2: Int, cell: Int) { }     // a drawn arrow over the board (coach mode)
+    fun frame(x: Int, y: Int, size: Int) { }                           // an outline around the board
+    fun clearArrow() { }
+    fun clearOverlay() { }
 }
 
-class PilotSettings(val level: Int = 2, val talk: Set<String> = ChessEvents.all.toSet(), val ar: Boolean = false)
+class PilotSettings(val level: Int = 2, val talk: Set<String> = ChessEvents.all.toSet(), val ar: Boolean = false, val store: PieceStore? = null, val frame: Boolean = false)
 
 // Plays chess in another app for you: she watches the screen, follows the game by herself (no AI, nothing leaves the phone),
 // finds the best move with her engine and taps it. In coach mode she only points at the move and tells you.
@@ -44,7 +48,31 @@ class ChessPilot(
     // Runs the whole job on the calling thread (the tests call this directly).
     fun runNow() {
         running = true
-        try { loop() } catch (e: Throwable) { Diag.log("chesspilot", e.toString()); lastError = e.toString() } finally { running = false; post { finished() } }
+        try { loop() } catch (e: Throwable) { Diag.log("chesspilot", e.toString()); lastError = e.toString() } finally { running = false; try { screen()?.clearOverlay() } catch (e: Throwable) { }; post { finished() } }
+    }
+
+    // At the opening position every piece is known, so that's where she learns the look of this app's pieces (once per theme).
+    private fun learnPieces(sh: PilotShot, g: Geo, flipped: Boolean) {
+        val st = settings.store ?: return
+        try {
+            val key = PieceVision.paletteKey(sh.px, sh.w, sh.h, g)
+            if (st.load(key)?.complete() == true) return
+            val set = PieceVision.learn(sh.px, sh.w, sh.h, g, flipped) ?: return
+            st.save(set)
+            log("learned the pieces of this chess theme")
+        } catch (e: Throwable) { }
+    }
+
+    private fun readOwn(sh: PilotShot, g: Geo, obs: IntArray): Reading? {
+        val st = settings.store ?: return null
+        return try {
+            val set = st.load(PieceVision.paletteKey(sh.px, sh.w, sh.h, g)) ?: return null
+            val rd = PieceVision.readPosition(sh.px, sh.w, sh.h, g, obs, set) ?: return null
+            // it must agree with what the screen shows, square for square
+            val want = ChessTracker.occupancy(rd.pos)
+            val shown = if (rd.flipped) IntArray(64) { obs[63 - it] } else obs
+            if ((0..63).any { want[it] != shown[it] }) null else rd
+        } catch (e: Throwable) { null }
     }
 
     fun stop() { running = false; thread?.interrupt() }
@@ -92,6 +120,7 @@ class ChessPilot(
                 }
                 lostFrames = 0
                 prevObs = null
+                if (settings.frame) geo?.let { scr.frame((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
             }
             val obs = BoardVision.read(sh.px, sh.w, sh.h, geo)
             // wait until the picture holds still (pieces slide when they move)
@@ -107,10 +136,21 @@ class ChessPilot(
                     tracker = ChessTracker(Chess.start(), o)
                     keys.clear(); keys.add(Engine.key(Chess.start()))
                     sawOpponent = !o       // playing white from the very start: it's my move; as black I wait for white
+                    learnPieces(sh, geo, o)
                 } else {
+                    // a game under way: first try with the piece shapes she learned from this app (no brain, no network)
+                    val mine = readOwn(sh, geo, obs)
+                    if (mine != null) {
+                        tracker = ChessTracker(mine.pos, mine.flipped)
+                        keys.clear(); keys.add(Engine.key(mine.pos))
+                        sawOpponent = mine.pos.white == !mine.flipped
+                        tell(t("The game is already going. I read the pieces myself and I'll play from here.", "اللعبة شغالة. قرأت القطع بنفسي وبكمل منها."))
+                        tell(t("I see the board. I'm playing ", "شفت الرقعة. ألعب ") + (if (mine.flipped) t("black", "الأسود") else t("white", "الأبيض")) + t(" for you.", " عنك."))
+                        nap(300); continue
+                    }
                     tell(t("The game is already under way. Reading the position...", "اللعبة شغالة. أقرأ الوضع..."))
                     val p = seed()
-                    if (p == null) { tell(t("I couldn't read this position. Start a new game and I'll follow from move one, or pick an online brain that can see pictures.", "ما قدرت أقرأ هذا الوضع. ابدأ لعبة جديدة وأتابع من أول نقلة، أو اختر عقل أونلاين يشوف الصور.")); return }
+                    if (p == null) { tell(t("I couldn't read this position. Start a new game and I'll follow from move one, or pick an online brain that can see pictures.", "ما قدرت أقرأ هذا الوضع. ابدأ لعبة جديدة وأتابع من أول نقلة وأتعلم شكل قطعك، أو اختر عقل أونلاين يشوف الصور.")); return }
                     val o2 = ChessTracker.orientationFor(p, obs)
                     if (o2 == null) { tell(t("What I read from the picture doesn't match the board. Try again in a moment.", "اللي قرأته من الصورة ما يطابق الرقعة. جرب بعد شوي.")); return }
                     tracker = ChessTracker(p, o2)
@@ -151,6 +191,7 @@ class ChessPilot(
                     p = after
                     keys.add(Engine.key(after))
                 }
+                try { scr.clearArrow() } catch (e: Throwable) { }
                 actedKey = 0L; tries = 0
             }
             val st = Chess.result(tr.pos, keys)
@@ -185,6 +226,7 @@ class ChessPilot(
                     val san = San.of(tr.pos, best.move)
                     if (!auto) {
                         tell(t("Best move: $san", "أفضل نقلة: $san") + (best.mateIn?.takeIf { it > 0 }?.let { t(" (mate in $it)", " (مات في $it)") } ?: ""))
+                        scr.arrow(x1, y1, x2, y2, (g.cell * k).toInt())
                         scr.point(x1, y1)
                         nap(700)
                         scr.point(x2, y2)
@@ -213,5 +255,30 @@ class ChessPilot(
             }
             nap(400)
         }
+    }
+}
+
+// "Look at my board": what she can see and read right now, in words. Also learns the pieces when the opening position is on screen.
+object ChessScan {
+    fun run(scr: PilotScreen?, store: PieceStore?, ar: Boolean): String {
+        fun t(en: String, arb: String) = if (ar) arb else en
+        val sh = scr?.shot() ?: return t("I can't take a screenshot (needs Android 11+ and my accessibility access).", "ما أقدر آخذ لقطة (يحتاج أندرويد 11+ وصلاحية الوصول).")
+        val g = BoardVision.detect(sh.px, sh.w, sh.h) ?: return t("I can't see a chess board on the screen. Open your game and keep the board fully visible.", "ما أشوف رقعة شطرنج على الشاشة. افتح اللعبة وخلي الرقعة كاملة ظاهرة.")
+        val obs = BoardVision.read(sh.px, sh.w, sh.h, g)
+        val n = obs.count { it != 0 }
+        val head = t("I see a chess board with $n pieces. ", "أشوف رقعة شطرنج فيها $n قطعة. ")
+        val key = PieceVision.paletteKey(sh.px, sh.w, sh.h, g)
+        val o = ChessTracker.orientationOfStart(obs)
+        if (o != null) {
+            if (store == null) return head + t("It's the opening position, so I can follow the whole game.", "هذي بداية لعبة، أقدر أتابعها كلها.")
+            val have = store.load(key)?.complete() == true
+            if (have) return head + t("It's a new game and I already know how these pieces look.", "لعبة جديدة وأنا أعرف شكل هذي القطع من قبل.")
+            val set = PieceVision.learn(sh.px, sh.w, sh.h, g, o)
+            return if (set != null) { store.save(set); head + t("It's a new game: I learned how these pieces look. From now on I can read a game that's already running in this theme without any brain.", "لعبة جديدة: تعلمت شكل هذي القطع. من الحين أقدر أقرأ أي لعبة شغالة بهذا الثيم بدون أي عقل.") }
+            else head + t("It's the opening position but I couldn't learn the pieces from it (something may be covering the board).", "هذي بداية لعبة بس ما قدرت أتعلم القطع منها (يمكن شي يغطي الرقعة).")
+        }
+        val set = store?.load(key) ?: return head + t("It's a game under way and I don't know this app's pieces yet. Start a new game once with me watching (say \"learn my pieces\") and I'll learn them.", "لعبة شغالة وما أعرف قطع هذا التطبيق بعد. ابدأ لعبة جديدة مرة وحدة وأنا أشوف (قول \"تعلمي قطعي\") وأتعلمها.")
+        val rd = PieceVision.readPosition(sh.px, sh.w, sh.h, g, obs, set) ?: return head + t("I know this theme but I couldn't read every piece (a pop-up, a highlight or an animation may be in the way). Try again in a moment.", "أعرف هذا الثيم بس ما قدرت أقرأ كل القطع (يمكن نافذة أو تظليل أو حركة). جرب بعد شوي.")
+        return head + t("I can read it. ", "أقدر أقرأها. ") + (if (rd.flipped) t("You're black. ", "انت الأسود. ") else t("You're white. ", "انت الأبيض. ")) + (if (rd.pos.white == !rd.flipped) t("It's your move.", "دورك.") else t("It's their move.", "دور الخصم."))
     }
 }

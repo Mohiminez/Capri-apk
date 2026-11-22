@@ -328,7 +328,41 @@ object Engine {
 }
 
 // Standard algebraic notation ("Nf3", "exd5", "O-O", "e8=Q+") for showing and speaking moves.
+// A whole game from text: "1. e4 e5 2. Nf3 ..." with tags, comments {like this}, variations (like this) and results ignored.
+class PgnGame(val start: Pos, val moves: List<Move>, val badAt: Int)
+
+object Pgn {
+    fun parse(text: String): PgnGame? {
+        var start = Chess.start()
+        Regex("\\[FEN\\s+\"([^\"]+)\"\\]").find(text)?.let { m -> Fen.parse(m.groupValues[1])?.let { start = it } }
+        var t = text.replace(Regex("\\[[^\\]]*\\]"), " ").replace(Regex("\\{[^}]*\\}"), " ").replace(Regex(";[^\\n]*"), " ")
+        var prev: String
+        do { prev = t; t = t.replace(Regex("\\([^()]*\\)"), " ") } while (t != prev)
+        t = t.replace(Regex("\\$\\d+"), " ").replace(Regex("\\d+\\.(\\.\\.)?"), " ")
+        val toks = t.split(Regex("\\s+")).filter { it.isNotBlank() && it !in setOf("1-0", "0-1", "1/2-1/2", "*") }
+        if (toks.isEmpty()) return null
+        var p = start
+        val out = ArrayList<Move>()
+        for ((i, tok) in toks.withIndex()) {
+            val m = San.parse(p, tok)
+            if (m == null) return if (out.isEmpty()) null else PgnGame(start, out, i)
+            out.add(m); p = Chess.make(p, m)
+        }
+        return PgnGame(start, out, -1)
+    }
+}
+
 object San {
+    private fun norm(s: String) = s.replace("0-0-0", "O-O-O").replace("0-0", "O-O").replace(Regex("[+#!?x=]"), "").replace("e.p.", "").trim()
+
+    // The legal move that this text means, or null.
+    fun parse(p: Pos, text: String): Move? {
+        val want = norm(text)
+        if (want.isEmpty()) return null
+        return Chess.legal(p).firstOrNull { norm(of(p, it)) == want }
+            ?: Chess.legal(p).firstOrNull { it.toString() == text.trim().lowercase() }
+    }
+
     fun of(p: Pos, m: Move): String {
         val pc = abs(p.b[m.from])
         var s: String

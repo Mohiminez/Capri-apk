@@ -10,11 +10,11 @@ object BoardVision {
     private fun r(c: Int) = (c shr 16) and 255
     private fun g(c: Int) = (c shr 8) and 255
     private fun b(c: Int) = c and 255
-    private fun lum(c: Int) = (r(c) * 299 + g(c) * 587 + b(c) * 114) / 1000
-    private fun dist(a: Int, c: Int) = abs(r(a) - r(c)) + abs(g(a) - g(c)) + abs(b(a) - b(c))
+    internal fun lum(c: Int) = (r(c) * 299 + g(c) * 587 + b(c) * 114) / 1000
+    internal fun dist(a: Int, c: Int) = abs(r(a) - r(c)) + abs(g(a) - g(c)) + abs(b(a) - b(c))
 
     // The background colour of one square, read at the middle of its four edges where pieces rarely reach.
-    private fun cellColor(px: IntArray, w: Int, h: Int, x0: Float, y0: Float, s: Float): Int {
+    internal fun cellColor(px: IntArray, w: Int, h: Int, x0: Float, y0: Float, s: Float): Int {
         val offs = arrayOf(floatArrayOf(0.5f, 0.09f), floatArrayOf(0.5f, 0.91f), floatArrayOf(0.09f, 0.5f), floatArrayOf(0.91f, 0.5f))
         val rs = IntArray(4); val gs = IntArray(4); val bs = IntArray(4)
         for (i in 0..3) {
@@ -78,7 +78,7 @@ object BoardVision {
                 }
             }
             val g0 = best
-            if (g0 != null) return refine(px, w, h, g0)
+            if (g0 != null) return align(px, w, h, refine(px, w, h, g0))
         }
         return null
     }
@@ -102,6 +102,53 @@ object BoardVision {
             if (c > best.score + 0.001f) best = Geo(g0.x + dx, g0.y + dy, s, c, g0.tol)
         }
         return best
+    }
+
+    private fun grayAt(px: IntArray, w: Int, h: Int, x: Float, y: Float): Float {
+        val xi = Math.floor(x.toDouble()).toInt().coerceIn(0, w - 2); val yi = Math.floor(y.toDouble()).toInt().coerceIn(0, h - 2)
+        val fx = (x - xi).coerceIn(0f, 1f); val fy = (y - yi).coerceIn(0f, 1f)
+        val a = lum(px[yi * w + xi]); val b = lum(px[yi * w + xi + 1]); val c = lum(px[(yi + 1) * w + xi]); val d = lum(px[(yi + 1) * w + xi + 1])
+        return (a * (1 - fx) + b * fx) * (1 - fy) + (c * (1 - fx) + d * fx) * fy
+    }
+
+    // How sharply the squares change colour exactly at the grid lines (inside the board, away from where pieces stand).
+    private fun lineEnergy(px: IntArray, w: Int, h: Int, along: Boolean, a0: Float, b0: Float, s: Float): Float {
+        // along = true: vertical lines at a0 + k*s, sampled down the rows starting at b0; false: horizontal lines at a0 + k*s, sampled across columns from b0
+        var e = 0f
+        for (k in 1..7) {
+            val line = a0 + k * s
+            for (i in 0..7) for (f in floatArrayOf(0.14f, 0.86f)) {
+                val t = b0 + (i + f) * s
+                e += if (along) Math.abs(grayAt(px, w, h, line + 1.5f, t) - grayAt(px, w, h, line - 1.5f, t))
+                     else Math.abs(grayAt(px, w, h, t, line + 1.5f) - grayAt(px, w, h, t, line - 1.5f))
+            }
+        }
+        return e
+    }
+
+    // The coarse grid is within a few pixels; slide it onto the real square boundaries so that pieces can be compared square by square.
+    private fun align(px: IntArray, w: Int, h: Int, g: Geo): Geo {
+        var bx = g.x; var by = g.y; var bs = g.cell; var best = -1f
+        var ds = -0.8f
+        while (ds <= 0.801f) {
+            var dx = -3f
+            while (dx <= 3.001f) {
+                val e = lineEnergy(px, w, h, true, g.x + dx, g.y, g.cell + ds)
+                if (e > best) { best = e; bx = g.x + dx; bs = g.cell + ds }
+                dx += 0.25f
+            }
+            ds += 0.1f
+        }
+        best = -1f
+        var dy = -3f
+        while (dy <= 3.001f) {
+            val e = lineEnergy(px, w, h, false, g.y + dy, bx, bs)
+            if (e > best) { best = e; by = g.y + dy }
+            dy += 0.25f
+        }
+        val out = Geo(bx, by, bs, g.score, g.tol)
+        // never trade a good board for a worse one
+        return if (consistency(px, w, h, out.x, out.y, out.cell, out.tol) >= g.score - 0.02f) out else g
     }
 
     // Does the board still sit where we last found it?

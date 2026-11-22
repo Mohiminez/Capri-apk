@@ -137,7 +137,7 @@ object Actions {
                 "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
                 "watch" -> hooks?.keepWatch(arg)
                 "point" -> hooks?.point(arg)
-                "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
+                "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop", "scan", "learn" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
                 "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
         } catch (e: Exception) {
@@ -314,6 +314,8 @@ object QuickAsks {
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
+        if (Regex("^(?:learn my (?:chess )?pieces|learn (?:the |my )?(?:chess )?(?:pieces|theme)|scan (?:the |my )?(?:chess )?board|look at (?:the |my )?chess board|can you read my chess board)$|^(?:تعلمي|تعلم) (?:قطعي|قطع الشطرنج|شكل القطع)$|^(?:شوفي|اقرأي|افحصي) (?:الرقعة|رقعة الشطرنج)$").matches(t))
+            return L.t("Let me look. [[chess:scan]]", "خليني أشوف. [[chess:scan]]")
         if (Regex("^(?:play|finish|continue) (?:this |my |the )?(?:chess )?(?:game|chess)(?: for me| on (?:my )?screen)(?: for me)?$|^play chess for me(?: on (?:my )?screen)?$|^العبي? (?:لي |عني )?(?:الشطرنج|لعبة الشطرنج|اللعبة)(?: على الشاشة)?$|^العبي? عني$").matches(t))
             return L.t("Okay, hands off the board. [[chess:auto]]", "تمام، لا تلمس الرقعة. [[chess:auto]]")
         if (Regex("^(?:coach me|watch my (?:chess )?game(?: and help me)?|help me play(?: chess)?|be my chess coach)$|^(?:راقبي?|دربني|ساعدني) (?:في )?(?:لعبتي|الشطرنج|لعبة الشطرنج)$").matches(t))

@@ -175,3 +175,10 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 
 ## Scroll-for-me
 - Reacts to what is actually on screen (needs an online vision brain; says SKIP when unclear), lets each video play ~28 s (setting `scrollDwell`), waits while you scroll yourself, and can only be started by your own words or the menu, never by a model reply.
+
+## Chess, round 3: reads any game by itself, like CapriCore (and without its AI model)
+- **Learns your chess app's pieces** from the opening position (per board theme, saved in a small file) and from then on reads any game under way from a screenshot, on the phone, no brain and no network. Shape matching of each square against the learned silhouettes, works for white or black at the bottom, and the last-move highlight tells whose move it is. If any piece is uncertain she refuses instead of guessing (then falls back to the online vision brain, if one is chosen).
+- Commands: "learn my pieces" / "scan the board" / "تعلمي قطعي" / "شوفي الرقعة" say what she sees and learn the theme if the opening position is on screen.
+- Coach mode draws a neon **arrow** over the other app's board (pref `chessArrow`, default on); `chessFrame` draws an outline around the board.
+- Board grid is now aligned to the real square boundaries (sub-pixel), which also helps the tracker.
+- In her own chess screen: **PGN import** (paste a whole game from chess.com/Lichess), **UNDO/REDO** to walk through it, **EXPLAIN** (engine finds the line, her brain says why).

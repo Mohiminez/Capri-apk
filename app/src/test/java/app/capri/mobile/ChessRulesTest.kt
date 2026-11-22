@@ -278,3 +278,28 @@ class ChessRulesTest {
         assertTrue("strong should score at least 1.5 of 2 against easy, got $strongPoints", strongPoints >= 1.5)
     }
 }
+
+class PgnTest {
+    @Test fun readsAFullGameWithNoise() {
+        val g = Pgn.parse("""[Event "x"] [Result "1-0"]
+            1. e4 {best by test} e5 2. Nf3 (2. f4 exf4) Nc6 3. Bb5 a6 4. Ba4 Nf6 5. O-O Be7 $1 6. Re1 b5 7. Bb3 d6 8. c3 O-O 1-0""")!!
+        assertEquals(-1, g.badAt)
+        assertEquals(16, g.moves.size)
+        var p = g.start
+        for (m in g.moves) p = Chess.make(p, m)
+        assertEquals("r1bq1rk1/2p1bppp/p1np1n2/1p2p3/4P3/1BP2N2/PP1P1PPP/RNBQR1K1 w - - 0 1".substringBefore(" w"), Fen.write(p).substringBefore(" w"))
+    }
+
+    @Test fun stopsAtABadMoveButKeepsWhatItRead() {
+        val g = Pgn.parse("1. e4 e5 2. Qh8 Nc6")!!
+        assertEquals(2, g.moves.size); assertEquals(2, g.badAt)
+        assertNull(Pgn.parse("hello world"))
+    }
+
+    @Test fun sanParsingHandlesChecksCapturesAndCastles() {
+        val p = Fen.parse("r3k2r/8/8/8/8/8/8/R3K2R w KQkq - 0 1")!!
+        assertEquals("e1g1", San.parse(p, "O-O")!!.toString())
+        assertEquals("e1c1", San.parse(p, "0-0-0")!!.toString())
+        assertEquals("a1a8", San.parse(p, "Rxa8+")!!.toString())
+    }
+}

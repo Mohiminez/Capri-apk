@@ -5,7 +5,11 @@ import kotlin.math.abs
 // Capri's running commentary on a chess game (idea taken from CapriCore's chess reactions).
 // Pure logic: no Android, so it can be unit tested. One event is picked per move, by priority.
 // The pet service sets this so her comments can be spoken in her voice.
-object ChessBridge { @Volatile var speaker: ((String) -> Unit)? = null }
+object ChessBridge {
+    @Volatile var speaker: ((String) -> Unit)? = null
+    // asks her brain (the one chosen in the app) a question and hands back the answer; null while the service isn't running
+    @Volatile var explainer: ((String, (String?) -> Unit) -> Unit)? = null
+}
 
 object ChessEvents {
     val all = listOf("capture", "check", "castle", "promotion", "mate", "draw", "start", "judge", "aside")

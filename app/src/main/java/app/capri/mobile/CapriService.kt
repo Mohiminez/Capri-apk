@@ -225,6 +225,7 @@ class CapriService : Service(), Actions.Hooks {
         ReminderReceiver.speaker = null
         pilot?.stop()
         ChessBridge.speaker = null
+        ChessBridge.explainer = null
         try { miniPlayer.hide() } catch (e: Throwable) { }
         CapriAccess.onForeground = null
         CapriAccess.onScrolled = null
@@ -363,6 +364,7 @@ class CapriService : Service(), Actions.Hooks {
             { line -> h.post { busy = false; say(line); settle() } })
         ReminderReceiver.speaker = { t -> h.post { say(t) } }
         ChessBridge.speaker = { t -> h.post { say(t) } }
+        ChessBridge.explainer = { prompt, cb -> h.post { brain.ask(prompt, true) { r, _ -> cb(r?.let { Actions.strip(it) }) } } }
         CapriAccess.onForeground = { p -> h.post { foregroundChanged(p) } }
         CapriAccess.onScrolled = { p -> h.post { scrolled(p) } }
         notifier = { line -> h.post { if (!quiet && !hidden && !busy) say(line) } }
@@ -1703,32 +1705,64 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
+    // Where the pieces she has learned live: one small file per board theme.
+    private val pieceStore = object : PieceStore {
+        private fun f(key: String) = java.io.File(java.io.File(filesDir, "chess_pieces").also { it.mkdirs() }, key.replace(Regex("[^0-9a-z-]"), "_") + ".bin")
+        override fun load(key: String): PieceSet? = try { f(key).takeIf { it.exists() }?.let { PieceSet.fromBytes(key, it.readBytes()) } } catch (e: Exception) { null }
+        override fun save(set: PieceSet) { try { f(set.key).writeBytes(set.toBytes()) } catch (e: Exception) { } }
+    }
+
+    private var boardOverlay: BoardOverlay? = null
+    private fun overlay(): BoardOverlay? {
+        boardOverlay?.let { return it }
+        val v = BoardOverlay(this, Themes.accent(prefs))
+        val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
+            PixelFormat.TRANSLUCENT)
+        lp.gravity = Gravity.TOP or Gravity.START
+        return try { wm.addView(v, lp); boardOverlay = v; v } catch (e: Exception) { null }
+    }
+
+    private val chessScreenImpl = object : PilotScreen {
+        // her own bubble, body, cursor and drawings must not sit on the board when she takes the picture
+        override fun shot(): PilotShot? {
+            val a = CapriAccess.instance ?: return null
+            val hid = java.util.concurrent.CountDownLatch(1)
+            var sv = View.VISIBLE; var bv = View.VISIBLE; var ov = View.VISIBLE
+            h.post { sv = sprite?.visibility ?: View.VISIBLE; bv = bubble?.visibility ?: View.VISIBLE; ov = boardOverlay?.visibility ?: View.VISIBLE
+                sprite?.visibility = View.INVISIBLE; bubble?.visibility = View.INVISIBLE; boardOverlay?.visibility = View.INVISIBLE; a.cursorVisible(false); hid.countDown() }
+            hid.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+            try { Thread.sleep(130) } catch (e: InterruptedException) { }
+            try { return a.shotPixels()?.let { PilotShot(it.px, it.w, it.h, it.k) } }
+            finally { h.post { sprite?.visibility = sv; bubble?.visibility = bv; boardOverlay?.visibility = ov; a.cursorVisible(true) } }
+        }
+        override fun tap(x: Int, y: Int) { CapriAccess.instance?.tap(x, y) }
+        override fun point(x: Int, y: Int) { CapriAccess.instance?.point(x, y) }
+        override fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { CapriAccess.instance?.swipe(x1, y1, x2, y2, 240) }
+        override fun arrow(x1: Int, y1: Int, x2: Int, y2: Int, cell: Int) { if (prefs.getB("chessArrow", true)) h.post { overlay()?.setArrow(x1.toFloat(), y1.toFloat(), x2.toFloat(), y2.toFloat(), cell.toFloat()) } }
+        override fun frame(x: Int, y: Int, size: Int) { h.post { overlay()?.setFrame(x.toFloat(), y.toFloat(), size.toFloat()) } }
+        override fun clearArrow() { h.post { boardOverlay?.clearArrow() } }
+        override fun clearOverlay() { h.post { boardOverlay?.let { try { wm.removeView(it) } catch (e: Exception) { }; boardOverlay = null } } }
+    }
+
     private var pilot: ChessPilot? = null
 
     override fun chessPilot(mode: String) {
         if (mode == "stop") { pilot?.stop(); return }
+        if (mode == "scan" || mode == "learn") {
+            if (CapriAccess.instance == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
+            say(L.t("Let me look...", "خليني أشوف..."), false)
+            bg("chess", this) { val r = ChessScan.run(chessScreenImpl, pieceStore, L.ar); h.post { say(r, false) } }
+            return
+        }
         val acc = CapriAccess.instance
         if (acc == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
         if (pilot?.running == true) { say(L.t("I'm already on a game. Say stop chess first.", "أنا على لعبة. قل وقفي الشطرنج أول."), false); return }
         val go = {
-            val screen = object : PilotScreen {
-                // her own bubble, body and cursor must not sit on the board when she takes the picture
-                override fun shot(): PilotShot? {
-                    val a = CapriAccess.instance ?: return null
-                    val hid = java.util.concurrent.CountDownLatch(1)
-                    var sv = View.VISIBLE; var bv = View.VISIBLE
-                    h.post { sv = sprite?.visibility ?: View.VISIBLE; bv = bubble?.visibility ?: View.VISIBLE
-                        sprite?.visibility = View.INVISIBLE; bubble?.visibility = View.INVISIBLE; a.cursorVisible(false); hid.countDown() }
-                    hid.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
-                    try { Thread.sleep(130) } catch (e: InterruptedException) { }
-                    try { return a.shotPixels()?.let { PilotShot(it.px, it.w, it.h, it.k) } }
-                    finally { h.post { sprite?.visibility = sv; bubble?.visibility = bv; a.cursorVisible(true) } }
-                }
-                override fun tap(x: Int, y: Int) { CapriAccess.instance?.tap(x, y) }
-                override fun point(x: Int, y: Int) { CapriAccess.instance?.point(x, y) }
-                override fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { CapriAccess.instance?.swipe(x1, y1, x2, y2, 240) }
-            }
-            val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar)
+            val screen = chessScreenImpl
+            val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar, pieceStore, prefs.getB("chessFrame", false))
             val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null })
             pilot = pl
             pl.start(mode == "auto")

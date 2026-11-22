@@ -56,5 +56,8 @@ class ChessScreenAskTest {
         assertTrue(QuickAsks.match("what's the best move")!!.contains("[[chess:screen]]") || QuickAsks.match("what is the best move")!!.contains("[[chess:screen]]"))
         assertTrue(QuickAsks.match("help me with this chess game")!!.contains("[[chess:screen]]"))
         assertTrue(QuickAsks.match("play chess")!!.contains("[[chess:open]]"))
+        assertTrue(QuickAsks.match("learn my pieces")!!.contains("[[chess:scan]]"))
+        assertTrue(QuickAsks.match("scan the chess board")!!.contains("[[chess:scan]]"))
+        assertTrue(QuickAsks.match("تعلمي قطعي")!!.contains("[[chess:scan]]"))
     }
 }

@@ -6,7 +6,7 @@ import org.junit.Test
 // A pretend chess app on a pretend phone: it draws the board like a screenshot, accepts taps like a real app
 // (select a piece, tap the square; promotion waits for one more tap), and has an engine opponent that answers.
 class FakeChessApp(var pos: Pos, val iPlayWhite: Boolean, val flipped: Boolean = !iPlayWhite, val opponentDepth: Int = 2,
-                   val w: Int = 540, val h: Int = 1100, val gx: Float = 12f, val gy: Float = 230f, val s: Float = 64.7f, val tapsWork: Boolean = true) : PilotScreen {
+                   val w: Int = 540, val h: Int = 1100, val gx: Float = 12f, val gy: Float = 230f, val s: Float = 64.7f, val tapsWork: Boolean = true, val shaped: Boolean = false) : PilotScreen {
     var drags = 0
     var selected = -1
     var promo: Move? = null
@@ -89,7 +89,10 @@ class FakeChessApp(var pos: Pos, val iPlayWhite: Boolean, val flipped: Boolean =
             val pc = pos.b[sq]
             var out = (255 shl 24) or col
             if (pc == 0 && sq in dots && d < 0.17f) out = (255 shl 24) or 0x8A8A6A
-            if (pc != 0) {
+            if (pc != 0 && shaped) {
+                val p = PieceArt.pixel(pc, (x - cx) / s, (y - cy) / s)
+                if (p != null) out = p
+            } else if (pc != 0) {
                 val rad = if (Math.abs(pc) == 1) 0.25f else 0.35f
                 if (d < rad) out = (255 shl 24) or (if (pc > 0) 0xF8F8F8 else 0x2B2B2B)
                 else if (d < rad + 0.04f) out = (255 shl 24) or (if (pc > 0) 0x303030 else 0xE0E0E0)
@@ -117,6 +120,51 @@ class ChessPilotE2ETest {
             pilot.runNow()
             return pilot
         }
+    }
+
+    private class MemStore : PieceStore {
+        val m = HashMap<String, ByteArray>()
+        override fun load(key: String) = m[key]?.let { PieceSet.fromBytes(key, it) }
+        override fun save(set: PieceSet) { m[set.key] = set.toBytes() }
+    }
+
+    @Test fun learnsThePiecesAtTheStartThenPlaysAGameUnderWayWithoutAnyBrain() {
+        val store = MemStore()
+        // 1) a new game: she plays from move one and learns what the pieces look like
+        val first = FakeChessApp(Chess.start(), true, shaped = true)
+        val said1 = ArrayList<String>()
+        lateinit var p1: ChessPilot
+        p1 = ChessPilot({ first }, PilotSettings(level = 1, store = store), { said1.add(it) }, { }, { null }, { }, { })
+        val w1 = Thread { while (p1.running) { if (p1.movesPlayed >= 2) p1.stop(); Thread.sleep(20) } }; w1.start()
+        p1.runNow()
+        assertTrue(said1.toString(), store.m.isNotEmpty())
+        // 2) another day, a game already in progress, no brain to ask (seed returns null): she reads it herself
+        var pos = Chess.start()
+        val rnd = java.util.Random(4)
+        repeat(17) { val ms = Chess.legal(pos); pos = Chess.make(pos, ms[rnd.nextInt(ms.size)]) }
+        if (pos.white) pos = Chess.make(pos, Chess.legal(pos)[0])        // make it Black's move... then White's is next for the app
+        val iWhite = pos.white
+        val app = FakeChessApp(pos, iWhite, shaped = true)
+        val said = ArrayList<String>()
+        lateinit var pil: ChessPilot
+        var naps = 0
+        pil = ChessPilot({ app }, PilotSettings(level = 1, store = store), { said.add(it) }, { }, { null }, { }, { naps++; if (naps > 400) pil.stop() })
+        val w = Thread { while (pil.running) { if (pil.movesPlayed >= 2) pil.stop(); Thread.sleep(20) } }; w.start()
+        pil.runNow()
+        assertEquals(said.toString(), 0, app.badTaps)
+        assertTrue("moves=${app.myMoves} said=$said", app.myMoves.size >= 2)
+    }
+
+    @Test fun anUnknownThemeMidGameWithNoBrainIsRefusedPolitely() {
+        var pos = Chess.start()
+        val rnd = java.util.Random(8)
+        repeat(20) { val ms = Chess.legal(pos); pos = Chess.make(pos, ms[rnd.nextInt(ms.size)]) }
+        val app = FakeChessApp(pos, pos.white, shaped = true)
+        val said = ArrayList<String>()
+        val pil = ChessPilot({ app }, PilotSettings(level = 1, store = MemStore()), { said.add(it) }, { }, { null }, { }, { })
+        pil.runNow()
+        assertEquals(0, app.taps.size)
+        assertTrue(said.toString(), said.any { it.contains("new game") || it.contains("لعبة جديدة") })
     }
 
     @Test fun playsWhiteFromTheStartInsideAnotherApp() {
