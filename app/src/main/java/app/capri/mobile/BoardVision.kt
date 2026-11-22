@@ -4,7 +4,7 @@ import kotlin.math.abs
 
 // Finds a chess board in a screenshot and tells which squares hold white or black pieces, with no AI and no network.
 // Works on plain pixel arrays (ARGB ints), so it can be tested without a phone.
-class Geo(val x: Float, val y: Float, val cell: Float, val score: Float)
+class Geo(val x: Float, val y: Float, val cell: Float, val score: Float, val tol: Int = 36)
 
 object BoardVision {
     private fun r(c: Int) = (c shr 16) and 255
@@ -26,7 +26,7 @@ object BoardVision {
     }
 
     // How checkerboard-like the 8x8 grid at (x0,y0) with cell size s is: the share of squares whose colour matches their kind.
-    private fun consistency(px: IntArray, w: Int, h: Int, x0: Float, y0: Float, s: Float): Float {
+    private fun consistency(px: IntArray, w: Int, h: Int, x0: Float, y0: Float, s: Float, tol: Int = 36): Float {
         if (x0 < 0 || y0 < 0 || x0 + 8 * s > w + 1 || y0 + 8 * s > h + 1) return 0f
         val colors = IntArray(64)
         for (rr in 0..7) for (cc in 0..7) colors[rr * 8 + cc] = cellColor(px, w, h, x0 + cc * s, y0 + rr * s, s)
@@ -39,14 +39,15 @@ object BoardVision {
         val a = mean(0); val bb = mean(1)
         val ca = (255 shl 24) or (a[0] shl 16) or (a[1] shl 8) or a[2]
         val cb = (255 shl 24) or (bb[0] shl 16) or (bb[1] shl 8) or bb[2]
-        if (dist(ca, cb) < 30) return 0f                      // two kinds of square must really differ
+        val minContrast = if (tol > 36) 21 else 30
+        if (dist(ca, cb) < minContrast) return 0f                      // two kinds of square must really differ
         var ok = 0
         for (i in 0..63) {
             val mine = if ((i / 8 + i % 8) % 2 == 0) ca else cb
             val other = if ((i / 8 + i % 8) % 2 == 0) cb else ca
             val d1 = dist(colors[i], mine)
             // a last-move highlight tints a square, so allow it to be closer to its own kind than to the other
-            if (d1 < 36 || d1 < dist(colors[i], other) - 20) ok++
+            if (d1 < tol || d1 < dist(colors[i], other) - 20) ok++
         }
         return ok / 64f
     }
@@ -65,17 +66,21 @@ object BoardVision {
         }
         val minS = maxOf(10, minOf(w, h) / 14)
         val maxS = minOf(w, h) / 8 + 1
-        var best: Geo? = null
-        for (s in minS..maxS) {
-            val xs = top(colE, w, s, 5)
-            val ys = top(rowE, h, s, 5)
-            for (x0 in xs) for (y0 in ys) {
-                val c = consistency(px, w, h, x0.toFloat(), y0.toFloat(), s.toFloat())
-                if (c >= 0.85f && (best == null || c > best.score + 0.005f || (c >= best.score - 0.005f && s > best.cell))) best = Geo(x0.toFloat(), y0.toFloat(), s.toFloat(), c)
+        // first the strict reading; wood and textured boards that don't pass it get a looser second look
+        for ((tol, need) in listOf(Pair(36, 0.85f), Pair(64, 0.82f))) {
+            var best: Geo? = null
+            for (s in minS..maxS) {
+                val xs = top(colE, w, s, 5)
+                val ys = top(rowE, h, s, 5)
+                for (x0 in xs) for (y0 in ys) {
+                    val c = consistency(px, w, h, x0.toFloat(), y0.toFloat(), s.toFloat(), tol)
+                    if (c >= need && (best == null || c > best.score + 0.005f || (c >= best.score - 0.005f && s > best.cell))) best = Geo(x0.toFloat(), y0.toFloat(), s.toFloat(), c, tol)
+                }
             }
+            val g0 = best
+            if (g0 != null) return refine(px, w, h, g0)
         }
-        val g0 = best ?: return null
-        return refine(px, w, h, g0)
+        return null
     }
 
     private fun top(e: LongArray, len: Int, s: Int, n: Int): List<Int> {
@@ -93,14 +98,17 @@ object BoardVision {
         var best = g0
         for (dx in -2..2) for (dy in -2..2) for (ds in intArrayOf(-1, 0, 1)) {
             val s = g0.cell + ds * 0.25f
-            val c = consistency(px, w, h, g0.x + dx, g0.y + dy, s)
-            if (c > best.score + 0.001f) best = Geo(g0.x + dx, g0.y + dy, s, c)
+            val c = consistency(px, w, h, g0.x + dx, g0.y + dy, s, g0.tol)
+            if (c > best.score + 0.001f) best = Geo(g0.x + dx, g0.y + dy, s, c, g0.tol)
         }
         return best
     }
 
     // Does the board still sit where we last found it?
-    fun stillThere(px: IntArray, w: Int, h: Int, g0: Geo): Boolean = consistency(px, w, h, g0.x, g0.y, g0.cell) >= 0.8f
+    fun stillThere(px: IntArray, w: Int, h: Int, g0: Geo): Boolean {
+        val need = if (g0.tol > 36) 0.76f else 0.8f
+        return consistency(px, w, h, g0.x, g0.y, g0.cell, g0.tol) >= need
+    }
 
     // For each square (row-major as seen on the screen): 0 empty, 1 white piece, 2 black piece.
     fun read(px: IntArray, w: Int, h: Int, g0: Geo): IntArray {
@@ -109,8 +117,9 @@ object BoardVision {
         for (rr in 0..7) for (cc in 0..7) {
             val x0 = g0.x + cc * s; val y0 = g0.y + rr * s
             val base = cellColor(px, w, h, x0, y0, s)
-            var diff = 0; var total = 0; var lumSum = 0L
+            var diff = 0; var total = 0; var far = 0; var bright = 0; var darkN = 0
             val a = (0.2f * s).toInt(); val z = (0.8f * s).toInt()
+            val mid = s / 2f; val farR = 0.23f * s
             var yy = a
             while (yy < z) {
                 var xx = a
@@ -118,12 +127,19 @@ object BoardVision {
                     val x = (x0 + xx).toInt().coerceIn(0, w - 1); val y = (y0 + yy).toInt().coerceIn(0, h - 1)
                     val c = px[y * w + x]
                     total++
-                    if (dist(c, base) > 45) { diff++; lumSum += lum(c) }
+                    if (dist(c, base) > 45) {
+                        diff++
+                        val dx = xx - mid; val dy = yy - mid
+                        if (dx * dx + dy * dy > farR * farR) far++
+                        val l = lum(c)
+                        if (l > 175) bright++ else if (l < 95) darkN++
+                    }
                     xx += 2
                 }
                 yy += 2
             }
-            if (total > 0 && diff.toFloat() / total > 0.22f) out[rr * 8 + cc] = if (lumSum / diff > 140) 1 else 2
+            // A piece covers a good part of the square AND reaches out from the middle; a move dot is a small disc in the middle.
+            if (total > 0 && diff.toFloat() / total > 0.22f && far.toFloat() / total > 0.06f) out[rr * 8 + cc] = if (bright >= darkN) 1 else 2
         }
         return out
     }

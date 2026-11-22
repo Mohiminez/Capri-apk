@@ -162,3 +162,16 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 - Needs Android 11+ and her accessibility access. It stops itself if it loses the board or a move does not go through.
 - **Fair play:** use it for practice, bots, or games where engine help is allowed. Using it in rated games against people breaks chess.com / Lichess rules and can get the account banned. She asks you to confirm before she starts playing.
 - Not tested on a real device or real chess apps: piece themes, board borders, pop-ups and animations differ, so expect to tune thresholds in `BoardVision.kt` after trying it.
+
+### Chess pilot hardening
+- Move dots (even large ones), last-move tint, check glow, board frames, blur/noise, fractional cell sizes, small boards and four board colour themes are covered by tests (`BoardVisionRealisticTest`).
+- `ChessPilotE2ETest` runs the whole loop against a pretend chess app (draws screenshots, accepts taps, has an engine opponent): she plays White and Black, follows a flipped board, handles promotion (extra tap), coach mode taps nothing, stops politely when the board is gone or a game under way can't be read.
+- Before every tap she takes a fresh screenshot and checks the board is exactly where and how it was; one automatic re-read if she gets lost; stops after 10 idle minutes or when a move won't go through.
+
+## Chess: full rules, a much stronger engine, sturdier pilot
+- Rules: castling rights, en passant (with the pinned-pawn case), underpromotion, stalemate, insufficient material (incl. same-colour bishops), 50-move rule, threefold repetition, FEN half-move clock. Verified against the standard perft counts (6 positions) with both the rules code and the fast search board.
+- Engine: new mutable board, PVS, transposition table, null-move, late-move reductions, killers/history, tapered evaluation (piece-square tables, mobility, pawn structure, king shelter, mop-up), repetition-aware search, ~100-move opening book. Depth ~11 in 1.5 s on a laptop. Levels: Easy/Medium are shallow with noise; Hard 1.8 s; Master 5 s. Default level is now Hard.
+- Pilot: hides her bubble/body/cursor while taking the screenshot (they used to cover the board and stall her), taps then drags then slow taps if a move doesn't go through, looser board detection for wood/textured themes, 30 s limit on the online position reading, draws by repetition/50 moves/insufficient material.
+
+## Scroll-for-me
+- Reacts to what is actually on screen (needs an online vision brain; says SKIP when unclear), lets each video play ~28 s (setting `scrollDwell`), waits while you scroll yourself, and can only be started by your own words or the menu, never by a model reply.

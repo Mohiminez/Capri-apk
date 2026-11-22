@@ -358,6 +358,8 @@ class CapriAccess : AccessibilityService() {
 
     // ---- her pointer ----
 
+    fun cursorVisible(v: Boolean) { ui.post { cursor?.visibility = if (v) android.view.View.VISIBLE else android.view.View.INVISIBLE } }
+
     // Slides her cursor to the spot and waits a moment, so you can watch where she is about to tap.
     fun point(x: Int, y: Int) {
         ui.post { slideCursor(x, y) }

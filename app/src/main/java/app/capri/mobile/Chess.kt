@@ -8,7 +8,7 @@ class Move(val from: Int, val to: Int, val promo: Int = 0) {
     override fun toString() = Chess.name(from) + Chess.name(to) + (if (promo != 0) "nbrq"[promo - 2].toString() else "")
 }
 
-class Pos(val b: IntArray, val white: Boolean, val castle: Int, val ep: Int) {
+class Pos(val b: IntArray, val white: Boolean, val castle: Int, val ep: Int, val half: Int = 0) {
     fun kingSq(w: Boolean): Int { val k = if (w) 6 else -6; for (i in 0..63) if (b[i] == k) return i; return -1 }
 }
 
@@ -103,7 +103,8 @@ object Chess {
         val w = pc > 0
         var ep = -1
         var castle = p.castle
-        if (abs(pc) == 1 && m.to == p.ep) b[m.to + (if (w) 8 else -8)] = 0
+        val captured = b[m.to] != 0 || (abs(pc) == 1 && m.to == p.ep && p.ep >= 0 && m.from % 8 != m.to % 8)
+        if (abs(pc) == 1 && m.to == p.ep && p.ep >= 0 && m.from % 8 != m.to % 8) b[m.to + (if (w) 8 else -8)] = 0
         if (abs(pc) == 1 && abs(m.to - m.from) == 16) ep = (m.from + m.to) / 2
         if (abs(pc) == 6 && abs(m.to - m.from) == 2) {
             if (m.to > m.from) { b[m.from + 1] = b[m.from + 3]; b[m.from + 3] = 0 } else { b[m.from - 1] = b[m.from - 4]; b[m.from - 4] = 0 }
@@ -111,18 +112,43 @@ object Chess {
         b[m.to] = if (m.promo != 0) m.promo * (if (w) 1 else -1) else pc
         b[m.from] = 0
         for (sq in intArrayOf(m.from, m.to)) castle = castle and when (sq) { 60 -> 3.inv(); 63 -> 1.inv(); 56 -> 2.inv(); 4 -> 12.inv(); 7 -> 4.inv(); 0 -> 8.inv(); else -> -1 }
-        return Pos(b, !p.white, castle, ep)
+        return Pos(b, !p.white, castle, ep, if (abs(pc) == 1 || captured) 0 else p.half + 1)
     }
 
     fun legal(p: Pos): List<Move> = pseudo(p).filter { !inCheck(make(p, it), p.white) }
 
     fun legalFrom(p: Pos, sq: Int): List<Move> = legal(p).filter { it.from == sq }
 
-    // "playing", "mate" (side to move lost), "stalemate", "draw" (not enough pieces)
+    // Neither side can ever give mate: bare kings, one minor piece, or only bishops that all stand on one colour.
+    fun insufficient(b: IntArray): Boolean {
+        var minors = 0; var knights = 0; var col = -1; var same = true
+        for (i in 0..63) {
+            when (abs(b[i])) {
+                0, 6 -> {}
+                1, 4, 5 -> return false
+                2 -> { knights++; minors++ }
+                3 -> { minors++; val c = (i / 8 + i % 8) % 2; if (col == -1) col = c else if (col != c) same = false }
+            }
+        }
+        if (minors <= 1) return true
+        return knights == 0 && same
+    }
+
+    // "playing", "mate" (side to move lost), "stalemate", "draw" (dead position or the 75-move rule)
     fun status(p: Pos): String {
         if (legal(p).isEmpty()) return if (inCheck(p, p.white)) "mate" else "stalemate"
-        val minor = p.b.filter { it != 0 && abs(it) != 6 }
-        if (minor.isEmpty() || (minor.size == 1 && abs(minor[0]) in 2..3)) return "draw"
+        if (insufficient(p.b) || p.half >= 150) return "draw"
+        return "playing"
+    }
+
+    // The full verdict, with the draw rules that need the game so far. `keys` = Engine.key of every position of the game, the current one last.
+    // "playing", "mate", "stalemate", "insufficient", "fifty" (50 moves without a pawn move or capture), "repetition" (same position three times).
+    fun result(p: Pos, keys: List<Long>): String {
+        val s = status(p)
+        if (s == "mate" || s == "stalemate") return s
+        if (insufficient(p.b)) return "insufficient"
+        if (keys.isNotEmpty()) { val k = keys.last(); if (keys.count { it == k } >= 3) return "repetition" }
+        if (p.half >= 100) return "fifty"
         return "playing"
     }
 

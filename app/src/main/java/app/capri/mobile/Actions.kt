@@ -52,6 +52,8 @@ object Actions {
         for (m in tag.findAll(reply)) {
             val name = m.groupValues[1].lowercase()
             val arg = m.groupValues[2].trim()
+            // she never starts flipping your videos because a reply said so: only your own words can
+            if (name == "scrollforme" && !arg.lowercase().startsWith("off") && !userInitiated) continue
             if (level == LOCKDOWN && name !in readOnly) {
                 extra = L.t(" (Lockdown is on, so I can't touch your phone.)", " (وضع الإغلاق الكامل شغّال، فما أقدر ألمس جوالك.)")
                 continue

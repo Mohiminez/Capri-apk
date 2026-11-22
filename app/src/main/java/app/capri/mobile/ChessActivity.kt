@@ -128,7 +128,9 @@ class ChessActivity : Activity() {
     private val history = ArrayList<Pos>()
     private val moves = ArrayList<Move?>()
     private var playerWhite = true
-    private var level = 2
+    private var level = 3
+    private var endReason = "playing"
+    private fun keysNow(): List<Long> = history.map { Engine.key(it) } + Engine.key(pos)
     private lateinit var evalBar: EvalBar
     private var suggest: Analysis? = null
     private var suggestKey = 0L
@@ -148,7 +150,7 @@ class ChessActivity : Activity() {
         super.onCreate(savedInstanceState)
         prefs = Prefs(this)
         L.init(prefs)
-        level = prefs.getI("chessLevel", 2).clampTo(1, 4)
+        level = prefs.getI("chessLevel", 3).clampTo(1, 4)
         talk = ChessTalk(L.ar)
         talk.enabled = ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet()
         spoken = prefs.getB("chessVoice", false)
@@ -293,9 +295,10 @@ class ChessActivity : Activity() {
         val snap = pos
         val k = Engine.key(snap)
         if (suggestKey == k) return
-        val ms = if (level >= 4) 3000L else 1500L
+        val ms = if (level >= 4) 4000L else 2200L
+        val keys = keysNow()
         bg("chess", this) {
-            val a = Engine.analyse(snap, ms, 9)
+            val a = Engine.analyse(snap, ms, 30, keys)
             ui.post {
                 if (isFinishing || pos !== snap || a == null) return@post
                 suggest = a; suggestKey = k
@@ -312,8 +315,9 @@ class ChessActivity : Activity() {
         if (have != null) { announceHint(have); return }
         say("Let me look...", "خلني أشوف...")
         val snap = pos
+        val keys = keysNow()
         bg("chess", this) {
-            val a = Engine.analyse(snap, 2500, 10)
+            val a = Engine.analyse(snap, 3000, 30, keys)
             ui.post { if (!isFinishing && pos === snap && a != null) { suggest = a; suggestKey = Engine.key(snap); setEval(a, snap.white); announceHint(a) } }
         }
     }
@@ -332,9 +336,10 @@ class ChessActivity : Activity() {
         val have = suggestionFor(pos)
         if (have != null) { play(have.move); return }
         val snap = pos
+        val keys = keysNow()
         say("On it.", "على طول.")
         bg("chess", this) {
-            val a = Engine.analyse(snap, 2000, 9)
+            val a = Engine.analyse(snap, if (level >= 4) 6000L else 3500L, 30, keys, true)
             ui.post { if (!isFinishing && pos === snap && a != null && !over) play(a.move) }
         }
     }
@@ -349,7 +354,7 @@ class ChessActivity : Activity() {
                 val p = Fen.parse(box.text.toString())
                 if (p == null) { say("That doesn't look like a real position.", "هذا مو وضع صحيح."); return@setPositiveButton }
                 pos = p; playerWhite = p.white
-                history.clear(); moves.clear(); over = false; thinking = false; auto = false
+                history.clear(); moves.clear(); over = false; endReason = "playing"; thinking = false; auto = false
                 board.flipped = !playerWhite; board.last = null; board.hint = null; clearSel()
                 suggest = null; suggestKey = 0L
                 refresh(); say("Loaded. Your move.", "تم. دورك."); think()
@@ -376,7 +381,7 @@ class ChessActivity : Activity() {
     private fun newGame() {
         pos = Chess.start()
         history.clear(); moves.clear()
-        over = false
+        over = false; endReason = "playing"
         thinking = false
         board.flipped = !playerWhite
         board.last = null
@@ -438,8 +443,9 @@ class ChessActivity : Activity() {
         val lv = level
         val judged = pendingJudge
         pendingJudge = null
+        val keys = keysNow()
         bg("chess", this) {
-            val a = Engine.forLevel(snapshot, lv)
+            val a = Engine.forLevel(snapshot, lv, keys)
             val m = a?.move
             ui.postDelayed({
                 sprite.glitchFx = false
@@ -470,9 +476,10 @@ class ChessActivity : Activity() {
     }
 
     private fun finished(playerJustMoved: Boolean): Boolean {
-        val st = Chess.status(pos)
+        val st = Chess.result(pos, keysNow())
         if (st == "playing") return false
         over = true
+        endReason = st
         if (st == "mate") sprite.play(if (playerJustMoved) "glitch" else "grin", false) { sprite.play("idle") }
         if ("mate" !in talk.enabled && st == "mate" || "draw" !in talk.enabled && st != "mate") says.text = "CAPRI: " + (if (st == "mate") t("Checkmate.", "كش مات.") else t("A draw.", "تعادل."))
         refresh()
@@ -484,7 +491,7 @@ class ChessActivity : Activity() {
         // take back her move and yours, so it is your turn again
         var n = if (pos.white == playerWhite) 2 else 1
         while (n-- > 0 && history.isNotEmpty()) { pos = history.removeAt(history.size - 1); moves.removeAt(moves.size - 1) }
-        over = false
+        over = false; endReason = "playing"
         board.hint = null; suggest = null; suggestKey = 0L; pendingJudge = null
         board.last = moves.lastOrNull()
         clearSel()
@@ -517,7 +524,10 @@ class ChessActivity : Activity() {
         board.pos = pos
         board.invalidate()
         status.text = when {
-            over -> when (Chess.status(pos)) { "mate" -> t("Checkmate", "كش مات"); "stalemate" -> t("Draw (stalemate)", "تعادل (جمود)"); else -> t("Draw", "تعادل") }
+            over -> when (endReason) {
+                "mate" -> t("Checkmate", "كش مات"); "stalemate" -> t("Draw (stalemate)", "تعادل (جمود)")
+                "repetition" -> t("Draw (same position 3 times)", "تعادل (تكرار 3 مرات)"); "fifty" -> t("Draw (50 moves, no capture or pawn move)", "تعادل (50 نقلة بدون أكل أو بيدق)")
+                "insufficient" -> t("Draw (not enough pieces)", "تعادل (قطع غير كافية)"); else -> t("Draw", "تعادل") }
             thinking -> t("She is thinking...", "تفكر...")
             Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
             pos.white == playerWhite -> t("Your move", "دورك")

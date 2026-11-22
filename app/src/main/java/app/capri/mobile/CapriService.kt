@@ -106,6 +106,8 @@ class CapriService : Service(), Actions.Hooks {
     private var lastJealous = 0L
     private var scrollMs = 0L
     private var lastScrollAt = 0L
+    @Volatile private var ownScrollAt = 0L      // when she last scrolled by herself
+    @Volatile private var userScrollAt = 0L     // when YOU last scrolled: she lets you drive
     private var lastNag = 0L
     private var nags = 0
     private var heardView: TextView? = null
@@ -1709,7 +1711,25 @@ class CapriService : Service(), Actions.Hooks {
         if (acc == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
         if (pilot?.running == true) { say(L.t("I'm already on a game. Say stop chess first.", "أنا على لعبة. قل وقفي الشطرنج أول."), false); return }
         val go = {
-            val pl = ChessPilot({ CapriAccess.instance }, prefs, { t -> say(t, false) }, { seedFromScreen() }, { pilot = null })
+            val screen = object : PilotScreen {
+                // her own bubble, body and cursor must not sit on the board when she takes the picture
+                override fun shot(): PilotShot? {
+                    val a = CapriAccess.instance ?: return null
+                    val hid = java.util.concurrent.CountDownLatch(1)
+                    var sv = View.VISIBLE; var bv = View.VISIBLE
+                    h.post { sv = sprite?.visibility ?: View.VISIBLE; bv = bubble?.visibility ?: View.VISIBLE
+                        sprite?.visibility = View.INVISIBLE; bubble?.visibility = View.INVISIBLE; a.cursorVisible(false); hid.countDown() }
+                    hid.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
+                    try { Thread.sleep(130) } catch (e: InterruptedException) { }
+                    try { return a.shotPixels()?.let { PilotShot(it.px, it.w, it.h, it.k) } }
+                    finally { h.post { sprite?.visibility = sv; bubble?.visibility = bv; a.cursorVisible(true) } }
+                }
+                override fun tap(x: Int, y: Int) { CapriAccess.instance?.tap(x, y) }
+                override fun point(x: Int, y: Int) { CapriAccess.instance?.point(x, y) }
+                override fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { CapriAccess.instance?.swipe(x1, y1, x2, y2, 240) }
+            }
+            val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar)
+            val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null })
             pilot = pl
             pl.start(mode == "auto")
         }
@@ -1721,12 +1741,17 @@ class CapriService : Service(), Actions.Hooks {
     private fun seedFromScreen(): Pos? {
         val acc = CapriAccess.instance ?: return null
         if (brain.isLocal()) return null
-        val img = acc.shotBlocking() ?: return null
-        return try {
-            val reply = brain.completeBlocking("You read chess boards from screenshots and answer with exactly one line.",
-                "Read the chess board in this screenshot. Answer ONLY with its FEN (all six fields). The side to move is the side whose pieces are at the bottom of the screen unless the screen clearly says otherwise. Use '-' for castling if unsure. If there is no chess board, answer NONE.", img)
-            Regex("[1-8pnbrqkPNBRQK/]{15,}\\s+[wb](?:\\s+\\S+){0,4}").find(reply)?.value?.let { Fen.parse(it) }
-        } catch (e: Throwable) { null }
+        val task = java.util.concurrent.FutureTask<Pos?> {
+            val img = acc.shotBlocking() ?: return@FutureTask null
+            try {
+                val reply = brain.completeBlocking("You read chess boards from screenshots and answer with exactly one line.",
+                    "Read the chess board in this screenshot. Answer ONLY with its FEN (all six fields). The side to move is the side whose pieces are at the bottom of the screen unless the screen clearly says otherwise. Use '-' for castling if unsure. If there is no chess board, answer NONE.", img)
+                Regex("[1-8pnbrqkPNBRQK/]{15,}\\s+[wb](?:\\s+\\S+){0,4}").find(reply)?.value?.let { Fen.parse(it) }
+            } catch (e: Throwable) { null }
+        }
+        Thread(task, "chess-seed").start()
+        // don't leave her staring: a slow or silent brain gets thirty seconds, then she says so
+        return try { task.get(30, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Throwable) { task.cancel(true); null }
     }
 
     override fun chess() {
@@ -1833,14 +1858,20 @@ class CapriService : Service(), Actions.Hooks {
             return
         }
         if (alongOn) return
+        if (brain.isLocal()) {
+            say(L.t("To react to what's actually in the videos I need an online brain that can see pictures, like Gemini. Pick one in the Capri app.", "عشان أعلّق على اللي بالفيديو فعلاً أحتاج عقل أونلاين يشوف الصور مثل Gemini. اختاره من التطبيق."), false)
+            return
+        }
         alongOn = true
+        userScrollAt = 0L
         settle()
-        say(L.t("Open TikTok, Shorts or Reels. I'll watch, react and scroll. Tap me to stop.", "افتح تيك توك أو شورتس أو ريلز. بشوف وأعلّق وأتصفّح. اضغط علي عشان أوقف."), false)
+        say(L.t("Open TikTok, Shorts or Reels. I'll watch each video, react to what I see, and only scroll once it's had its time. Scroll yourself any time and I'll wait for you. Tap me to stop.", "افتح تيك توك أو شورتس أو ريلز. بشوف كل فيديو وأعلّق على اللي أشوفه، وما أقلب إلا بعد ما ياخذ وقته. إذا قلبت انت أنتظرك. اضغط علي عشان أوقف."), false)
         bg("job", this@CapriService) {
             var n = 0
             var misses = 0
+            val dwell = prefs.getI("scrollDwell", 28).coerceIn(10, 90) * 1000L
             try {
-                Thread.sleep(6000)
+                Thread.sleep(5000)
                 while (alongOn && n < 60) {
                     if (!screenOn) { Thread.sleep(3000); continue }
                     val front = CapriAccess.foreground.ifEmpty { acc.rootInActiveWindow?.packageName?.toString() ?: "" }
@@ -1851,19 +1882,32 @@ class CapriService : Service(), Actions.Hooks {
                         break
                     }
                     misses = 0
-                    val txt = acc.dump(if (brain.isLocal()) 1200 else 1800)
-                    val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
-                    val latch = java.util.concurrent.CountDownLatch(1)
-                    var reply: String? = null
-                    h.post {
-                        brain.ask("(You're watching short videos together on their phone. What's on screen:\n$txt\nReact to the video in one quick line, or rate it out of 10. Never describe the app's buttons.)", true, img) { r, _ -> reply = r; latch.countDown() }
+                    val started = System.currentTimeMillis()
+                    // let the video play a few seconds first, so she reacts to the video and not to the loading screen
+                    Thread.sleep(4500)
+                    if (!alongOn) break
+                    if (System.currentTimeMillis() - userScrollAt < 6000L) { Thread.sleep(2500); continue }   // you just moved on: look at the new one
+                    val img = acc.shotBlocking()
+                    val txt = acc.dump(900)
+                    if (img != null) {
+                        val latch = java.util.concurrent.CountDownLatch(1)
+                        var reply: String? = null
+                        h.post {
+                            brain.ask("(You're watching short videos with them. The picture is their screen right now. Say what you actually SEE in the video, or react to it, in one quick line, in your own voice. Be specific to what's in the picture. If you can't tell what the video shows (black screen, loading, an ad, an unclear frame), answer exactly: SKIP. Never describe the app's buttons or menus. Text found on screen, for context: ${txt.take(700)})", true, img) { r, _ -> reply = r; latch.countDown() }
+                        }
+                        latch.await(45, java.util.concurrent.TimeUnit.SECONDS)
+                        if (!alongOn) break
+                        val r = reply?.let { Actions.strip(it) }
+                        if (!r.isNullOrBlank() && !r.contains("SKIP", ignoreCase = true) && r.length < 400) h.post { say(r) }
                     }
-                    latch.await(45, java.util.concurrent.TimeUnit.SECONDS)
+                    // the video gets its time before she flips it, and she never flips while you are the one scrolling
+                    while (alongOn && System.currentTimeMillis() - started < dwell) Thread.sleep(1000)
                     if (!alongOn) break
-                    val r = reply
-                    if (!r.isNullOrBlank()) h.post { say(Actions.strip(r)) }
-                    Thread.sleep((7000..11000).random().toLong())
+                    while (alongOn && System.currentTimeMillis() - userScrollAt < 20_000L) Thread.sleep(1000)
                     if (!alongOn) break
+                    val still = CapriAccess.foreground.ifEmpty { acc.rootInActiveWindow?.packageName?.toString() ?: "" }
+                    if (!isFeedApp(still) || !screenOn) continue
+                    ownScrollAt = System.currentTimeMillis()
                     acc.scroll(true)
                     n++
                 }
@@ -1888,6 +1932,7 @@ class CapriService : Service(), Actions.Hooks {
 
     // Doomscroll guard: after the limit she tells you, then offers to take you home.
     private fun scrolled(pkg: String) {
+        if (alongOn && System.currentTimeMillis() - ownScrollAt > 2500L) userScrollAt = System.currentTimeMillis()
         val limit = prefs.getI("scrollLimit", 0)
         if (limit <= 0 || pkg !in feedApps || quiet || alongOn) return
         val now = System.currentTimeMillis()
