@@ -182,3 +182,20 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 - Coach mode draws a neon **arrow** over the other app's board (pref `chessArrow`, default on); `chessFrame` draws an outline around the board.
 - Board grid is now aligned to the real square boundaries (sub-pixel), which also helps the tracker.
 - In her own chess screen: **PGN import** (paste a whole game from chess.com/Lichess), **UNDO/REDO** to walk through it, **EXPLAIN** (engine finds the line, her brain says why).
+
+## Chess, round 4: real Stockfish
+
+- `app/src/main/cpp/` holds **Stockfish 11** (C++, GPL-3, see `stockfish/COPYING.txt`) plus `sf_jni.cpp`, a small bridge that runs Stockfish's normal UCI loop on an in-memory queue. Gradle builds it with the NDK into `libstockfish.so` (arm64 and arm32).
+- `Stockfish.kt` loads it lazily. `Engine.analyse` (used by the hint, play-for-me, auto mode and the pilot at levels 3 and 4) asks Stockfish first and checks its move is legal; if the library is missing or answers nothing, Capri's own search plays instead. Levels 1 and 2 stay on the built-in weak engine on purpose.
+- Build without it: `gradle assembleRelease -PwithStockfish=false`.
+- Licence note: Stockfish is GPL-3, Capri is PolyForm Noncommercial. Shipping them together publicly needs the licence question settled, or build with `-PwithStockfish=false`.
+- Test against a desktop build: compile the .cpp files into a shared library and run the tests with `-Dcapri.sf=/path/libstockfish.so` (`StockfishNativeTest`).
+- "العب عني شطرنج" in any word order (and "play chess for me") now starts auto-play; before, only a few exact phrasings matched.
+
+## Round 5: guide, security centre, tighter privacy
+- **GUIDE** (HOME tile, or say "help" / «الدليل»): what Capri is, how the six tabs are arranged, and how to do each thing, in English and Arabic, with search and "try it" phrases that send the phrase to her. `Guide.kt` holds the text; her brain also gets the matching topic when you ask how to use her.
+- **SECURITY CENTER** (HOME tile, or «مركز الأمان»): signing key (warns when the app is signed with the public key from the repo), safety level, privacy shield, library encryption, plugin API, accessibility, action log; each with a fix button.
+- **Her library is now encrypted** (Android Keystore). An older plain-text library is locked the first time she reads it.
+- **Action log** never keeps URL paths/queries, emails, phone numbers, card numbers or codes, and reminder/note/call text is not logged.
+- **Plain http** is only used for this phone or a private network (keys or not); public addresses need https. The manifest still allows cleartext so a home server works; the app is the gate.
+- Still not built: multi-agent, a voice-conversation mode, a companion room, splitting `MainActivity`/`CapriService`.

@@ -28,6 +28,7 @@ object Actions {
         fun chess()
         fun chessScreen() {}
         fun chessPilot(mode: String) {}
+        fun screen(name: String, arg: String = "") {}
     }
 
     const val LOCKDOWN = 0
@@ -37,7 +38,7 @@ object Actions {
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game")
+    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game", "guide", "security")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
@@ -137,6 +138,7 @@ object Actions {
                 "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
                 "watch" -> hooks?.keepWatch(arg)
                 "point" -> hooks?.point(arg)
+                "guide", "security" -> hooks?.screen(name, arg.trim())
                 "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop", "scan", "learn" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
                 "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
@@ -248,6 +250,23 @@ object QuickAsks {
 
     private fun clean(s: String) = s.trim().replace("]", ")").replace("|", "/")
 
+    /** "العب عني شطرنج", "العب شطرنج عني", "كملي لي اللعبة", "play the chess game for me": short and loose, so the word order never decides. */
+    internal fun chessAuto(raw: String): String? {
+        var t = raw.lowercase().replace(Regex("[\\u064B-\\u0652\\u0640]"), "")
+            .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا').replace('ة', 'ه').replace('ى', 'ي')
+            .replace(Regex("[.,!?؟،]"), " ")
+        t = t.replace(Regex("\\b(?:يا |hey |ok |okay )?capri\\b|يا كابري|كابري|لو سمحتي|لو سمحت|رجاءا?|please|pls|الحين|هسه|الان|هلا|ممكن|تقدرين|تقدر|يلا|خلاص")," ")
+            .trim().replace(Regex("\\s+"), " ")
+        if (t.isEmpty() || t.split(' ').size > 9) return null
+        val chessWord = Regex("شطرنج|chess").containsMatchIn(t)
+        val forMe = Regex("(^| )(?:عني|عنّي|بدالي|بدلي|لي|for me|by myself)( |$)").containsMatchIn(t) ||
+            Regex("^(?:play|finish|continue|auto ?play)\\b.*\\b(?:game|chess)\\b").containsMatchIn(t) && t.contains("for me")
+        val verb = Regex("(^| )(?:العبي?|لعب|كملي?|خلصي?|شغلي?|اكملي?|play|finish|continue|autoplay|auto)( |$)").containsMatchIn(t)
+        if (chessWord && forMe && verb) return "auto"
+        if (Regex("^(?:العبي?|لعب|كملي?|خلصي?|اكملي?) (?:عني|بدالي|بدلي|لي)(?: (?:ال)?(?:لعبه|اللعبه|لعبه الشطرنج|شطرنج))?$").matches(t)) return "auto"
+        return null
+    }
+
     fun match(raw: String): String? {
         val r = raw.trim()
         ReminderAsk.match(r)?.let { return it }
@@ -264,6 +283,10 @@ object QuickAsks {
         var t = raw.lowercase().replace("\u2019", "'").replace("'", " ").replace(Regex("[^a-z0-9 \u0600-\u06FF]"), " ").replace(Regex("\\s+"), " ").trim()
         t = t.replace(Regex("^(hey |hi |ok |okay )?(capri )?(please |can you |could you )*"), "").replace(Regex(" please$"), "").trim()
         if (t.isEmpty()) return null
+        if (Regex("^(?:help|guide|help me|open (?:the )?(?:help|guide)|show (?:me )?(?:the )?(?:help|guide)|how does this app work|what can you do|how do i use (?:this|you|capri)|مساعده|مساعدة|الدليل|دليل|افتحي? (?:ال)?(?:مساعده|مساعدة|دليل|الدليل)|وريني الدليل|كيف استخدمك|شلون استخدمك|شنو تقدرين تسوين|شنو تسوين|وش تسوين)$").matches(t))
+            return L.t("Here's my guide. [[guide:open]]", "هذا دليلي. [[guide:open]]")
+        if (Regex("^(?:security(?: center| centre)?|open (?:the )?security(?: center| centre)?|is (?:this app|capri|my phone) safe|مركز الامان|مركز الأمان|الامان|الأمان|افتحي? (?:مركز )?(?:ال)?(?:امان|أمان)|هل التطبيق امن|هل التطبيق آمن)$").matches(t))
+            return L.t("Let's check. [[security:open]]", "خلنا نشوف. [[security:open]]")
         Regex("^(?:tap|click|press|touch) (?:on )?(.+)$").find(t)?.let { return "[[hands:tap|${it.groupValues[1]}]]" }
         Regex("^(?:اضغط|دوس|كبس|اكبس) (?:على )?(.+)$").find(t)?.let { return "[[hands:tap|${it.groupValues[1]}]]" }
         if (Regex("^(scroll down|swipe up|انزل|نزل|اسحب لتحت|سكرول لتحت)$").matches(t)) return "[[hands:scroll|down]]"
@@ -314,6 +337,7 @@ object QuickAsks {
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
+        chessAuto(t)?.let { return L.t("Okay, hands off the board. [[chess:auto]]", "تمام، لا تلمس الرقعة. [[chess:auto]]") }
         if (Regex("^(?:learn my (?:chess )?pieces|learn (?:the |my )?(?:chess )?(?:pieces|theme)|scan (?:the |my )?(?:chess )?board|look at (?:the |my )?chess board|can you read my chess board)$|^(?:تعلمي|تعلم) (?:قطعي|قطع الشطرنج|شكل القطع)$|^(?:شوفي|اقرأي|افحصي) (?:الرقعة|رقعة الشطرنج)$").matches(t))
             return L.t("Let me look. [[chess:scan]]", "خليني أشوف. [[chess:scan]]")
         if (Regex("^(?:play|finish|continue) (?:this |my |the )?(?:chess )?(?:game|chess)(?: for me| on (?:my )?screen)(?: for me)?$|^play chess for me(?: on (?:my )?screen)?$|^العبي? (?:لي |عني )?(?:الشطرنج|لعبة الشطرنج|اللعبة)(?: على الشاشة)?$|^العبي? عني$").matches(t))

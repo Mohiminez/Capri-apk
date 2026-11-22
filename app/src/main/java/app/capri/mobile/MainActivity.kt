@@ -643,7 +643,9 @@ class MainActivity : Activity() {
                 if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
                 else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
-            }
+            },
+            Triple("\u2753", t("GUIDE", "الدليل")) { startActivity(Intent(this, GuideActivity::class.java)) },
+            Triple("\u26E8", t("SECURITY", "الأمان")) { startActivity(Intent(this, SecurityActivity::class.java)) }
         ))
 
         // setup assistant, like the desktop's numbered steps
@@ -1501,7 +1503,7 @@ class MainActivity : Activity() {
                 val name = contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "notes"
                 val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText().take(200_000) } ?: return
                 val n = Knowledge.add(this, name.take(40), txt)
-                toast(if (n > 0) t("Added: $name", "انضاف: $name") else t("That file has no text.", "الملف ما فيه نص."))
+                toast(if (n > 0) t("Added: $name", "انضاف: $name") else t("That file has no text, or I couldn't lock it.", "الملف ما فيه نص، أو ما قدرت أقفله."))
                 showTab(tab)
             } catch (e: Exception) { toast(t("Couldn't read that file.", "ما قدرت أقرأ الملف.")) }
             return

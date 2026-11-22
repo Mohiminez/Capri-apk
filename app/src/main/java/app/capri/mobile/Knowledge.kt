@@ -37,28 +37,47 @@ object Knowledge {
             .sortedByDescending { it.second }.take(k).map { it.first }
     }
 
-    // ---- storage: one text file, passages separated by a marker ----
+    // ---- storage: one text file, passages separated by a marker, encrypted with the Android Keystore ----
     private const val SEP = "\n\u0001\n"
     private fun file(ctx: Context) = File(ctx.filesDir, "knowledge.txt")
 
+    // pure, so it can be tested without a phone
+    fun pack(all: List<Chunk>): String = all.joinToString(SEP) { it.doc.replace('\u0002', ' ') + "\u0002" + it.text.replace('\u0001', ' ') }
+    fun unpack(text: String): List<Chunk> = text.split(SEP).filter { it.contains('\u0002') }.map { Chunk(it.substringBefore('\u0002'), it.substringAfter('\u0002')) }
+
+    /** Swap these in tests; on the phone they are the Keystore. */
+    internal var seal: (String) -> String = { Secret.enc(it) }
+    internal var unseal: (String) -> String = { Secret.dec(it) }
+
+    private fun write(ctx: Context, all: List<Chunk>): Boolean {
+        if (all.isEmpty()) { file(ctx).delete(); return true }
+        val sealed = seal(pack(all))
+        if (sealed.isEmpty()) return false // could not encrypt: keep what is there, never write her library as plain text
+        file(ctx).writeText(sealed)
+        return true
+    }
+
+    fun encrypted(ctx: Context): Boolean = try { file(ctx).takeIf { it.exists() }?.useLines { it.firstOrNull() }?.startsWith("enc:") ?: true } catch (e: Exception) { false }
+
     fun load(ctx: Context): List<Chunk> = try {
         val f = file(ctx)
-        if (!f.exists()) emptyList() else f.readText().split(SEP).filter { it.contains('\u0002') }.map { Chunk(it.substringBefore('\u0002'), it.substringAfter('\u0002')) }
+        if (!f.exists()) emptyList() else {
+            val raw = f.readText()
+            val legacy = !raw.startsWith("enc:")
+            val chunks = unpack(if (legacy) raw else unseal(raw))
+            if (legacy && chunks.isNotEmpty()) write(ctx, chunks) // older versions kept it as plain text: lock it on first read
+            chunks
+        }
     } catch (e: Exception) { emptyList() }
 
     fun add(ctx: Context, doc: String, text: String): Int {
         val cs = chunk(doc, text.take(200_000))
         if (cs.isEmpty()) return 0
-        val all = load(ctx).filter { it.doc != doc } + cs
-        file(ctx).writeText(all.joinToString(SEP) { it.doc.replace('\u0002', ' ') + "\u0002" + it.text.replace('\u0001', ' ') })
-        return cs.size
+        return if (write(ctx, load(ctx).filter { it.doc != doc } + cs)) cs.size else 0
     }
 
     fun docs(ctx: Context): List<String> = load(ctx).map { it.doc }.distinct()
-    fun remove(ctx: Context, doc: String) {
-        val rest = load(ctx).filter { it.doc != doc }
-        if (rest.isEmpty()) file(ctx).delete() else file(ctx).writeText(rest.joinToString(SEP) { it.doc + "\u0002" + it.text })
-    }
+    fun remove(ctx: Context, doc: String) { write(ctx, load(ctx).filter { it.doc != doc }) }
     fun clear(ctx: Context) { file(ctx).delete() }
 
     fun context(ctx: Context, query: String): String {

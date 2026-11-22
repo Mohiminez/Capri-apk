@@ -54,11 +54,12 @@ object Secret {
 }
 
 object Net {
-    // A key never travels over plain http to a public address; only to this phone or a private network.
+    // Plain http only ever goes to this phone or a private network, key or no key; everything public must be https.
+    // (The manifest still allows http so a server at home works, so this is the real gate.)
     fun checkKey(url: String, key: String) {
-        if (key.isEmpty() || !url.startsWith("http://", true)) return
+        if (!url.startsWith("http://", true)) return
         val host = try { URI(url).host ?: "" } catch (e: Exception) { "" }
-        if (!isPrivate(host)) throw Exception("I won't send a key over plain http to a public address ($host). Use https.")
+        if (!isPrivate(host)) throw Exception("I won't use plain http to a public address ($host). Use https.")
     }
 
     fun isPrivate(host: String): Boolean {

@@ -10,6 +10,9 @@ class Analysis(val move: Move, val score: Int, val depth: Int, val pv: List<Move
 // The search she plays with: iterative deepening against a clock, principal-variation search, a transposition table, null-move pruning,
 // late-move reductions, killer and history moves, check extensions, quiescence, repetition and 50-move awareness, a small opening book.
 object Engine {
+    /** Real Stockfish when its library loads (it does on the phone); Capri's own search otherwise, and in the desktop unit tests. */
+    @Volatile var useStockfish = true
+    val name: String get() = if (useStockfish) Stockfish.name else "Capri"
     internal val rnd = java.util.Random(0x5EED)
     internal val z = Array(13) { LongArray(64) { rnd.nextLong() } }
     internal val zSide = rnd.nextLong()
@@ -268,6 +271,7 @@ object Engine {
         if (legalMoves.isEmpty()) return null
         if (legalMoves.size == 1) return Analysis(legalMoves[0], 0, 1, listOf(legalMoves[0]))
         if (book) Book.pick(p)?.let { return Analysis(it, 0, 0, listOf(it)) }
+        if (useStockfish && millis >= 300) Stockfish.analyse(p, millis, maxOf(maxDepth, 24))?.let { return it }
         val bd = Board(p, history)
         for (a in killers) { a[0] = 0; a[1] = 0 }
         for (i in hist.indices) hist[i] = hist[i] / 4

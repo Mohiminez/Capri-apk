@@ -61,3 +61,66 @@ class ChessScreenAskTest {
         assertTrue(QuickAsks.match("تعلمي قطعي")!!.contains("[[chess:scan]]"))
     }
 }
+
+class ChessAutoPhraseTest {
+    @org.junit.Test fun looseWordOrderStartsAuto() {
+        for (s in listOf("العب عني شطرنج", "العب شطرنج عني", "كابري العب عني الشطرنج", "كملي لي لعبة الشطرنج", "لو سمحتي العبي عني", "play chess for me", "play the chess game for me", "العب عني"))
+            org.junit.Assert.assertEquals(s, "auto", QuickAsks.chessAuto(s))
+    }
+    @org.junit.Test fun otherSentencesAreLeftAlone() {
+        for (s in listOf("نلعب شطرنج", "شنو افضل نقلة", "العب اغنية", "علميني الشطرنج", "play chess with me"))
+            org.junit.Assert.assertNull(s, QuickAsks.chessAuto(s))
+    }
+}
+
+class GuideAndProtectTest {
+    @org.junit.Test fun guideHasEveryTopicInBothLanguages() {
+        val ids = Guide.topics.map { it.id }
+        org.junit.Assert.assertEquals(ids.size, ids.toSet().size)
+        for (t in Guide.topics) {
+            org.junit.Assert.assertTrue(t.id, t.en.isNotBlank() && t.ar.isNotBlank() && t.bodyEn.length > 40 && t.bodyAr.length > 40)
+            org.junit.Assert.assertEquals(t.id, t.tryEn.isEmpty(), t.tryAr.isEmpty())
+        }
+        for (id in listOf("start", "map", "chess", "privacy", "fix")) org.junit.Assert.assertNotNull(id, Guide.find(id))
+    }
+    @org.junit.Test fun guideSearchFindsByEitherLanguage() {
+        org.junit.Assert.assertEquals("chess", Guide.search("stockfish", false).first().id)
+        org.junit.Assert.assertEquals("chess", Guide.search("الشطرنج", true).first().id)
+        org.junit.Assert.assertTrue(Guide.search("accessibility restricted", false).any { it.id == "fix" })
+        org.junit.Assert.assertTrue(Guide.search("zzzzqq", false).isEmpty())
+        org.junit.Assert.assertEquals(Guide.topics.size, Guide.search("", false).size)
+    }
+    @org.junit.Test fun helpAndSecurityPhrases() {
+        for (s in listOf("help", "الدليل", "افتح الدليل", "what can you do", "شنو تقدرين تسوين")) org.junit.Assert.assertTrue(s, QuickAsks.match(s)?.contains("[[guide:open]]") == true)
+        for (s in listOf("security center", "مركز الأمان", "is capri safe")) org.junit.Assert.assertTrue(s, QuickAsks.match(s)?.contains("[[security:open]]") == true)
+    }
+    @org.junit.Test fun actionLogHidesPersonalData() {
+        val a = ActionLog.scrub("open https://bank.example.com/login?user=ali&token=abc123 and mail ali@x.com card 4111 1111 1111 1111 call +964 770 123 4567")
+        org.junit.Assert.assertFalse(a, a.contains("login") || a.contains("ali@x.com") || a.contains("4111") || a.contains("770 123"))
+        org.junit.Assert.assertTrue(a, a.contains("https://bank.example.com/..."))
+        org.junit.Assert.assertEquals("remind", ActionLog.describe("remind", "call mum at 5"))
+    }
+    @org.junit.Test fun publicKeyIsRecognised() {
+        org.junit.Assert.assertTrue(Protect.isPublicKey("7F:C8:B6:5F:EE:DC:8F:48:A5:34:6A:4F:FA:0D:F8:EE:A4:13:A0:42:5C:F9:F7:0B:7C:38:BB:FB:CC:6D:A8:45"))
+        org.junit.Assert.assertFalse(Protect.isPublicKey("00"))
+    }
+    @org.junit.Test fun plainHttpOnlyToPrivateAddresses() {
+        org.junit.Assert.assertThrows(Exception::class.java) { Net.checkKey("http://example.com/v1", "") }
+        org.junit.Assert.assertThrows(Exception::class.java) { Net.checkKey("http://8.8.8.8/v1", "k") }
+        Net.checkKey("http://192.168.1.5:11434", ""); Net.checkKey("http://localhost:11434", "k"); Net.checkKey("https://api.example.com", "k")
+    }
+    @org.junit.Test fun libraryPacksAndUnpacks() {
+        val cs = Knowledge.chunk("notes.txt", "Alpha beta.\n\nGamma delta.")
+        val back = Knowledge.unpack(Knowledge.pack(cs))
+        org.junit.Assert.assertEquals(cs.map { it.doc + it.text }, back.map { it.doc + it.text })
+    }
+}
+
+class GuideContextTest {
+    @org.junit.Test fun appQuestionsGetTheRightTopic() {
+        val c = Guide.context("how do I make Capri play chess for me in another app")
+        org.junit.Assert.assertTrue(c, c.contains("Chess"))
+        org.junit.Assert.assertEquals("", Guide.context("what is the capital of France"))
+        org.junit.Assert.assertEquals("", Guide.context("hello"))
+    }
+}

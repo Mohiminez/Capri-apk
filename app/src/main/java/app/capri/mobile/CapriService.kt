@@ -1788,6 +1788,15 @@ class CapriService : Service(), Actions.Hooks {
         return try { task.get(30, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Throwable) { task.cancel(true); null }
     }
 
+    override fun screen(name: String, arg: String) {
+        try {
+            val cls = if (name == "security") SecurityActivity::class.java else GuideActivity::class.java
+            val i = Intent(this, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+            if (name == "guide" && arg.isNotBlank() && arg != "open") i.putExtra("topic", arg)
+            startActivity(i)
+        } catch (e: Exception) { say(L.t("I couldn't open that. Open Capri and press it on HOME.", "ما قدرت أفتحه. افتح كابري واضغط عليه من الرئيسية."), false) }
+    }
+
     override fun chess() {
         try {
             startActivity(Intent(this, ChessActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))

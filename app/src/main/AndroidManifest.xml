@@ -46,6 +46,18 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
 
         <activity
+            android:name=".GuideActivity"
+            android:exported="false"
+            android:label="Capri guide"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <activity
+            android:name=".SecurityActivity"
+            android:exported="false"
+            android:label="Capri security"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <activity
             android:name=".GamesActivity"
             android:exported="false"
             android:label="Capri games"

@@ -9,15 +9,18 @@ import java.util.Locale
 object ActionLog {
     private const val KEY = "actlog"
     private const val MAX = 80
-    private val quiet = setOf("hands", "copy", "remember", "dictate")
+    private val quiet = setOf("hands", "copy", "remember", "dictate", "remind", "reminder", "alarm", "timer", "note", "text", "type", "sms", "call", "say")
 
     // pure, so it can be tested
     fun push(existing: String, line: String, max: Int = MAX): String {
-        val one = line.replace('\n', ' ').trim().take(140)
+        val one = scrub(line.replace('\n', ' ').trim()).take(140)
         if (one.isEmpty()) return existing
         val lines = existing.split("\n").filter { it.isNotBlank() } + one
         return lines.takeLast(max).joinToString("\n")
     }
+
+    // What goes in the log never carries personal data: addresses lose their path and query, and card numbers, emails, phones and codes are hidden.
+    fun scrub(s: String): String = Shield.redact(Regex("(https?://[^/\\s?#]+)[^\\s]*").replace(s) { it.groupValues[1] + "/..." })
 
     fun describe(name: String, arg: String): String =
         if (name in quiet) name + (if (name == "hands") ":" + arg.substringBefore('|').take(12) else "") else if (arg.isBlank()) name else "$name: ${arg.take(60)}"
