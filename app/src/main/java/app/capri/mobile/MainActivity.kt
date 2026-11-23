@@ -343,6 +343,8 @@ class MainActivity : Activity() {
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, dp(10), 0, dp(10))
         page.addView(outer, lp)
+        outer.alpha = 0f; outer.translationY = dp(14).toFloat()
+        outer.animate().alpha(1f).translationY(0f).setStartDelay((page.childCount * 45L).coerceAtMost(400L)).setDuration(320).start()
         if (title != null) {
             val h = heading(col, "$title >")
             h.tag = title
@@ -633,6 +635,49 @@ class MainActivity : Activity() {
             charmLabel.text = t("Bond: ", "العلاقة: ") + Charm.label(c)
             pb.progress = Charm.progress(c)
         }
+
+        // a live card: greeting, her rotating thoughts, a box to talk to her, one-tap things to say
+        val live = section(null)
+        val streak = Streak.touch(prefs)
+        val greet = body(live, Streak.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), streak, L.ar), 17f, Color.WHITE, true)
+        if (streak >= 2) body(live, "\uD83D\uDD25 " + t("$streak days in a row", "$streak يوم ورا بعض"), 13f, Night.amber)
+        val thought = body(live, "", 14f, Night.cyan)
+        val thoughts = if (L.ar) listOf("تدري؟ أقدر ألعب شطرنج بدالك.", "جرّب تقول لي: «وضع الدراسة».", "اضغط على غرفتي، سوّيتها حلوة.", "قل «وش تقدرين تسوين؟» وأعلمك.", "أحب لما تسولف وياي.", "لا تنسى تدلّعني شوي ♥")
+            else listOf("I can play chess for you, you know.", "Try saying: \"study mode\".", "Visit my room, I decorated it.", "Say \"what can you do?\" and I'll show you.", "I like it when you chat with me.", "Don't forget to pet me a little \u2665")
+        var ti = 0
+        val rot = object : Runnable { override fun run() {
+            thought.animate().alpha(0f).setDuration(250).withEndAction { thought.text = "\u201C" + thoughts[ti % thoughts.size] + "\u201D"; ti++; thought.animate().alpha(1f).setDuration(350).start() }.start()
+            thought.postDelayed(this, 7000L) } }
+        thought.post(rot)
+        val chat = EditText(this)
+        chat.hint = t("Say something to her...", "قل لها شي...")
+        chat.setTextColor(Night.white); chat.setHintTextColor(Night.faint); chat.textSize = 15f; chat.setSingleLine(true)
+        chat.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
+        chat.setPadding(dp(14), dp(10), dp(14), dp(10))
+        chat.background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(Night.field); setStroke(dp(1), Night.deepEdge) }
+        fun sendToHer(msg: String) {
+            if (msg.isBlank()) return
+            if (!Settings.canDrawOverlays(this)) { toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول.")); return }
+            startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_ASK).putExtra("text", msg))
+            heroSprite?.let { sp -> sp.play("grin", false) { sp.play("idle") } }
+            toast(t("Sent. Look at her on your screen.", "انرسلت. طالع عليها بشاشتك."))
+        }
+        chat.setOnEditorActionListener { v, _, _ -> sendToHer(v.text.toString()); v.text = ""; true }
+        live.addView(chat, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val chipRow = LinearLayout(this); chipRow.orientation = LinearLayout.HORIZONTAL
+        val chipScroll = android.widget.HorizontalScrollView(this); chipScroll.isHorizontalScrollBarEnabled = false; chipScroll.addView(chipRow)
+        for ((label, msg) in listOf(
+            t("\u265E Play chess for me", "\u265E العبي شطرنج بدالي") to t("play chess for me", "العبي شطرنج بدالي"),
+            t("\uD83D\uDCD6 Study mode", "\uD83D\uDCD6 وضع الدراسة") to t("study mode", "وضع الدراسة"),
+            t("\uD83D\uDC40 Read my screen", "\uD83D\uDC40 اقري شاشتي") to t("what is on my screen?", "وش على شاشتي؟"),
+            t("\u2728 What can you do?", "\u2728 وش تقدرين تسوين؟") to t("what can you do?", "وش تقدرين تسوين؟"))) {
+            val c = TextView(this); c.text = label; c.textSize = 13f; c.setTextColor(accent); c.typeface = tfMono
+            c.setPadding(dp(14), dp(8), dp(14), dp(8))
+            c.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(Night.deep); setStroke(dp(1), Night.deepEdge) }
+            c.setOnClickListener { c.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY); sendToHer(msg) }
+            chipRow.addView(c, LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, dp(8), 0) })
+        }
+        live.addView(chipScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
         val play = section(t("PLAY AND TRY", "العب وجرّب"))
         tiles(play, listOf(

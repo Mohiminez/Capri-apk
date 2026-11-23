@@ -23,7 +23,7 @@ object RoomRules {
     /** What the room contains at a bond level (0..4). */
     fun decor(level: Int): Set<String> = buildSet {
         if (level >= 1) add("rug")
-        if (level >= 2) add("plant")
+        if (level >= 2) { add("plant"); add("neon") }
         if (level >= 3) { add("lamp"); add("shelf") }
         if (level >= 4) { add("lights"); add("poster") }
     }
@@ -53,6 +53,11 @@ class RoomView(ctx: Context) : View(ctx) {
         // wall
         p.shader = LinearGradient(0f, 0f, 0f, floorY, if (sky == 0) 0xFF171428.toInt() else 0xFF2A2440.toInt(), 0xFF1B1730.toInt(), Shader.TileMode.CLAMP)
         c.drawRect(0f, 0f, w, floorY, p); p.shader = null
+        // wallpaper: soft vertical stripes and a baseboard
+        p.color = 0x0DFFFFFF; var sx0 = 0f; var k = 0
+        while (sx0 < w) { if (k % 2 == 0) c.drawRect(sx0, 0f, sx0 + w / 18f, floorY, p); sx0 += w / 18f; k++ }
+        p.color = 0xFF2B2346.toInt(); c.drawRect(0f, floorY - h * 0.03f, w, floorY, p)
+        p.color = 0x22FFFFFF; c.drawRect(0f, floorY - h * 0.03f, w, floorY - h * 0.03f + 3f, p)
         // floor
         p.shader = LinearGradient(0f, floorY, 0f, h, 0xFF3A2E52.toInt(), 0xFF1E1830.toInt(), Shader.TileMode.CLAMP)
         c.drawRect(0f, floorY, w, h, p); p.shader = null
@@ -82,7 +87,32 @@ class RoomView(ctx: Context) : View(ctx) {
         p.strokeWidth = 5f; c.drawLine(wx + ww / 2, wy, wx + ww / 2, wy + wh, p); c.drawLine(wx, wy + wh / 2, wx + ww, wy + wh / 2, p)
         p.style = Paint.Style.FILL
 
+        // curtains
+        p.color = 0xFF7B2D5B.toInt(); val sway = (sin(t * 0.8) * 4).toFloat()
+        val cw = ww * 0.2f
+        c.drawRect(wx - 10f, wy - 10f, wx + cw + sway, wy + wh + 14f, p); c.drawRect(wx + ww - cw - sway, wy - 10f, wx + ww + 10f, wy + wh + 14f, p)
+        p.color = 0xFF5B1E41.toInt(); c.drawRect(wx - 14f, wy - 16f, wx + ww + 14f, wy - 6f, p)
+        // sunbeam or moonlight spilling onto the floor
+        val beam = when (sky) { 2 -> 0x22FFF2B0; 1 -> 0x22FF9A6A; else -> 0x226A8CFF }
+        val bp = Path(); bp.moveTo(wx + 8f, wy + wh); bp.lineTo(wx + ww - 8f, wy + wh); bp.lineTo(w * 0.62f, h); bp.lineTo(w * 0.05f, h); bp.close()
+        p.color = beam; c.drawPath(bp, p)
+        // desk with a screen that flickers
+        val dx = w * 0.60f; val dy = floorY - h * 0.10f
+        p.color = 0xFF4A3A6E.toInt(); c.drawRect(dx, dy, dx + w * 0.34f, dy + h * 0.025f, p); c.drawRect(dx + 6f, dy, dx + 14f, floorY + h * 0.02f, p); c.drawRect(dx + w * 0.34f - 14f, dy, dx + w * 0.34f - 6f, floorY + h * 0.02f, p)
+        p.color = 0xFF0E0B1B.toInt(); c.drawRoundRect(RectF(dx + w * 0.07f, dy - h * 0.12f, dx + w * 0.27f, dy - 4f), 8f, 8f, p)
+        p.color = if ((t * 2).toInt() % 7 == 0) 0xFF1B6B73.toInt() else 0xFF2EE6E0.toInt(); p.alpha = 200
+        for (i in 0..3) c.drawRect(dx + w * 0.09f, dy - h * 0.105f + i * h * 0.022f, dx + w * (0.09f + 0.05f + 0.03f * ((i * 3 + (t * 1.3).toInt()) % 4)), dy - h * 0.095f + i * h * 0.022f, p)
+        p.alpha = 255
+        // a pink cushion on the floor
+        p.color = 0xFFFF6FA5.toInt(); c.drawOval(RectF(w * 0.07f, floorY + h * 0.07f, w * 0.23f, floorY + h * 0.14f), p)
+        p.color = 0xFFFFB3D0.toInt(); c.drawOval(RectF(w * 0.10f, floorY + h * 0.075f, w * 0.20f, floorY + h * 0.11f), p)
+
         val d = RoomRules.decor(level)
+        if ("neon" in d) { val a = (190 + 65 * sin(t * 3)).toInt().coerceIn(120, 255)
+            p.style = Paint.Style.STROKE; p.strokeWidth = 5f; p.color = 0xFFFF2D6F.toInt(); p.alpha = a
+            val hp = Path(); val hx = w * 0.50f; val hy = h * 0.20f
+            hp.moveTo(hx, hy + 30f); hp.cubicTo(hx - 50f, hy - 10f, hx - 10f, hy - 30f, hx, hy); hp.cubicTo(hx + 10f, hy - 30f, hx + 50f, hy - 10f, hx, hy + 30f)
+            c.drawPath(hp, p); p.strokeWidth = 14f; p.alpha = (a / 4); c.drawPath(hp, p); p.alpha = 255; p.style = Paint.Style.FILL }
         if ("rug" in d) { p.color = 0xFF7B2D5B.toInt(); c.drawOval(RectF(w * 0.18f, floorY + (h - floorY) * 0.25f, w * 0.82f, h - (h - floorY) * 0.12f), p)
             p.color = 0xFFB5487F.toInt(); c.drawOval(RectF(w * 0.26f, floorY + (h - floorY) * 0.36f, w * 0.74f, h - (h - floorY) * 0.22f), p) }
         if ("poster" in d) { p.color = 0xFF0E0B1B.toInt(); c.drawRect(w * 0.62f, h * 0.10f, w * 0.88f, h * 0.36f, p); p.color = 0xFFFF2D6F.toInt(); c.drawCircle(w * 0.75f, h * 0.2f, w * 0.05f, p); p.color = 0xFF2EE6A6.toInt(); c.drawRect(w * 0.66f, h * 0.28f, w * 0.84f, h * 0.30f, p) }
@@ -99,7 +129,17 @@ class RoomView(ctx: Context) : View(ctx) {
             val cols = intArrayOf(0xFFFF2D6F.toInt(), 0xFF2EE6A6.toInt(), 0xFFFFD84A.toInt(), 0xFF6EC6FF.toInt())
             for (i in 1..9) { val x = w * i / 10f; val y = h * (0.04f + 0.08f * 4 * (x / w) * (1 - x / w)) + 8f
                 p.color = cols[i % 4]; p.alpha = (170 + 85 * sin(t * 2 + i)).toInt().coerceIn(90, 255); c.drawCircle(x, y, 7f, p); p.alpha = 255 } }
-        postInvalidateDelayed(120)
+        // floating dust and fireflies, and a soft vignette
+        for (i in 0 until 16) {
+            val fx = w * (((i * 61) % 100) / 100f) + (sin(t * 0.5 + i) * 14).toFloat()
+            val fy = h * (1f - (((t * 0.02 + i * 0.137) % 1.0)).toFloat())
+            p.color = if (sky == 0) 0xFFFFF3A8.toInt() else 0xFFFFFFFF.toInt(); p.alpha = (60 + 60 * sin(t * 2 + i)).toInt().coerceIn(20, 140)
+            c.drawCircle(fx, fy, 2.4f + (i % 3), p)
+        }
+        p.alpha = 255
+        p.shader = RadialGradient(w / 2, h * 0.55f, maxOf(w, h) * 0.75f, 0x00000000, 0x88000000.toInt(), Shader.TileMode.CLAMP)
+        c.drawRect(0f, 0f, w, h, p); p.shader = null
+        postInvalidateDelayed(90)
     }
 }
 
@@ -188,6 +228,7 @@ class RoomActivity : Activity() {
         sprite.squash(1f); sprite.hop()
         if (w > 0) { sprite.emote("heart"); say(L.t("Hehe, that tickles.", "هههه تدغدغ.")); return }
         prefs.putL("roomPet", now)
+        sprite.emote("star")
         give(1, listOf(L.t("Again!", "كمّل!"), L.t("You're sweet.", "انت لطيف."), L.t("Don't stop.", "لا توقف.")).random(), "heart")
     }
 

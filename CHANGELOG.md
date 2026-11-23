@@ -2,6 +2,11 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest
+- **Play chess for me:** a live chip at the top of the screen shows what she is doing (looking for the board, board found, thinking, playing e2e4, waiting for their move; tap it to stop). If no board is visible she tells you after 4 seconds instead of staying silent. The safety question is asked only once, not every time (it used to expire unanswered, which looked like she did nothing).
+- **Home:** greeting by time of day, day streak, her rotating thoughts, a box to talk to her straight from the app, one-tap phrases, sections fade in.
+- **Her room:** wallpaper, curtains that sway, sunbeam/moonlight, desk with a flickering screen, cushion, neon heart (bond 2+), floating dust, vignette.
+
 ## Latest round
 - **Modes:** seven one-tap modes (Normal, Quiet, Game, Study, Battery saver, Companion, Party), by voice («وضع الدراسة» / "study mode") or from the HOME tab or her menu.
 - **One voice:** the ONE VOICE switch makes every language use the same cloud voice (Gemini, ElevenLabs or OpenAI).

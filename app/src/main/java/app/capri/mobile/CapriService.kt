@@ -1744,6 +1744,30 @@ class CapriService : Service(), Actions.Hooks {
         override fun save(set: PieceSet) { try { f(set.key).writeBytes(set.toBytes()) } catch (e: Exception) { } }
     }
 
+    // A live chip at the top of the screen while she plays: what she is doing right now. Tap it to stop her.
+    private var chip: TextView? = null
+    private var chipDots = 0
+    private val chipTick = object : Runnable { override fun run() { chip?.let { c -> chipDots = (chipDots + 1) % 4; c.alpha = if (chipDots % 2 == 0) 1f else 0.82f; h.postDelayed(this, 600L) } } }
+    private fun chessChip(text: String?) {
+        if (text.isNullOrEmpty()) {
+            h.removeCallbacks(chipTick)
+            chip?.let { try { wm.removeView(it) } catch (e: Exception) { } }; chip = null; return
+        }
+        val tail = L.t("   \u00B7 tap to stop", "   \u00B7 اضغط للإيقاف")
+        chip?.let { it.text = text + tail; return }
+        val d = resources.displayMetrics.density
+        val v = TextView(this)
+        v.text = text + tail; v.setTextColor(Night.white); v.textSize = 13f; v.maxLines = 2
+        v.setPadding((14 * d).toInt(), (8 * d).toInt(), (14 * d).toInt(), (8 * d).toInt())
+        v.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 22 * d; setColor(Color.argb(225, 16, 12, 20)); setStroke((2 * d).toInt(), Themes.accent(prefs)) }
+        v.setOnClickListener { pilot?.stop() }
+        val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
+            WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT)
+        lp.gravity = Gravity.TOP or Gravity.CENTER_HORIZONTAL; lp.y = (36 * d).toInt()
+        try { wm.addView(v, lp); chip = v; h.postDelayed(chipTick, 600L) } catch (e: Exception) { }
+    }
+
     private var boardOverlay: BoardOverlay? = null
     private fun overlay(): BoardOverlay? {
         boardOverlay?.let { return it }
@@ -1795,12 +1819,13 @@ class CapriService : Service(), Actions.Hooks {
         val go = {
             val screen = chessScreenImpl
             val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar, pieceStore, prefs.getB("chessFrame", false))
-            val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null })
+            val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null; chessChip(null) },
+                status = { chessChip(it) })
             pilot = pl
             pl.start(mode == "auto")
         }
-        if (mode == "auto") showConfirm(L.t("I'll tap the pieces for you in your chess app. Use this for practice, bots or games where engine help is allowed: in rated games against people it breaks the site's rules and can get you banned. Start?",
-            "بلمس القطع عنك في تطبيق الشطرنج. استخدمها للتدريب أو ضد البوتات أو لعب يسمح بمساعدة المحرك: في اللعب المصنّف ضد ناس يخالف قوانين الموقع وممكن ينحظر حسابك. أبدأ؟")) { go() } else go()
+        if (mode == "auto" && !prefs.getB("chessAutoOk", false)) showConfirm(L.t("I'll tap the pieces for you in your chess app. Use this for practice, bots or games where engine help is allowed: in rated games against people it breaks the site's rules and can get you banned. Start?",
+            "بلمس القطع عنك في تطبيق الشطرنج. استخدمها للتدريب أو ضد البوتات أو لعب يسمح بمساعدة المحرك: في اللعب المصنّف ضد ناس يخالف قوانين الموقع وممكن ينحظر حسابك. أبدأ؟ (أسألك مرة وحدة بس)")) { prefs.putB("chessAutoOk", true); go() } else go()
     }
 
     // For a game that is already under way: a vision model reads the board once. Blocks, so only call it off the main thread.

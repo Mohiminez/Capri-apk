@@ -29,7 +29,8 @@ class ChessPilot(
     private val seed: () -> Pos?,          // the position from a vision model, for a game that is already under way (may block)
     private val finished: () -> Unit,
     private val sleeper: (Long) -> Unit = { try { Thread.sleep(it) } catch (e: InterruptedException) { } },
-    private val staleMs: Long = 5000L
+    private val staleMs: Long = 5000L,
+    private val status: (String) -> Unit = { }     // a short live line for the on-screen chip: what she is doing right now
 ) {
     @Volatile var running = false
     @Volatile var auto = true
@@ -48,7 +49,7 @@ class ChessPilot(
     // Runs the whole job on the calling thread (the tests call this directly).
     fun runNow() {
         running = true
-        try { loop() } catch (e: Throwable) { Diag.log("chesspilot", e.toString()); lastError = e.toString() } finally { running = false; try { screen()?.clearOverlay() } catch (e: Throwable) { }; post { finished() } }
+        try { loop() } catch (e: Throwable) { Diag.log("chesspilot", e.toString()); lastError = e.toString() } finally { running = false; try { screen()?.clearOverlay() } catch (e: Throwable) { }; post { status(""); finished() } }
     }
 
     // At the opening position every piece is known, so that's where she learns the look of this app's pieces (once per theme).
@@ -79,6 +80,7 @@ class ChessPilot(
 
     private fun post(f: () -> Unit) { val h = ui; if (h != null) h.post(f) else f() }
     private fun tell(s: String) = post { say(s) }
+    private fun st(s: String) = post { status(s) }
     private fun nap(ms: Long) = sleeper(ms)
     private fun t(en: String, ar: String) = if (settings.ar) ar else en
 
@@ -101,6 +103,7 @@ class ChessPilot(
         var waitSaid = 0L
         tell(if (auto) t("Okay, I'm on the board. Hands off, I'll play.", "تمام، أنا على الرقعة. لا تلمس، أنا ألعب.") else t("I'm watching your game. I'll point at the best move.", "أراقب لعبتك. بأشر لك على أفضل نقلة."))
 
+        st(t("\uD83D\uDD0D Looking for the board...", "\uD83D\uDD0D أدوّر على الرقعة..."))
         while (running) {
             val scr = screen()
             if (scr == null) { tell(t("I lost my accessibility access.", "فقدت صلاحية الوصول.")); return }
@@ -114,12 +117,15 @@ class ChessPilot(
                 geo = BoardVision.detect(sh.px, sh.w, sh.h)
                 if (geo == null) {
                     prevObs = null
-                    if (++lostFrames == 12) tell(t("I can't see a chess board. Open your game and keep the board on screen.", "ما أشوف رقعة شطرنج. افتح اللعبة وخلي الرقعة على الشاشة."))
+                    st(t("\uD83D\uDD0D No board on screen. Open your chess game", "\uD83D\uDD0D ما أشوف رقعة. افتح لعبة الشطرنج"))
+                    if (++lostFrames == 4) tell(t("I'm ready but I can't see a board yet. Open your chess game (chess.com, Lichess...) and I'll start.", "جاهزة بس ما أشوف رقعة للحين. افتح لعبة الشطرنج (chess.com أو Lichess...) وأبدأ."))
+                    if (lostFrames == 12) tell(t("I can't see a chess board. Open your game and keep the board on screen.", "ما أشوف رقعة شطرنج. افتح اللعبة وخلي الرقعة على الشاشة."))
                     if (lostFrames > 60) { tell(t("No board for a while, so I'm stopping.", "ما فيه رقعة من فترة، فبوقف.")); return }
                     nap(900); continue
                 }
                 lostFrames = 0
                 prevObs = null
+                st(t("\u2705 Board found", "\u2705 لقيت الرقعة"))
                 if (settings.frame) geo?.let { scr.frame((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
             }
             val obs = BoardVision.read(sh.px, sh.w, sh.h, geo)
@@ -212,6 +218,7 @@ class ChessPilot(
                 val stale = key == actedKey && System.currentTimeMillis() - actedAt > staleMs
                 if (key != actedKey || stale) {
                     if (stale && ++tries >= 4) { tell(t("My move isn't going through. Maybe a pop-up is in the way, or the app doesn't take taps from me. Stopping.", "نقلتي ما تمر. يمكن نافذة تغطي الرقعة أو التطبيق ما يقبل لمساتي. بوقف.")); return }
+                    st(t("\uD83E\uDDE0 Thinking (${Engine.name})...", "\uD83E\uDDE0 أفكر (${Engine.name})..."))
                     val best = Engine.analyse(tr.pos, millis, 30, keys, true) ?: return
                     if (!running) return
                     // thinking took a while: look again, and only touch the screen if the board is exactly where and how it was
@@ -224,6 +231,7 @@ class ChessPilot(
                     val x1 = (fx * k).toInt(); val y1 = (fy * k).toInt(); val x2 = (tx * k).toInt(); val y2 = (ty * k).toInt()
                     actedKey = key; actedAt = System.currentTimeMillis()
                     val san = San.of(tr.pos, best.move)
+                    st(if (auto) t("\u265F Playing $san", "\u265F ألعب $san") else t("\u2B50 Best move: $san", "\u2B50 أفضل نقلة: $san"))
                     if (!auto) {
                         tell(t("Best move: $san", "أفضل نقلة: $san") + (best.mateIn?.takeIf { it > 0 }?.let { t(" (mate in $it)", " (مات في $it)") } ?: ""))
                         scr.arrow(x1, y1, x2, y2, (g.cell * k).toInt())
@@ -249,6 +257,7 @@ class ChessPilot(
                 }
             }
             // nothing to do: it's their move. Say so once in a while, so a quiet pilot doesn't look dead.
+            st(if (tr.pos.white != mineWhite) t("\u23F3 Waiting for their move", "\u23F3 أنتظر نقلة الخصم") else t("\uD83D\uDC40 Watching the board", "\uD83D\uDC40 أراقب الرقعة"))
             if (tr.pos.white != mineWhite && System.currentTimeMillis() - lastChange > 40_000L && System.currentTimeMillis() - waitSaid > 60_000L) {
                 waitSaid = System.currentTimeMillis()
                 tell(t("Waiting for the other side to move.", "أنتظر الخصم يلعب."))

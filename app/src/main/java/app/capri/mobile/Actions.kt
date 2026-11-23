@@ -342,7 +342,7 @@ object QuickAsks {
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
-        chessAuto(t)?.let { return L.t("Okay, hands off the board. [[chess:auto]]", "تمام، لا تلمس الرقعة. [[chess:auto]]") }
+        chessAuto(t)?.let { return L.t("On it. Open your chess game and keep the board visible, I'll show you what I'm doing on top of the screen. [[chess:auto]]", "أبشر. افتح لعبة الشطرنج وخلي الرقعة ظاهرة، وبوريك فوق الشاشة وش قاعدة أسوي. [[chess:auto]]") }
         if (Regex("^(?:learn my (?:chess )?pieces|learn (?:the |my )?(?:chess )?(?:pieces|theme)|scan (?:the |my )?(?:chess )?board|look at (?:the |my )?chess board|can you read my chess board)$|^(?:تعلمي|تعلم) (?:قطعي|قطع الشطرنج|شكل القطع)$|^(?:شوفي|اقرأي|افحصي) (?:الرقعة|رقعة الشطرنج)$").matches(t))
             return L.t("Let me look. [[chess:scan]]", "خليني أشوف. [[chess:scan]]")
         if (Regex("^(?:play|finish|continue) (?:this |my |the )?(?:chess )?(?:game|chess)(?: for me| on (?:my )?screen)(?: for me)?$|^play chess for me(?: on (?:my )?screen)?$|^العبي? (?:لي |عني )?(?:الشطرنج|لعبة الشطرنج|اللعبة)(?: على الشاشة)?$|^العبي? عني$").matches(t))

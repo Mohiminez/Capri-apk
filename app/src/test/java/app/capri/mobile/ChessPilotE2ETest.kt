@@ -106,10 +106,11 @@ class FakeChessApp(var pos: Pos, val iPlayWhite: Boolean, val flipped: Boolean =
 class ChessPilotE2ETest {
     private class Run(val app: FakeChessApp, val auto: Boolean = true, val seed: Pos? = null, val maxMoves: Int = 6) {
         val said = ArrayList<String>()
+        val statuses = ArrayList<String>()
         var naps = 0
         lateinit var pilot: ChessPilot
         fun go(): ChessPilot {
-            pilot = ChessPilot({ app }, PilotSettings(level = 1), { said.add(it) }, { }, { seed }, { }, { naps++; if (naps > 350) pilot.stop() })
+            pilot = ChessPilot({ app }, PilotSettings(level = 1), { said.add(it) }, { }, { seed }, { }, { naps++; if (naps > 350) pilot.stop() }, status = { statuses.add(it) })
             pilot.auto = auto
             // stop once she has played enough, or the game ended
             val watcher = Thread {
@@ -246,5 +247,13 @@ class ChessPilotE2ETest {
         r.go()
         assertEquals(0, app.taps.size)
         assertTrue(r.said.any { it.contains("board") })
+    }
+
+    @org.junit.Test fun showsWhatSheIsDoingAndClearsItAtTheEnd() {
+        val r = Run(FakeChessApp(Chess.start(), true), true, null, 2)
+        r.go()
+        org.junit.Assert.assertTrue(r.statuses.any { it.contains("Looking") })
+        org.junit.Assert.assertTrue(r.statuses.any { it.contains("Playing") })
+        org.junit.Assert.assertEquals("", r.statuses.last())
     }
 }

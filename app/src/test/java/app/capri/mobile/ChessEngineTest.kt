@@ -214,3 +214,17 @@ class MemoryTest {
         org.junit.Assert.assertEquals(1, Memory.parse(Memory.remove(raw, 1)).size)
     }
 }
+
+class StreakTest {
+    @org.junit.Test fun countsDaysInARow() {
+        org.junit.Assert.assertEquals(1, Streak.next(0, 100, 0))
+        org.junit.Assert.assertEquals(3, Streak.next(100, 101, 2))
+        org.junit.Assert.assertEquals(3, Streak.next(100, 100, 3))
+        org.junit.Assert.assertEquals(1, Streak.next(100, 103, 9))
+    }
+    @org.junit.Test fun greetingFitsTheHour() {
+        org.junit.Assert.assertTrue(Streak.greeting(8, 1, false).startsWith("Good morning"))
+        org.junit.Assert.assertTrue(Streak.greeting(2, 1, true).contains("صاحي"))
+        org.junit.Assert.assertTrue(Streak.greeting(19, 7, false).contains("week"))
+    }
+}

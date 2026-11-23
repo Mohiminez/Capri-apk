@@ -74,3 +74,38 @@ object Modes {
         return null
     }
 }
+
+
+// Days in a row you came to see her. Pure maths, so it can be tested: [last] and [today] are day numbers (epoch days).
+object Streak {
+    fun next(last: Long, today: Long, streak: Int): Int = when {
+        last <= 0L -> 1
+        today == last -> maxOf(1, streak)
+        today == last + 1 -> streak + 1
+        else -> 1
+    }
+
+    fun touch(prefs: Prefs, nowMs: Long = System.currentTimeMillis()): Int {
+        val today = (nowMs + java.util.TimeZone.getDefault().getOffset(nowMs)) / 86_400_000L
+        val n = next(prefs.getL("streakLast", 0L), today, prefs.getI("streak", 0))
+        prefs.putL("streakLast", today); prefs.putI("streak", n)
+        return n
+    }
+
+    /** What she says when you open the app: time of day, and a nudge on long streaks. */
+    fun greeting(hour: Int, streak: Int, ar: Boolean): String {
+        val base = when (hour) {
+            in 5..11 -> if (ar) "صباح الخير" else "Good morning"
+            in 12..16 -> if (ar) "هلا والله" else "Hey you"
+            in 17..21 -> if (ar) "مساء الخير" else "Good evening"
+            else -> if (ar) "للحين صاحي؟" else "Still up?"
+        }
+        val tail = when {
+            streak >= 30 -> if (ar) " شهر كامل وانت وياي!" else " A whole month together!"
+            streak >= 7 -> if (ar) " أسبوع ورا بعض، حلو." else " A week in a row, nice."
+            streak >= 2 -> if (ar) " يوم $streak ورا بعض." else " Day $streak in a row."
+            else -> ""
+        }
+        return base + tail
+    }
+}
