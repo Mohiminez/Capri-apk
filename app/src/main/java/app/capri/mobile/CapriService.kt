@@ -150,6 +150,7 @@ class CapriService : Service(), Actions.Hooks {
 
     override fun onCreate() {
         super.onCreate()
+        Stockfish.prepare(this)
         wm = getSystemService(WINDOW_SERVICE) as WindowManager
         prefs = Prefs(this)
         L.init(prefs)
@@ -741,7 +742,7 @@ class CapriService : Service(), Actions.Hooks {
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
-    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running
+    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running && pilot?.running != true
 
     private val wanderTask = object : Runnable {
         override fun run() {
@@ -1749,7 +1750,7 @@ class CapriService : Service(), Actions.Hooks {
     // A live chip at the top of the screen while she plays: what she is doing right now. Tap it to stop her.
     private var chip: TextView? = null
     private var chipDots = 0
-    private val chipTick = object : Runnable { override fun run() { chip?.let { c -> chipDots = (chipDots + 1) % 4; c.alpha = if (chipDots % 2 == 0) 1f else 0.82f; h.postDelayed(this, 600L) } } }
+    private val chipTick = object : Runnable { override fun run() { chip?.let { c -> chipDots = (chipDots + 1) % 4; h.postDelayed(this, 600L) } } }
     private fun chessChip(text: String?) {
         if (text.isNullOrEmpty()) {
             h.removeCallbacks(chipTick)
@@ -1815,7 +1816,19 @@ class CapriService : Service(), Actions.Hooks {
             }
             finally { h.post { sprite?.visibility = sv; bubble?.visibility = bv; boardOverlay?.visibility = ov; a.cursorVisible(true) } }
         }
-        override fun boardSeen(x: Int, y: Int, size: Int) { boardRect = android.graphics.Rect(x, y, x + size, y + size) }
+        override fun boardSeen(x: Int, y: Int, size: Int) {
+            val r = android.graphics.Rect(x, y, x + size, y + size)
+            boardRect = r
+            h.post {
+                // she steps off the board and stays there while she plays, so she never has to vanish for the picture
+                val sp = sprite ?: return@post
+                if (!inTheWay(sp)) return@post
+                val above = r.top - spriteLp.height - dp(6)
+                val ty = if (above >= dp(70)) above else (r.bottom + dp(6)).coerceAtMost(screenH - spriteLp.height)
+                spriteLp.y = ty; fy = ty.toFloat()
+                try { wm.updateViewLayout(sp, spriteLp) } catch (e: Exception) { }
+            }
+        }
         override fun tap(x: Int, y: Int) { CapriAccess.instance?.tap(x, y) }
         override fun point(x: Int, y: Int) { CapriAccess.instance?.point(x, y) }
         override fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { CapriAccess.instance?.swipe(x1, y1, x2, y2, 240) }

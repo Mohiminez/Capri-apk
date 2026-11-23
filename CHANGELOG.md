@@ -3,6 +3,8 @@
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
 ## Newest
+- **Stockfish 16 with its neural network (NNUE)** on 64-bit phones, about 300 Elo above Stockfish 11. The 40 MB network is downloaded by the CI build (or `tools/get_net.sh` for local builds), ships inside the app and is verified on first use; if anything is wrong she silently uses Stockfish 11. APK is about 40 MB bigger.
+- **Chess pilot never gives up mid-game:** when it loses track it re-reads the board from the pieces it learned and keeps trying (it used to stop and wait for you). A stuck move is retried instead of stopping. Capri steps off the board while playing instead of flickering.
 - **Chess stuck on "thinking":** a second screenshot right after the first is refused by Android; the pilot treated that as "the board changed" and re-thought forever. It now retries the screenshot, and after 4 tries acts on the first look. Capri also no longer vanishes at every screenshot: she hides only when she is actually on the board, so she stays draggable.
 - **Chess without words:** HOME tab has CHESS: PLAY FOR ME (starts the auto-player directly) and CHESS CHECK (tests overlay permission, accessibility, screenshot, board reading, engine, and names the broken step). The safety question no longer blocks the start.
 - **In-app chess board:** pieces slide to their square (captured ones fade), drag and drop with your finger, soft shadows, richer colours, a haptic tick on every move, and she reacts when you take her piece or she takes yours.

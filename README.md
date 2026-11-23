@@ -77,7 +77,7 @@ Six tabs along the bottom, and a magnifier at the top that searches every settin
 | **Talk and move** | Real animations from the desktop version, speech bubble, voice, dance, sleep, perch on the screen edge, throw her around |
 | **Hands** | Open apps, tap by label, scroll, back/home, type, press Send. Works without AI for simple commands |
 | **Screen** | Watch for something and alert you; circle a button; **scroll for me** (comments on what she really sees; only when you ask) |
-| **Chess** | Play her, hints, explain, PGN/FEN, play for you or coach you in other chess apps. Stockfish 11 built in |
+| **Chess** | Play her, hints, explain, PGN/FEN, play for you or coach you in other chess apps. Stockfish 16 (NNUE; Stockfish 11 as fallback on 32-bit phones) built in |
 | **Modes** | Normal, Quiet, Game, Study, Battery saver, Companion, Party |
 | **Her room** | Real time-of-day window; decor grows with the bond; pet, snack, play |
 | **Specialists** | Coder, writer, translator, maths, tutor, planner: the right working style per question |
@@ -103,7 +103,7 @@ Six tabs along the bottom, and a magnifier at the top that searches every settin
 ## Chess / الشطرنج
 
 - **In Capri:** full rules (castling, en passant, promotion, check, mate, stalemate, threefold repetition, fifty moves, insufficient material), undo/redo, play either colour, hints, **EXPLAIN** (why this move), load a game from **PGN** or **FEN**. Verified against the standard perft counts.
-- **Strength:** the real **Stockfish 11** (C++, built by the NDK) at levels 3 and 4; if it cannot load, Capri's own search (PVS, null-move, LMR, quiescence, tapered evaluation, opening book) plays instead. Levels 1 and 2 are deliberately easy.
+- **Strength:** the real **Stockfish 16 with NNUE** (C++, built by the NDK, 64-bit phones; **Stockfish 11** on 32-bit ones) at levels 3 and 4; if it cannot load, Capri's own search (PVS, null-move, LMR, quiescence, tapered evaluation, opening book) plays instead. Levels 1 and 2 are deliberately easy.
 - **In other chess apps (chess.com, Lichess…):** *"play chess for me"* — she reads the board from the screenshot and taps or drags the pieces; or *"coach me"* — she draws a glowing arrow only. First time on a new board theme: open a **new** game and say *"learn my pieces"*; afterwards she reads any game of that theme herself, offline. If she is not sure of a piece she refuses instead of guessing.
 - **Fair play:** use play-for-me for practice, bots and games where help is allowed, not rated games against people.
 
@@ -183,7 +183,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 | `Chess*.kt`, `FastBoard.kt`, `Stockfish.kt`, `BoardVision.kt`, `PieceBook.kt` | Rules, engines, screen reading, the pilot |
 | `Modes.kt`, `Room.kt`, `Guide.kt`, `Screens.kt` | Modes, her room, the in-app guide, Security Center |
 | `Shield.kt`, `Secure.kt`, `ActionLog.kt` | Privacy shield, key storage, action log |
-| `app/src/main/cpp/` | Stockfish 11 and its JNI bridge |
+| `app/src/main/cpp/` | Stockfish 16 + Stockfish 11 and their JNI bridges (the 40 MB network is in `assets/`) |
 | `app/src/test/` | Unit tests (rules, perft, vision, pilot, modes, guide…) |
 | `tools/prepare_assets.py` | Regenerates sprite sheets and persona text from the desktop repo |
 
@@ -191,6 +191,6 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 Based on **Capri** by Lachy — <https://github.com/lachydotmcg/capri-desktop>; art and animation by Capri's artist. The ONE VOICE idea comes from [CapriCore](https://github.com/CapriChooms/CapriCore). Capri is licensed **PolyForm Noncommercial 1.0.0** (`LICENSE.md`): do not sell it or use it in a paid product.
 
-**Stockfish 11** (GPL-3, `app/src/main/cpp/stockfish/COPYING.txt`) is bundled. GPL-3 and PolyForm Noncommercial do not combine for a public release: for personal use it does not matter; before publishing the APK, either settle the licence or build with `-PwithStockfish=false`.
+**Stockfish 16 and 11** (GPL-3, `app/src/main/cpp/stockfish16/COPYING.txt` and `stockfish/COPYING.txt`; network from official-stockfish/networks) are bundled. GPL-3 and PolyForm Noncommercial do not combine for a public release: for personal use it does not matter; before publishing the APK, either settle the licence or build with `-PwithStockfish=false`.
 
 Fonts: Share Tech Mono, Barlow, Tajawal (SIL OFL). Not approved or endorsed by CD PROJEKT RED, the anime's rights holders or its voice actors.

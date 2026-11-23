@@ -95,6 +95,7 @@ class MainActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Stockfish.prepare(this)
         prefs = Prefs(this)
         L.init(prefs)
         tfTitle = font("CapriMainframe-Bold.ttf", Typeface.DEFAULT_BOLD)

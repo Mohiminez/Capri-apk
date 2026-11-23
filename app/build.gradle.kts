@@ -7,6 +7,8 @@ android {
     namespace = "app.capri.mobile"
     compileSdk = 35
 
+    androidResources { noCompress += "nnue" }   // the 40 MB network is already dense; skip the slow compression
+
     defaultConfig {
         applicationId = "app.capri.mobile"
         minSdk = 26

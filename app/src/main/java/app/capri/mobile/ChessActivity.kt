@@ -207,6 +207,7 @@ class ChessActivity : Activity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        Stockfish.prepare(this)
         prefs = Prefs(this)
         L.init(prefs)
         level = prefs.getI("chessLevel", 3).clampTo(1, 4)

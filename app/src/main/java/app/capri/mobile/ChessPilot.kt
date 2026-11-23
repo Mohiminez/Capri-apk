@@ -102,6 +102,7 @@ class ChessPilot(
         val keys = ArrayList<Long>()
         var unstable = 0
         var freshFails = 0
+        var stuckRounds = 0
         var waitSaid = 0L
         tell(if (auto) t("Okay, I'm on the board. Hands off, I'll play.", "تمام، أنا على الرقعة. لا تلمس، أنا ألعب.") else t("I'm watching your game. I'll point at the best move.", "أراقب لعبتك. بأشر لك على أفضل نقلة."))
 
@@ -179,14 +180,20 @@ class ChessPilot(
             if (r.unsure) { nap(450); continue }
             if (r.lost) {
                 lostGame++
-                if (lostGame == 3 && !resynced) {      // one try to find our feet again from a fresh reading
-                    resynced = true
+                st(t("\uD83D\uDD04 Lost the thread, re-reading the board...", "\uD83D\uDD04 ضاع علي الخيط، أعيد قراءة الرقعة..."))
+                if (lostGame >= 2) {
+                    // first her own eyes (the pieces she learned), then a vision model if there is one, and she keeps trying instead of stopping
+                    val mine = readOwn(sh, geo, obs)
+                    if (mine != null) { tracker = ChessTracker(mine.pos, mine.flipped); keys.clear(); keys.add(Engine.key(mine.pos)); sawOpponent = true; lostGame = 0; actedKey = 0L; tries = 0; log("re-read the board"); continue }
+                }
+                if (lostGame == 4) {
                     val p = seed()
                     val o2 = p?.let { ChessTracker.orientationFor(it, obs) }
-                    if (p != null && o2 != null) { tracker = ChessTracker(p, o2); keys.clear(); keys.add(Engine.key(p)); sawOpponent = false; lostGame = 0; tell(t("I got confused, but I read the board again.", "اختلطت علي، بس قرأت الرقعة من جديد.")); continue }
+                    if (p != null && o2 != null) { tracker = ChessTracker(p, o2); keys.clear(); keys.add(Engine.key(p)); sawOpponent = true; lostGame = 0; actedKey = 0L; tries = 0; continue }
                 }
-                if (lostGame >= 6) { tell(t("I lost track of the game. Say it again when you start a new one.", "ضيّعت متابعة اللعبة. قولها لي مرة ثانية لما تبدأ وحدة جديدة.")); return }
-                nap(600); continue
+                if (lostGame == 8) tell(t("I'm having trouble following the board. I'll keep trying, and you can make your move yourself if you like.", "أواجه صعوبة بمتابعة الرقعة. بكمل المحاولة، وإذا تبي العب نقلتك بنفسك."))
+                if (lostGame >= 60) { tell(t("I couldn't find my way back into this game, so I'm stopping. Say \"play for me\" to start again.", "ما قدرت أرجع للعبة، فبوقف. قل «العبي مكاني» أبدأ من جديد.")); return }
+                nap(700); continue
             }
             lostGame = 0
             if (r.moves.isNotEmpty()) {
@@ -201,7 +208,7 @@ class ChessPilot(
                     keys.add(Engine.key(after))
                 }
                 try { scr.clearArrow() } catch (e: Throwable) { }
-                actedKey = 0L; tries = 0
+                actedKey = 0L; tries = 0; stuckRounds = 0
             }
             val st = Chess.result(tr.pos, keys)
             if (st != "playing") {
@@ -220,7 +227,11 @@ class ChessPilot(
                 val key = Engine.key(tr.pos)
                 val stale = key == actedKey && System.currentTimeMillis() - actedAt > staleMs
                 if (key != actedKey || stale) {
-                    if (stale && ++tries >= 4) { tell(t("My move isn't going through. Maybe a pop-up is in the way, or the app doesn't take taps from me. Stopping.", "نقلتي ما تمر. يمكن نافذة تغطي الرقعة أو التطبيق ما يقبل لمساتي. بوقف.")); return }
+                    if (stale && ++tries >= 4) {
+                        tell(t("My move isn't going through. Maybe a pop-up is in the way. I'll keep trying.", "نقلتي ما تمر. يمكن نافذة تغطي الرقعة. بكمل أحاول."))
+                        st(t("\u26A0 My move isn't going through, retrying...", "\u26A0 نقلتي ما تمر، أعيد..."))
+                        nap(4000); tries = 1; actedKey = 0L; if (++stuckRounds >= 6) { tell(t("I can't make the move go through, so I'm stopping.", "ما أقدر أمرر النقلة، فبوقف.")); return }
+                    }
                     st(t("\uD83E\uDDE0 Thinking (${Engine.name})...", "\uD83E\uDDE0 أفكر (${Engine.name})..."))
                     val best = Engine.analyse(tr.pos, millis, 30, keys, true) ?: return
                     if (!running) return

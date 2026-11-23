@@ -9,20 +9,78 @@ internal object StockfishNative {
     @JvmStatic external fun drain()
 }
 
+// Stockfish 16 with its neural network (NNUE): about 300 Elo stronger than version 11. Same protocol, its own library; the network is an asset copied to the app's files.
+internal object Stockfish16Native {
+    @JvmStatic external fun start(hashMb: Int, threads: Int): Boolean
+    @JvmStatic external fun send(cmd: String)
+    @JvmStatic external fun read(timeoutMs: Int): String?
+    @JvmStatic external fun drain()
+    @JvmStatic external fun netLoaded(): Boolean
+}
+
 object Stockfish {
+    const val NET_NAME = "nn-5af11540bbfe.nnue"
+    const val NET_SIZE = 40119326L
+
     private var state = 0 // 0 not tried, 1 running, -1 unavailable
+    private var version = 11
+    internal var loader16: () -> Unit = { System.loadLibrary("stockfish16") }
+    /** Where the network file lives and how to read it from the app; set once by [prepare]. Tests point [netPath] at a file directly. */
+    @Volatile internal var netPath: java.io.File? = null
+    @Volatile internal var netSource: (() -> java.io.InputStream)? = null
+
+    fun prepare(ctx: android.content.Context) {
+        if (netSource != null) return
+        val app = ctx.applicationContext
+        netPath = java.io.File(java.io.File(app.filesDir, "sf").also { it.mkdirs() }, NET_NAME)
+        netSource = { app.assets.open(NET_NAME) }
+    }
+
+    private fun send(c: String) = if (version == 16) Stockfish16Native.send(c) else StockfishNative.send(c)
+    private fun read(ms: Int): String? = if (version == 16) Stockfish16Native.read(ms) else StockfishNative.read(ms)
+    private fun drain() = if (version == 16) Stockfish16Native.drain() else StockfishNative.drain()
+
+    // The NNUE engine, only if its network is really there and loads. Anything wrong returns false and the old engine takes over.
+    private fun tryNew(): Boolean {
+        try {
+            val f = netPath ?: return false
+            if (!f.exists() || f.length() != NET_SIZE) {
+                val src = netSource ?: return false
+                val tmp = java.io.File(f.path + ".part")
+                src().use { i -> tmp.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
+                if (tmp.length() != NET_SIZE || !tmp.renameTo(f)) { tmp.delete(); throw IllegalStateException("network file is incomplete") }
+            }
+            loader16()
+            val cores = Runtime.getRuntime().availableProcessors()
+            if (!Stockfish16Native.start(96, (cores / 2).coerceIn(1, 4))) throw IllegalStateException("engine 16 did not start")
+            version = 16
+            Stockfish16Native.send("setoption name EvalFile value ${f.path}")
+            Stockfish16Native.send("isready")
+            val t0 = System.currentTimeMillis(); var ok = false
+            while (System.currentTimeMillis() - t0 < 20000) { val l = Stockfish16Native.read(200) ?: continue; if (l.startsWith("readyok")) { ok = true; break } }
+            if (!ok) throw IllegalStateException("engine 16 silent")
+            if (!Stockfish16Native.netLoaded()) throw IllegalStateException("network did not load")
+            return true
+        } catch (t: Throwable) {
+            lastError = "sf16: $t"
+            version = 11
+            return false
+        }
+    }
+
     private var skill = 20
     /** Tests swap this to point at a library built on the desktop. */
     internal var loader: () -> Unit = { System.loadLibrary("stockfish") }
     @Volatile var lastError: String? = null
     @Volatile var enabled = true
 
-    val name: String get() = if (state == 1) "Stockfish 11" else "Capri"
+    val name: String get() = if (state == 1) (if (version == 16) "Stockfish 16 NNUE" else "Stockfish 11") else "Capri"
 
     @Synchronized fun ready(): Boolean {
         if (!enabled) return false
         if (state == 1) return true
         if (state == -1) return false
+        if (tryNew()) { state = 1; return true }
         try {
             loader()
             val cores = Runtime.getRuntime().availableProcessors()
@@ -46,7 +104,7 @@ object Stockfish {
 
     private fun setSkill(level: Int) {
         if (level == skill) return
-        StockfishNative.send("setoption name Skill Level value $level")
+        send("setoption name Skill Level value $level")
         skill = level
     }
 
@@ -56,14 +114,14 @@ object Stockfish {
         val legal = Chess.legal(p)
         if (legal.isEmpty()) return null
         try {
-            StockfishNative.drain()
+            drain()
             setSkill(level.coerceIn(0, 20))
-            StockfishNative.send("position fen ${Fen.write(p)}")
-            StockfishNative.send("go movetime ${millis.coerceAtLeast(30)} depth ${maxDepth.coerceIn(1, 60)}")
+            send("position fen ${Fen.write(p)}")
+            send("go movetime ${millis.coerceAtLeast(30)} depth ${maxDepth.coerceIn(1, 60)}")
             val deadline = System.currentTimeMillis() + millis + 4000
             var depth = 0; var score = 0; var pvText = emptyList<String>(); var best: String? = null
             while (System.currentTimeMillis() < deadline) {
-                val l = StockfishNative.read(100) ?: continue
+                val l = read(100) ?: continue
                 if (l.startsWith("info ") && " score " in l && " pv " in l) {
                     val tk = l.split(' ')
                     val d = tk.indexOf("depth").let { if (it >= 0) tk.getOrNull(it + 1)?.toIntOrNull() else null } ?: continue
@@ -75,8 +133,8 @@ object Stockfish {
                     pvText = tk.drop(tk.indexOf("pv") + 1)
                 } else if (l.startsWith("bestmove")) { best = l.split(' ').getOrNull(1); break }
             }
-            if (best == null) { StockfishNative.send("stop"); val t1 = System.currentTimeMillis()
-                while (System.currentTimeMillis() - t1 < 1500) { val l = StockfishNative.read(100) ?: continue; if (l.startsWith("bestmove")) { best = l.split(' ').getOrNull(1); break } } }
+            if (best == null) { send("stop"); val t1 = System.currentTimeMillis()
+                while (System.currentTimeMillis() - t1 < 1500) { val l = read(100) ?: continue; if (l.startsWith("bestmove")) { best = l.split(' ').getOrNull(1); break } } }
             val mv = legal.firstOrNull { it.toString() == best } ?: return null
             // the principal variation, kept only while every move is legal
             val pv = ArrayList<Move>(); var q = p
