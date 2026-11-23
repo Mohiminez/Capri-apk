@@ -98,13 +98,9 @@ class Prefs(ctx: Context) {
     }
 
     fun addNote(note: String) {
-        val clean = note.trim().take(200)
-        if (clean.isEmpty()) return
-        val lines = getS("notes", "").split("\n").filter { it.isNotBlank() }.toMutableList()
-        val line = "- $clean"
-        if (lines.contains(line)) return
-        lines.add(line)
-        putS("notes", lines.takeLast(40).joinToString("\n"))
+        val old = getS("notes", "")
+        val new = Memory.add(old, note)
+        if (new != old) putS("notes", new)
     }
 }
 

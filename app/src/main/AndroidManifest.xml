@@ -46,6 +46,18 @@
             android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
 
         <activity
+            android:name=".RoomActivity"
+            android:exported="false"
+            android:label="Capri room"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <activity
+            android:name=".MemoryActivity"
+            android:exported="false"
+            android:label="Capri notes"
+            android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+
+        <activity
             android:name=".GuideActivity"
             android:exported="false"
             android:label="Capri guide"

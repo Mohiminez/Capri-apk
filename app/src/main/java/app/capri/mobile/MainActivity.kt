@@ -644,6 +644,7 @@ class MainActivity : Activity() {
                 else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
             },
+            Triple("\u2302", t("HER ROOM", "غرفتها")) { startActivity(Intent(this, RoomActivity::class.java)) },
             Triple("\u2753", t("GUIDE", "الدليل")) { startActivity(Intent(this, GuideActivity::class.java)) },
             Triple("\u26E8", t("SECURITY", "الأمان")) { startActivity(Intent(this, SecurityActivity::class.java)) }
         ))
@@ -686,14 +687,11 @@ class MainActivity : Activity() {
         }
 
         val modes = section(t("MODE", "الوضع"))
-        val mode = if (prefs.getB("quiet", false)) 1 else if (prefs.getB("gameMode", false)) 2 else 0
-        radios(modes, listOf(
-            Opt(t("NORMAL", "عادي"), t("She talks, wanders, reacts", "تتكلم وتتمشى وتتفاعل")),
-            Opt(t("QUIET", "هادئ"), t("She only types, never speaks aloud", "تكتب بس وما تتكلم بصوت")),
-            Opt(t("GAME", "لعب"), t("Stays out of the way, comments while a game is open", "تبعد عن طريقك وتعلّق وقت اللعب"), t("needs hands", "تحتاج اليدين"))
-        ), mode) {
-            prefs.putB("quiet", it == 1)
-            prefs.putB("gameMode", it == 2)
+        val curMode = Modes.current(prefs)
+        radios(modes, Modes.all.map { Opt(it.icon + "  " + t(it.en, it.ar), t(it.descEn, it.descAr), if (it.id == "game") t("needs hands", "تحتاج اليدين") else "") }, Modes.all.indexOfFirst { it.id == curMode.id }.coerceAtLeast(0)) {
+            val md = Modes.all[it]
+            Modes.apply(prefs, md)
+            if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_MODE).putExtra("mode", md.id))
         }
 
         val sec = section(t("SECURITY", "الأمان"))
@@ -788,6 +786,7 @@ class MainActivity : Activity() {
         val idxs = listOf(-1) + Providers.all.indices.filter { it != Providers.LOCAL }
         spin(r, opts, idxs.indexOf(prefs.getI("jobProvider", -1)).coerceAtLeast(0)) { prefs.putI("jobProvider", idxs[it]) }
         toggle(r, t("Auto-pick the best brain for each topic (code, writing, long text, pictures, quick chat) from the ones you set up", "اختيار العقل الأنسب تلقائياً لكل موضوع (برمجة، كتابة، نص طويل، صور، دردشة سريعة) من اللي جهّزتهم"), "autoRoute", true)
+        toggle(r, t("Specialists: for code, writing, translation, maths, study and plans she answers in the right working style (code block first, translation only, step-by-step maths...)", "المتخصصين: للبرمجة والكتابة والترجمة والحسابات والدراسة والخطط تجاوب بالأسلوب الصحيح (الكود أول، الترجمة بس، الحساب خطوة خطوة...)"), "agents", true)
         if (brainLast.isNotBlank()) note(r, t("Last answer came from: ", "آخر رد جاء من: ") + brainLast)
         body(r, t("Fast brain (short, simple chat goes here; longer or harder questions stay with the main brain)", "العقل السريع (الدردشة القصيرة والبسيطة تروح له، والأسئلة الأصعب تبقى مع العقل الرئيسي)"), 14f, muted)
         spin(r, listOf(t("Off, use the main brain", "مطفي، استخدم العقل الرئيسي")) + opts.drop(1), idxs.indexOf(prefs.getI("fastProvider", -1)).coerceAtLeast(0)) { prefs.putI("fastProvider", idxs[it]) }
@@ -902,6 +901,8 @@ class MainActivity : Activity() {
             prefs.putI("ttsEngine", it)
             voiceNameE?.setText(prefs.getS(voiceKeyOf(it), if (it == Voice.KOKORO) "af_heart" else ""))
         }
+        toggle(o, t("ONE VOICE: speak every language (Arabic, English, ...) in the same voice. Uses your Gemini, ElevenLabs or OpenAI voice for all of them; with an ElevenLabs cloned voice she sounds like the same person in every language",
+            "صوت واحد: تحچي كل اللغات (عربي، إنجليزي، ...) بنفس الصوت. تستخدم صوت Gemini أو ElevenLabs أو OpenAI حقك لكلها؛ ومع صوت مستنسخ من ElevenLabs تبقى نفس الشخص بكل لغة"), "oneVoice", false)
 
         // ---- 3. English ----
         val k = section(t("ENGLISH: THE WINDOWS VOICE (KOKORO)", "الإنجليزي: صوت الويندوز (Kokoro)"))
@@ -1044,7 +1045,7 @@ class MainActivity : Activity() {
         toggle(e, t("Conversation mode: she listens again after answering, until you say bye", "وضع المحادثة: بعد ما تجاوب تسمعك مرة ثانية، لين تقول «باي»"), "convo", false)
     }
 
-    private fun voiceKeyOf(engine: Int) = when (engine) { Voice.ELEVEN -> "voiceId"; Voice.KOKORO -> "kokoroVoice"; else -> "voiceName" }
+    private fun voiceKeyOf(engine: Int) = when (engine) { Voice.ELEVEN -> "voiceId"; Voice.FISH -> "fishId"; Voice.KOKORO -> "kokoroVoice"; else -> "voiceName" }
 
     private fun pickVoice() {
         when (prefs.getI("ttsEngine", 0)) {
@@ -1058,6 +1059,7 @@ class MainActivity : Activity() {
                 val v = if ((voiceUrlE?.text?.toString() ?: "").contains("groq")) Voice.groqVoices else listOf("nova", "shimmer", "alloy", "echo", "fable", "onyx")
                 pickDialog(t("Pick a voice", "اختر صوتاً"), v) { voiceNameE?.setText(v[it]) }
             }
+            Voice.FISH -> toast(t("Paste your voice model's id (on fish.audio, open the model: the id is in its address).", "الصق رقم موديل الصوت (بموقع fish.audio افتح الموديل والرقم بعنوانه)."))
             Voice.ELEVEN -> bgWork({
                 val k = prefs.getSecret("voiceKey").ifEmpty { prefs.key(prefs.cur) }
                 val list = Voice.elevenVoices(k)
@@ -1335,6 +1337,8 @@ class MainActivity : Activity() {
     private fun buildMore() {
         val m = section(t("HER NOTES ABOUT YOU", "ملاحظاتها عنك"))
         edit(m, t("Nothing yet. She adds things as you chat.", "ما فيه شي للحين. تضيف أشياء وانت تسولف معها."), prefs.getS("notes", ""), multiline = true) { prefs.putS("notes", it) }
+
+        btn(m, t("OPEN THE NOTES MANAGER (search, pin, edit)", "افتح مدير الملاحظات (بحث، تثبيت، تعديل)")) { startActivity(Intent(this, MemoryActivity::class.java)) }
 
         val kb = section(t("HER LIBRARY", "مكتبتها"), false)
         note(kb, t("Add text or notes files (.txt, .md). When you ask something, the best matching passages are used to answer. Stored only on this phone.", "أضف ملفات نصية أو ملاحظات (.txt و .md). لما تسألها، تستخدم أقرب المقاطع للجواب. تنحفظ على هذا الجوال بس."))

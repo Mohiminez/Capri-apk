@@ -25,7 +25,7 @@ object Guide {
 
         GuideTopic("map", "▦", "How the app is arranged", "كيف التطبيق مرتب",
             "The bottom bar has six tabs:\n" +
-                "• HOME: wake or stop her, her bond level, tiles for chess, games, guide and security, and the setup checklist.\n" +
+                "• HOME: wake or stop her, her bond level, the MODE switch, tiles for chess, games, her room, guide and security, and the setup checklist.\n" +
                 "• BRAIN: which AI answers (provider, key, model), the no-AI mode, the offline model on the phone, the fast brain and the auto-pick, and a CHECK button.\n" +
                 "• VOICE: her voice engine (phone, Kokoro offline, Arabic offline, cloud voices), effects, and her ears: microphone and wake word.\n" +
                 "• BEHAVIOR: her look, colours, tone, personality, mods, and how often she wanders, talks or comments.\n" +
@@ -33,7 +33,7 @@ object Guide {
                 "• MORE: her notes about you, her library, your own commands, WHAT SHE DID (the action log), backup and data, what is new, credits.\n\n" +
                 "The magnifier at the top searches every setting in every tab and jumps to it. Titles with a + can be folded; tap them.",
             "الشريط تحت فيه ستة تبويبات:\n" +
-                "• الرئيسية: تصحيها أو توقفها، مستوى العلاقة، أزرار الشطرنج والألعاب والدليل والأمان، وقائمة التجهيز.\n" +
+                "• الرئيسية: تصحيها أو توقفها، مستوى العلاقة، مفتاح الوضع، أزرار الشطرنج والألعاب وغرفتها والدليل والأمان، وقائمة التجهيز.\n" +
                 "• العقل: منو يجاوب (المزوّد والمفتاح والموديل)، وضع بدون ذكاء، الموديل على الجوال، العقل السريع والاختيار التلقائي، وزر فحص.\n" +
                 "• الصوت: محرّك صوتها (الجوال، Kokoro بدون نت، العربي بدون نت، سحابي)، المؤثرات، وأذنها: المايك وكلمة النداء.\n" +
                 "• السلوك: شكلها وألوانها وأسلوبها وشخصيتها والمودات، وكم تتمشى وتحچي وتعلّق.\n" +
@@ -78,6 +78,13 @@ object Guide {
                 "القوة: تلعب بمحرك Stockfish 11 الحقيقي إذا كان مبني بنسختك، وإلا بمحركها الخاص. المستويين 1 و2 سهلين قصداً.\n\n" +
                 "بتطبيق شطرنج ثاني (chess.com، Lichess...): «العب عني شطرنج» (تلمس القطع هي؛ استخدمها للتدريب أو البوتات أو لعب يسمح بالمساعدة، مو اللعب المصنّف ضد ناس) أو «دربني» (ترسم سهم بس). أول مرة على ثيم جديد افتح لعبة جديدة وكول «تعلمي قطعي»، وبعدها تقرا أي لعبة لحالها.",
             listOf("let's play chess", "play chess for me", "coach me", "learn my pieces"), listOf("نلعب شطرنج", "العب عني شطرنج", "دربني", "تعلمي قطعي")),
+
+        GuideTopic("modes", "\u25D1", "Modes and her room", "الأوضاع وغرفتها",
+            "Modes change a whole bundle of settings with one tap (HOME > MODE, her menu, or by voice): Normal, Quiet (types only), Game (stays out of the way, light on battery), Study (silent, reminds you to drink and stretch), Battery saver, Companion (wake word and conversation mode, checks on you) and Party (max energy). A mode only changes its own switches.\n\n" +
+                "Her room (HOME > HER ROOM): the window shows the real time of day, and a rug, a plant, a lamp and shelf, then string lights and a poster appear as your bond grows. Pet her, give her a snack (every 45 minutes), play, dance, let her sit or sleep. She also sometimes sits on the bottom edge of your screen on her own.",
+            "الأوضاع تغيّر مجموعة إعدادات كاملة بضغطة (الرئيسية ← الوضع، أو قائمتها، أو بالصوت): عادي، هادئ (تكتب بس)، لعب (تبعد عن طريقك وخفيفة على البطارية)، دراسة (ساكتة وتذكّرك بالموية والحركة)، توفير بطارية، رفيقة (كلمة النداء ووضع المحادثة وتطمّن عليك)، وحفلة (أقصى طاقة). الوضع يغيّر مفاتيحه هو بس.\n\n" +
+                "غرفتها (الرئيسية ← غرفتها): الشباك يبين الوقت الحقيقي، وتطلع سجادة ونبتة ولمبة ورف، وبعدها أضواء وبوستر كل ما تقربتوا. دلّعها، اعطيها اكلة (كل 45 دقيقة)، العب وياها، خليها ترقص أو تقعد أو تنام. وأحياناً تقعد لحالها على حافة شاشتك.",
+            listOf("study mode", "game mode", "her room"), listOf("وضع الدراسة", "وضع اللعب", "غرفتك")),
 
         GuideTopic("games", "▣", "Games and fun", "ألعاب وتسلية",
             "Connect four, tic-tac-toe (she never loses on Hard) and rock-paper-scissors. Pet her, throw her, make clones, give her items, dance and sleep from her menu.",

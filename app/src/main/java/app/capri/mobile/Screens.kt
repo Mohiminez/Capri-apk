@@ -215,3 +215,80 @@ class SecurityActivity : Activity() {
         }
     }
 }
+
+// Her notes about you: search, pin the ones she must never forget, edit, delete, add.
+class MemoryActivity : Activity() {
+    private lateinit var prefs: Prefs
+    private lateinit var list: LinearLayout
+    private var query = ""
+
+    override fun onCreate(savedInstanceState: Bundle?) {
+        super.onCreate(savedInstanceState)
+        prefs = Prefs(this)
+        L.init(prefs)
+        val (root, sv) = frame(L.t("HER NOTES", "ملاحظاتها")) { finish() }
+        val box = EditText(this)
+        box.hint = L.t("Search her notes...", "ابحث بملاحظاتها...")
+        box.setTextColor(Night.white); box.setHintTextColor(Night.faint); box.textSize = 15f; box.setSingleLine(true)
+        box.setPadding(dp(12), dp(8), dp(12), dp(8))
+        box.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
+        root.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
+        root.addView(sv, LinearLayout.LayoutParams(-1, 0, 1f))
+        val add = EditText(this)
+        add.hint = L.t("Add something she should know (press Enter)", "أضف شي لازم تعرفه (اضغط Enter)")
+        add.setTextColor(Night.white); add.setHintTextColor(Night.faint); add.textSize = 15f; add.setSingleLine(true)
+        add.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
+        add.setPadding(dp(12), dp(8), dp(12), dp(8))
+        add.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
+        add.setOnEditorActionListener { v, _, _ -> prefs.addNote(v.text.toString()); v.text = ""; render(); true }
+        root.addView(add, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        list = root.tag as LinearLayout
+        setContentView(root)
+        box.addTextChangedListener(object : TextWatcher {
+            override fun afterTextChanged(s: Editable?) { query = s?.toString() ?: ""; render() }
+            override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+            override fun onTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
+        })
+    }
+
+    override fun onResume() { super.onResume(); render() }
+
+    private fun render() {
+        list.removeAllViews()
+        val raw = prefs.getS("notes", "")
+        val facts = Memory.parse(raw)
+        val shown = Memory.search(raw, query)
+        val head = TextView(this)
+        head.text = L.t("${facts.size} of ${Memory.MAX} notes  \u00B7  \u2605 = she never forgets it", "${facts.size} من ${Memory.MAX} ملاحظة  \u00B7  \u2605 = ما تنساها أبداً")
+        head.setTextColor(Night.faint); head.textSize = 12f; head.setPadding(dp(6), 0, dp(6), dp(6))
+        list.addView(head)
+        if (shown.isEmpty()) {
+            val n = TextView(this); n.setTextColor(Night.faint); n.setPadding(dp(8), dp(16), dp(8), dp(8))
+            n.text = if (facts.isEmpty()) L.t("Nothing yet. She adds things as you chat, or add one below.", "ما فيه شي للحين. تضيف أشياء وانت تسولف، أو أضف واحد تحت.") else L.t("Nothing matches.", "ما لقيت شي.")
+            list.addView(n); return
+        }
+        val accent = Themes.accent(prefs)
+        for (i in shown) {
+            val f = facts[i]
+            val row = LinearLayout(this); row.orientation = LinearLayout.HORIZONTAL; row.gravity = Gravity.CENTER_VERTICAL
+            row.setPadding(dp(10), dp(8), dp(6), dp(8)); row.background = NeonPanel(resources.displayMetrics.density)
+            val t = TextView(this); t.text = f.text; t.setTextColor(Night.white); t.textSize = 14f
+            t.setOnClickListener { editDialog(i, f.text) }
+            row.addView(t, LinearLayout.LayoutParams(0, -2, 1f))
+            fun icon(g: String, col: Int, click: () -> Unit) {
+                val b = TextView(this); b.text = g; b.textSize = 18f; b.setTextColor(col); b.gravity = Gravity.CENTER
+                b.setPadding(dp(12), dp(6), dp(12), dp(6)); b.setOnClickListener { click() }; row.addView(b)
+            }
+            icon(if (f.pinned) "\u2605" else "\u2606", if (f.pinned) Night.amber else Night.faint) { prefs.putS("notes", Memory.togglePin(prefs.getS("notes", ""), i)); render() }
+            icon("\u2715", accent) { prefs.putS("notes", Memory.remove(prefs.getS("notes", ""), i)); render() }
+            list.addView(row, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(6) })
+        }
+    }
+
+    private fun editDialog(i: Int, old: String) {
+        val e = EditText(this); e.setText(old); e.setSelection(old.length)
+        android.app.AlertDialog.Builder(this).setTitle(L.t("Edit note (empty deletes it)", "عدّل الملاحظة (فاضي = حذف)")).setView(e)
+            .setPositiveButton(L.t("SAVE", "حفظ")) { _, _ -> prefs.putS("notes", Memory.edit(prefs.getS("notes", ""), i, e.text.toString())); render() }
+            .setNegativeButton(L.t("CANCEL", "إلغاء"), null).show()
+    }
+}

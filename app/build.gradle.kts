@@ -55,7 +55,6 @@ android {
     // Stockfish 11 (C++), built by the NDK into libstockfish.so. Skip it with  -PwithStockfish=false  (the app then plays with its own engine).
     if (project.findProperty("withStockfish") != "false") {
         defaultConfig {
-            ndk { abiFilters += listOf("arm64-v8a", "armeabi-v7a") }
             externalNativeBuild { cmake { arguments += listOf("-DANDROID_STL=c++_static") } }
         }
         externalNativeBuild { cmake { path = file("src/main/cpp/CMakeLists.txt") } }

@@ -9,9 +9,9 @@ CLIPS = {  # name: (frames, fps, source-px shift to the right), from app/Capri.c
     "idle": (60, 24, 12.2), "idle_blink": (8, 24, 12.2), "idle_mouth": (5, 12, 12.2), "mouth": (5, 12, 0),
     "glitch": (10, 15, 0), "grin": (16, 8, 0), "sleep": (16, 6, 0), "wake": (13, 15, 0), "arrive": (14, 15, 0),
     "leave": (12, 15, 0), "dangle": (24, 10, 0), "walk": (12, 12, 0), "dance": (16, 10, 0), "click": (8, 20, 0),
-    "laydown_sleep": (60, 30, 0),
+    "laydown_sleep": (60, 30, 0), "perch": (60, 30, 12.0), "perch_blink": (8, 30, 12.0),
 }
-THIN = {"laydown_sleep"}  # the lying sheets are huge: keep every second frame at half the rate
+THIN = {"laydown_sleep", "perch"}  # the lying sheets are huge: keep every second frame at half the rate
 manifest = {}
 for name, (frames, fps, sx) in CLIPS.items():
     im = Image.open(f"{src}/assets/sprites/{name}.png").convert("RGBA")

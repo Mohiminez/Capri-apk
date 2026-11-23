@@ -124,3 +124,93 @@ class GuideContextTest {
         org.junit.Assert.assertEquals("", Guide.context("hello"))
     }
 }
+
+class OneVoiceTest {
+    @org.junit.Test fun picksOneCloudVoiceForEveryLanguage() {
+        org.junit.Assert.assertEquals(Voice.ELEVEN, Voice.oneVoiceEngine(Voice.ELEVEN, true, true, true))
+        org.junit.Assert.assertEquals(Voice.GEMINI, Voice.oneVoiceEngine(Voice.KOKORO, true, true, true))
+        org.junit.Assert.assertEquals(Voice.ELEVEN, Voice.oneVoiceEngine(Voice.ARABIC, false, true, true))
+        org.junit.Assert.assertEquals(Voice.FISH, Voice.oneVoiceEngine(Voice.KOKORO, false, false, false, true))
+        org.junit.Assert.assertEquals(Voice.OPENAI, Voice.oneVoiceEngine(Voice.PHONE, false, false, true))
+        org.junit.Assert.assertNull(Voice.oneVoiceEngine(Voice.KOKORO, false, false, false))
+    }
+}
+
+class ModesTest {
+    @org.junit.Test fun phrasesMapToModes() {
+        val cases = mapOf("study mode" to "study", "switch to game mode" to "game", "party mode" to "party", "battery saver mode" to "battery",
+            "وضع الدراسة" to "study", "شغلي وضع اللعب" to "game", "وضع هادئ" to "quiet", "فعلي وضع توفير البطارية" to "battery", "وضع الرفيقة" to "companion", "وضع الحفلة" to "party", "وضع عادي" to "normal")
+        for ((p, id) in cases) org.junit.Assert.assertEquals(p, id, Modes.fromPhrase(p))
+        for (p in listOf("hello", "open study", "game", "شغل اغنية")) org.junit.Assert.assertNull(p, Modes.fromPhrase(p))
+        org.junit.Assert.assertTrue(QuickAsks.match("وضع الدراسة")?.contains("[[mode:study]]") == true)
+    }
+    @org.junit.Test fun everyModeCoversTheSameKeysSoSwitchingNeverLeavesLeftovers() {
+        val keys = Modes.all.first().set.keys
+        for (m in Modes.all) org.junit.Assert.assertTrue(m.id, m.set.keys.containsAll(keys))
+        org.junit.Assert.assertEquals(Modes.all.size, Modes.all.map { it.id }.toSet().size)
+        org.junit.Assert.assertEquals(true, Modes.find("quiet")!!.set["quiet"])
+        org.junit.Assert.assertEquals(false, Modes.find("normal")!!.set["quiet"])
+    }
+}
+
+class SpecialistsTest {
+    @org.junit.Test fun picksTheRightSpecialist() {
+        val c = mapOf("fix this python function that crashes" to Specialist.CODER, "ترجم هذا النص للانجليزي" to Specialist.TRANSLATOR, "translate this to french please" to Specialist.TRANSLATOR,
+            "solve the equation 3x + 5 = 20" to Specialist.MATHS, "احسب 15 * 12" to Specialist.MATHS, "write an email to my landlord about the heater" to Specialist.WRITER,
+            "اكتب لي رسالة اعتذار للمدير" to Specialist.WRITER, "explain how vaccines work" to Specialist.TUTOR, "اشرح لي الجاذبية" to Specialist.TUTOR, "make a plan to learn guitar" to Specialist.PLANNER)
+        for ((s, a) in c) org.junit.Assert.assertEquals(s, a, Specialists.pick(s))
+        for (s in listOf("hello", "how are you doing today", "شلونك اليوم", "play some music")) org.junit.Assert.assertEquals(s, Specialist.NONE, Specialists.pick(s))
+        org.junit.Assert.assertEquals("", Specialists.context("fix this python function", false, false))
+        org.junit.Assert.assertTrue(Specialists.context("fix this python function", false, true).contains("coder"))
+    }
+}
+
+class RoomRulesTest {
+    @org.junit.Test fun roomGrowsWithTheBond() {
+        org.junit.Assert.assertTrue(RoomRules.decor(0).isEmpty())
+        org.junit.Assert.assertEquals(setOf("rug"), RoomRules.decor(1))
+        org.junit.Assert.assertTrue(RoomRules.decor(4).containsAll(setOf("rug", "plant", "lamp", "shelf", "lights", "poster")))
+        for (l in 0..3) org.junit.Assert.assertTrue(RoomRules.decor(l + 1).containsAll(RoomRules.decor(l)))
+    }
+    @org.junit.Test fun skyFollowsTheClock() {
+        org.junit.Assert.assertEquals(0, RoomRules.sky(2)); org.junit.Assert.assertEquals(1, RoomRules.sky(6)); org.junit.Assert.assertEquals(2, RoomRules.sky(12)); org.junit.Assert.assertEquals(1, RoomRules.sky(19)); org.junit.Assert.assertEquals(0, RoomRules.sky(23))
+    }
+    @org.junit.Test fun cooldownsCountDown() {
+        org.junit.Assert.assertEquals(0L, RoomRules.wait(100_000, 0L, RoomRules.PET_GAP))
+        org.junit.Assert.assertEquals(5L, RoomRules.wait(1_000, 0L, 6_000))
+        org.junit.Assert.assertTrue(QuickAsks.match("her room")?.contains("[[room:open]]") == true)
+        org.junit.Assert.assertTrue(QuickAsks.match("غرفتك")?.contains("[[room:open]]") == true)
+    }
+}
+
+class ModesCycleTest {
+    @org.junit.Test fun nextWrapsAround() {
+        org.junit.Assert.assertEquals("quiet", Modes.next(Modes.find("normal")!!).id)
+        org.junit.Assert.assertEquals("normal", Modes.next(Modes.all.last()).id)
+    }
+}
+
+class MemoryTest {
+    @org.junit.Test fun oldNotesStillParseAndPinSurvivesTrimming() {
+        val old = "- likes tea\n- sister is Noor"
+        org.junit.Assert.assertEquals(listOf("likes tea", "sister is Noor"), Memory.parse(old).map { it.text })
+        var raw = Memory.togglePin(old, 1)
+        org.junit.Assert.assertTrue(Memory.parse(raw)[1].pinned)
+        for (i in 1..60) raw = Memory.add(raw, "fact $i")
+        val facts = Memory.parse(raw)
+        org.junit.Assert.assertEquals(Memory.MAX, facts.size)
+        org.junit.Assert.assertTrue(facts.any { it.text == "sister is Noor" && it.pinned })
+        org.junit.Assert.assertTrue(facts.any { it.text == "fact 60" })
+        org.junit.Assert.assertFalse(facts.any { it.text == "likes tea" })
+    }
+    @org.junit.Test fun editRemoveSearchAndNoDuplicates() {
+        var raw = Memory.add("", "Birthday is in May"); raw = Memory.add(raw, "birthday is in may"); raw = Memory.add(raw, "Dog named Rex")
+        org.junit.Assert.assertEquals(2, Memory.parse(raw).size)
+        org.junit.Assert.assertEquals(listOf(1), Memory.search(raw, "rex"))
+        org.junit.Assert.assertEquals(2, Memory.search(raw, "").size)
+        raw = Memory.edit(raw, 0, "Birthday is in June")
+        org.junit.Assert.assertEquals("Birthday is in June", Memory.parse(raw)[0].text)
+        org.junit.Assert.assertEquals(1, Memory.parse(Memory.edit(raw, 0, "  ")).size)
+        org.junit.Assert.assertEquals(1, Memory.parse(Memory.remove(raw, 1)).size)
+    }
+}

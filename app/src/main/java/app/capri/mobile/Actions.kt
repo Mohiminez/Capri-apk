@@ -29,6 +29,7 @@ object Actions {
         fun chessScreen() {}
         fun chessPilot(mode: String) {}
         fun screen(name: String, arg: String = "") {}
+        fun mode(id: String) {}
     }
 
     const val LOCKDOWN = 0
@@ -38,7 +39,7 @@ object Actions {
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game", "guide", "security")
+    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
@@ -138,7 +139,8 @@ object Actions {
                 "scrollforme" -> hooks?.watchAlong(!arg.lowercase().startsWith("off"))
                 "watch" -> hooks?.keepWatch(arg)
                 "point" -> hooks?.point(arg)
-                "guide", "security" -> hooks?.screen(name, arg.trim())
+                "guide", "security", "room" -> hooks?.screen(name, arg.trim())
+                "mode" -> hooks?.mode(arg.trim())
                 "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop", "scan", "learn" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
                 "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
@@ -287,6 +289,9 @@ object QuickAsks {
             return L.t("Here's my guide. [[guide:open]]", "هذا دليلي. [[guide:open]]")
         if (Regex("^(?:security(?: center| centre)?|open (?:the )?security(?: center| centre)?|is (?:this app|capri|my phone) safe|مركز الامان|مركز الأمان|الامان|الأمان|افتحي? (?:مركز )?(?:ال)?(?:امان|أمان)|هل التطبيق امن|هل التطبيق آمن)$").matches(t))
             return L.t("Let's check. [[security:open]]", "خلنا نشوف. [[security:open]]")
+        if (Regex("^(?:her room|your room|show (?:me )?(?:your|her) room|open (?:your|her|the) room|go to your room|غرفتك|غرفتها|وريني غرفتك|افتحي? (?:ال)?غرفة|غرفة كابري|روحي لغرفتك)$").matches(t))
+            return L.t("Come on in. [[room:open]]", "تفضل. [[room:open]]")
+        Modes.fromPhrase(t)?.let { return L.t("On it. [[mode:$it]]", "تمام. [[mode:$it]]") }
         Regex("^(?:tap|click|press|touch) (?:on )?(.+)$").find(t)?.let { return "[[hands:tap|${it.groupValues[1]}]]" }
         Regex("^(?:اضغط|دوس|كبس|اكبس) (?:على )?(.+)$").find(t)?.let { return "[[hands:tap|${it.groupValues[1]}]]" }
         if (Regex("^(scroll down|swipe up|انزل|نزل|اسحب لتحت|سكرول لتحت)$").matches(t)) return "[[hands:scroll|down]]"

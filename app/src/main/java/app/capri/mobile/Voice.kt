@@ -25,6 +25,7 @@ object Voice {
     const val OPENAI = 3
     const val KOKORO = 4
     const val ARABIC = 5
+    const val FISH = 6
 
     val engines get() = listOf(
         L.t("Phone voice (basic)", "صوت الجوال (عادي)"),
@@ -32,7 +33,8 @@ object Voice {
         L.t("ElevenLabs (like the Windows version)", "ElevenLabs (مثل نسخة الويندوز)"),
         L.t("Groq / OpenAI / Kokoro server", "Groq أو OpenAI أو سيرفر Kokoro"),
         L.t("Kokoro on this phone (the Windows voice, offline, English)", "Kokoro على الجوال (صوت الويندوز، أوفلاين، إنجليزي)"),
-        L.t("Arabic voice on this phone (offline, no key)", "صوت عربي على الجوال (أوفلاين، بدون مفتاح)")
+        L.t("Arabic voice on this phone (offline, no key)", "صوت عربي على الجوال (أوفلاين، بدون مفتاح)"),
+        L.t("Fish Audio (your own voice models, all languages)", "Fish Audio (موديلات صوت تختارها، كل اللغات)")
     )
 
     val groqVoices get() = if (L.ar) listOf("noura", "lulwa", "aisha", "fahad", "sultan", "abdullah") else listOf("hannah", "diana", "autumn", "austin", "daniel", "troy")
@@ -91,15 +93,44 @@ object Voice {
 
     // Blocks until she has finished talking. Returns null on success or an error text.
     // onStart runs right before the sound starts, so her mouth can move with it.
+    /**
+     * ONE VOICE: the cloud engines (Gemini, ElevenLabs, OpenAI) speak every language in the same voice, so with this on Arabic, English and the rest
+     * all use the cloud voice you picked instead of a different offline voice per language. Pure, so it can be tested.
+     * Groq is left out on purpose: its voices are separate per language.
+     */
+    fun oneVoiceEngine(current: Int, gemini: Boolean, eleven: Boolean, openai: Boolean, fish: Boolean = false): Int? = when {
+        current == FISH && fish -> FISH
+        current == GEMINI && gemini -> GEMINI
+        current == ELEVEN && eleven -> ELEVEN
+        current == OPENAI && openai -> OPENAI
+        gemini -> GEMINI
+        eleven -> ELEVEN
+        openai -> OPENAI
+        fish -> FISH
+        else -> null
+    }
+
+    private fun effectiveEngine(prefs: Prefs): Int {
+        val cur = prefs.getI("ttsEngine", PHONE)
+        if (!prefs.getB("oneVoice", false)) return cur
+        val gemKey = prefs.keyForUrl("https://generativelanguage.googleapis.com/").isNotEmpty() || (cur == GEMINI && voiceKey(prefs, "https://generativelanguage.googleapis.com/").isNotEmpty())
+        val el = prefs.getS("voiceId", "").isNotBlank() && prefs.getSecret("voiceKey").isNotEmpty()
+        val base = prefs.getS("voiceUrl", "").trim()
+        val oa = !base.contains("groq.com") && voiceKey(prefs, base.ifBlank { "https://api.openai.com/v1" }).isNotEmpty() && (cur == OPENAI || base.isNotBlank())
+        val fi = cur == FISH && prefs.getS("fishId", "").isNotBlank() && prefs.getSecret("voiceKey").isNotEmpty()
+        return oneVoiceEngine(cur, gemKey, el, oa, fi) ?: cur
+    }
+
     fun speak(ctx: Context, prefs: Prefs, text: String, onStart: () -> Unit): String? {
         stop()
         prefsRef = prefs
         val my = gen
         return try {
-            when (prefs.getI("ttsEngine", PHONE)) {
+            when (effectiveEngine(prefs)) {
                 GEMINI -> playPcm(gemini(prefs, text), 24000, my, onStart)
                 ELEVEN -> playMp3(ctx, eleven(prefs, text), my, onStart)
                 OPENAI -> playMp3(ctx, openai(prefs, text), my, onStart)
+                FISH -> playMp3(ctx, fish(prefs, text), my, onStart)
                 ARABIC -> {
                     // Arabic text: her offline Arabic voice (or the one chosen for Arabic); anything else: the phone voice
                     if (!KokoroText.mostlyArabic(text)) return "phone"
@@ -253,6 +284,17 @@ object Voice {
         if (key.isEmpty()) throw Exception("paste your ElevenLabs key in the Voice tab")
         return post("https://api.elevenlabs.io/v1/text-to-speech/$id?output_format=mp3_44100_128",
             mapOf("xi-api-key" to key), body)
+    }
+
+    // Fish Audio: speaks any language in the voice model you pick (its "reference id"; one you made from a recording you have the right to use, or a public model).
+    private fun fish(prefs: Prefs, text: String): ByteArray {
+        val id = prefs.getS("fishId", "").trim()
+        if (id.isEmpty()) throw Exception("paste a Fish Audio voice model id in the Voice tab")
+        val key = prefs.getSecret("voiceKey")
+        if (key.isEmpty()) throw Exception("paste your Fish Audio key in the Voice tab")
+        val model = prefs.getS("voiceModel", "").trim().let { if (Regex("^(s1|s2|s3|drama)[a-z0-9.-]*$").matches(it)) it else "s2.1-pro" }
+        val body = JSONObject().put("text", text).put("reference_id", id).put("format", "mp3").put("latency", "balanced")
+        return post("https://api.fish.audio/v1/tts", mapOf("Authorization" to "Bearer $key", "model" to model), body)
     }
 
     private fun openai(prefs: Prefs, text: String): ByteArray {

@@ -274,7 +274,7 @@ class SpriteView(ctx: Context) : View(ctx) {
         }
 
         // soft ground shadow: smaller and fainter while she floats up
-        if (shadow && current != "laydown_sleep") {
+        if (shadow && current != "laydown_sleep" && current != "perch" && current != "perch_blink") {
             val lift = (-floatY / (384 * k * 0.012f + 0.001f)).coerceIn(-1f, 1f)
             val sw = 384 * k * (0.20f - 0.02f * lift)
             shadowPaint.color = Color.argb((70 - 18 * lift).toInt().coerceIn(30, 90), 0, 0, 0)

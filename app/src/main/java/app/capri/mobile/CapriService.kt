@@ -59,6 +59,7 @@ class CapriService : Service(), Actions.Hooks {
         @Volatile var lastBrain = ""
         const val ACT_QUIET = "app.capri.mobile.QUIET"
         const val ACT_TEST = "app.capri.mobile.TEST"
+        const val ACT_MODE = "app.capri.mobile.MODE"
         @Volatile var notifier: ((String) -> Unit)? = null
         private const val NOTE_ID = 1
         private const val OVERLAY = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -190,6 +191,7 @@ class CapriService : Service(), Actions.Hooks {
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
+        if (intent?.action == ACT_MODE) Modes.find(intent.getStringExtra("mode") ?: "")?.let { m -> applyModeLive(m); say(L.t(m.sayEn, m.sayAr), false) }
         if (intent?.action == ACT_PLUGIN && prefs.getB("pluginApi", false)) {
             val pt = (intent.getStringExtra("text") ?: "").take(500)
             val pc = intent.getStringExtra("cmd")
@@ -457,15 +459,42 @@ class CapriService : Service(), Actions.Hooks {
             mode == 2 -> "walk"
             busy -> "glitch"
             asleep -> if (grounded()) "laydown_sleep" else "sleep"
+            perchPending || perched -> {
+                if (perchPending) { perchPending = false; perched = true; h.postDelayed(perchEnd, Random.nextLong(25_000, 70_000)) }
+                "perch"
+            }
             else -> "idle"
         })
+    }
+
+    // She sometimes walks to the bottom of the screen and sits there, legs hanging over the edge, like her perch on the desktop.
+    private var perched = false
+    private var perchPending = false
+    private val perchEnd = Runnable { if (perched) { perched = false; settle() } }
+
+    private fun endPerch() {
+        perched = false; perchPending = false
+        h.removeCallbacks(perchEnd)
+    }
+
+    private fun perchSomewhere() {
+        val sp = sprite ?: return
+        if (sp.sizeFor("perch").second <= 0 || SpriteBank.info(this, "perch") == null) return
+        fx = spriteLp.x.toFloat()
+        fy = spriteLp.y.toFloat()
+        walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
+        walkTy = (floorY() + dp(18)).coerceAtMost((screenH - spriteLp.height).toFloat())
+        walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
+        sprite?.flip = walkTx < fx
+        perchPending = true
+        startMotion(2)
     }
 
     private val blinkTask = object : Runnable {
         override fun run() {
             val s = sprite
-            if (s != null && !asleep && !busy && !dragging && !hidden && !scripted && mode == 0 && s.current == "idle") {
-                clip("idle_blink", false) { settle() }
+            if (s != null && !asleep && !busy && !dragging && !hidden && !scripted && mode == 0 && (s.current == "idle" || s.current == "perch")) {
+                clip(if (s.current == "perch") "perch_blink" else "idle_blink", false) { settle() }
             }
             h.postDelayed(this, Random.nextLong(3500, 8000))
         }
@@ -641,6 +670,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun startMotion(m: Int) {
+        if (m != 2 || !perchPending) endPerch()
         mode = m
         lastNs = 0L
         choreo.removeFrameCallback(frame)
@@ -717,9 +747,10 @@ class CapriService : Service(), Actions.Hooks {
             if (pace > 0 && canRoam()) {
                 val r = Random.nextInt(100)
                 when {
-                    r < 62 -> walkSomewhere()
-                    r < 72 -> teleport()
-                    r < 88 -> clip("grin", false) { settle() }
+                    r < 52 -> walkSomewhere()
+                    r < 62 -> teleport()
+                    r < 76 -> perchSomewhere()
+                    r < 90 -> clip("grin", false) { settle() }
                     else -> { /* just stays put this time */ }
                 }
             }
@@ -839,6 +870,7 @@ class CapriService : Service(), Actions.Hooks {
                         moved = true
                         h.removeCallbacks(longPress)
                         dragging = true
+                        endPerch()
                         sprite?.emote("surprise")
                         settle()
                     }
@@ -1788,9 +1820,23 @@ class CapriService : Service(), Actions.Hooks {
         return try { task.get(30, java.util.concurrent.TimeUnit.SECONDS) } catch (e: Throwable) { task.cancel(true); null }
     }
 
+    // A mode's settings are saved by Modes.apply; this makes the ones that are read only at start-up take effect right now.
+    private fun applyModeLive(m: Mode) {
+        val low = prefs.getB("lowPower", false)
+        sprite?.let { it.lowPower = low; it.bob = !low }
+        if (prefs.getB("quiet", false)) Voice.stop()
+    }
+
+    override fun mode(id: String) {
+        val m = Modes.find(id) ?: return
+        Modes.apply(prefs, m)
+        applyModeLive(m)
+        say(L.t(m.sayEn, m.sayAr), false)
+    }
+
     override fun screen(name: String, arg: String) {
         try {
-            val cls = if (name == "security") SecurityActivity::class.java else GuideActivity::class.java
+            val cls = when (name) { "security" -> SecurityActivity::class.java; "room" -> RoomActivity::class.java; else -> GuideActivity::class.java }
             val i = Intent(this, cls).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
             if (name == "guide" && arg.isNotBlank() && arg != "open") i.putExtra("topic", arg)
             startActivity(i)
@@ -2046,6 +2092,7 @@ class CapriService : Service(), Actions.Hooks {
             L.t("\u2328 Dictate into a text box", "\u2328 الإملاء في خانة النص") to { startListening(true) },
             L.t("\uD83D\uDDE3 Conversation mode", "\uD83D\uDDE3 وضع المحادثة الصوتية") to { convoActive = true; startListening() },
             (if (quiet) L.t("\uD83D\uDD0A Unmute", "\uD83D\uDD0A إلغاء الصمت") else L.t("\uD83E\uDD2B Quiet mode", "\uD83E\uDD2B وضع الصمت")) to { toggleQuiet() },
+            L.t("\uD83C\uDF9A Mode: ", "\uD83C\uDF9A الوضع: ") + Modes.current(prefs).let { L.t(it.en, it.ar) } + L.t("  (tap for next)", "  (اضغط للتالي)") to { mode(Modes.next(Modes.current(prefs)).id) },
             L.t("\u2764 Heart", "\u2764 قلب") to { emote("heart") },
             L.t("\u2726 Sparkle", "\u2726 نجوم") to { emote("star"); sprite?.hop() },
             L.t("\uD83D\uDCA4 Zzz", "\uD83D\uDCA4 نوم") to { emote("sleep") },
