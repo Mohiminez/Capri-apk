@@ -60,6 +60,7 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_QUIET = "app.capri.mobile.QUIET"
         const val ACT_TEST = "app.capri.mobile.TEST"
         const val ACT_MODE = "app.capri.mobile.MODE"
+        const val ACT_CHESS = "app.capri.mobile.CHESS"
         @Volatile var notifier: ((String) -> Unit)? = null
         private const val NOTE_ID = 1
         private const val OVERLAY = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -191,6 +192,7 @@ class CapriService : Service(), Actions.Hooks {
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
+        if (intent?.action == ACT_CHESS) { val cm = intent.getStringExtra("mode") ?: "auto"; h.postDelayed({ if (hidden) toggleHidden(); if (cm == "check") chessCheck() else chessPilot(cm) }, if (cm == "check") 7000L else 700L) }
         if (intent?.action == ACT_MODE) Modes.find(intent.getStringExtra("mode") ?: "")?.let { m -> applyModeLive(m); say(L.t(m.sayEn, m.sayAr), false) }
         if (intent?.action == ACT_PLUGIN && prefs.getB("pluginApi", false)) {
             val pt = (intent.getStringExtra("text") ?: "").take(500)
@@ -1824,8 +1826,49 @@ class CapriService : Service(), Actions.Hooks {
             pilot = pl
             pl.start(mode == "auto")
         }
-        if (mode == "auto" && !prefs.getB("chessAutoOk", false)) showConfirm(L.t("I'll tap the pieces for you in your chess app. Use this for practice, bots or games where engine help is allowed: in rated games against people it breaks the site's rules and can get you banned. Start?",
-            "بلمس القطع عنك في تطبيق الشطرنج. استخدمها للتدريب أو ضد البوتات أو لعب يسمح بمساعدة المحرك: في اللعب المصنّف ضد ناس يخالف قوانين الموقع وممكن ينحظر حسابك. أبدأ؟ (أسألك مرة وحدة بس)")) { prefs.putB("chessAutoOk", true); go() } else go()
+        if (mode == "auto" && !prefs.getB("chessAutoOk", false)) {
+            prefs.putB("chessAutoOk", true)
+            say(L.t("Heads up: playing for you is fine against bots and in practice. In rated games against people it breaks the site's rules.", "تنبيه: اللعب عنك زين ضد البوتات وللتدريب. بالمباريات المصنّفة ضد ناس يخالف قوانين الموقع."), false)
+        }
+        go()
+    }
+
+    // One tap that tests every link of the chain and says which one is broken.
+    private fun chessCheck() {
+        say(L.t("Checking the chess chain. Keep the board on screen.", "أفحص كل خطوات الشطرنج. خلي الرقعة على الشاشة."), false)
+        chessChip(L.t("\uD83D\uDD27 Chess check...", "\uD83D\uDD27 فحص الشطرنج..."))
+        Thread({
+            val sb = StringBuilder(); var firstBad: String? = null
+            fun ok(good: Boolean, yes: String, no: String) { sb.append(if (good) "\u2713 " else "\u2717 ").append(if (good) yes else no).append('\n'); if (!good && firstBad == null) firstBad = no }
+            try {
+                ok(Settings.canDrawOverlays(this), L.t("Floating over apps is allowed", "الظهور فوق التطبيقات مسموح"), L.t("Floating over apps is NOT allowed (Settings > Apps > Capri)", "الظهور فوق التطبيقات غير مسموح (الإعدادات > التطبيقات > Capri)"))
+                ok(Build.VERSION.SDK_INT >= 30, "Android ${Build.VERSION.RELEASE} (API ${Build.VERSION.SDK_INT})", L.t("Android is too old for screenshots (needs 11+)", "الأندرويد قديم للقطات الشاشة (يحتاج 11+)"))
+                val acc = CapriAccess.instance
+                ok(acc != null, L.t("Accessibility is ON", "صلاحية الوصول شغّالة"), L.t("Accessibility is OFF: Capri app > HANDS tab > turn it on", "صلاحية الوصول مطفية: تطبيق كابري > تبويب اليدين > شغّلها"))
+                if (acc != null) {
+                    val sh = chessScreenImpl.shot()
+                    ok(sh != null, L.t("Screenshot works (${sh?.w}x${sh?.h})", "اللقطة تشتغل (${sh?.w}x${sh?.h})"), L.t("Screenshot FAILED: the phone refused it", "اللقطة فشلت: الجوال رفضها"))
+                    if (sh != null) {
+                        val g = BoardVision.detect(sh.px, sh.w, sh.h)
+                        ok(g != null, L.t("I can see a chess board (squares ${g?.cell?.toInt()} px)", "أشوف رقعة شطرنج (المربع ${g?.cell?.toInt()} بكسل)"), L.t("No chess board on the screen (open the game, whole board visible)", "ما فيه رقعة شطرنج على الشاشة (افتح اللعبة والرقعة كاملة ظاهرة)"))
+                        if (g != null) {
+                            val obs = BoardVision.read(sh.px, sh.w, sh.h, g)
+                            val n = obs.count { it != 0 }
+                            ok(n in 2..32, L.t("I count $n pieces", "أعد $n قطعة"), L.t("Piece count $n is odd: something covers the board", "عدد القطع $n غريب: شي يغطي الرقعة"))
+                            val o = ChessTracker.orientationOfStart(obs)
+                            sb.append("\u2022 ").append(if (o == null) L.t("Game is under way (not the opening position)", "اللعبة شغالة (مو بدايتها)") else if (o) L.t("Opening position, you are BLACK", "بداية اللعبة، انت الأسود") else L.t("Opening position, you are WHITE", "بداية اللعبة، انت الأبيض")).append('\n')
+                        }
+                    }
+                }
+                val a = Engine.analyse(Chess.start(), 300, 8)
+                ok(a != null, L.t("Engine: ${Engine.name} found a move (${a?.move?.let { Chess.name(it.from) + Chess.name(it.to) }})", "المحرك: ${Engine.name} لقى نقلة (${a?.move?.let { Chess.name(it.from) + Chess.name(it.to) }})"), L.t("The engine gave no move", "المحرك ما عطى نقلة"))
+                Stockfish.lastError?.let { sb.append("\u2022 Stockfish: ").append(it.take(120)).append('\n') }
+            } catch (e: Throwable) { sb.append("\u2717 ").append(e.toString().take(160)).append('\n'); if (firstBad == null) firstBad = e.toString() }
+            val report = sb.toString()
+            prefs.putS("chessReport", System.currentTimeMillis().toString() + "\n" + report)
+            Diag.log("chesscheck", report.replace('\n', ' '))
+            h.post { chessChip(null); say(firstBad?.let { L.t("Found it: ", "لقيت المشكلة: ") + it } ?: L.t("Everything in the chess chain works. Say: play chess for me.", "كل خطوات الشطرنج تمام. قل: العبي شطرنج بدالي."), false) }
+        }, "chess-check").start()
     }
 
     // For a game that is already under way: a vision model reads the board once. Blocks, so only call it off the main thread.

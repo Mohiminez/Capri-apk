@@ -689,6 +689,24 @@ class MainActivity : Activity() {
                 else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
             },
+            Triple("\u265F", t("CHESS: PLAY FOR ME", "شطرنج: العبي مكاني")) {
+                if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
+                else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
+                else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
+            },
+            Triple("\uD83D\uDD27", t("CHESS CHECK", "فحص الشطرنج")) {
+                if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
+                else {
+                    prefs.putS("chessReport", "")
+                    startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "check"))
+                    toast(t("Open your chess game now. The result shows here in a few seconds.", "افتح لعبة الشطرنج الحين. النتيجة تطلع هنا بعد ثواني."))
+                    fun poll(n: Int) { page.postDelayed({
+                        val r = prefs.getS("chessReport", "")
+                        if (r.isNotBlank()) android.app.AlertDialog.Builder(this).setTitle(t("Chess check", "فحص الشطرنج")).setMessage(r.substringAfter('\n')).setPositiveButton("OK", null).show()
+                        else if (n > 0) poll(n - 1) }, 2000L) }
+                    poll(8)
+                }
+            },
             Triple("\u2302", t("HER ROOM", "غرفتها")) { startActivity(Intent(this, RoomActivity::class.java)) },
             Triple("\u2753", t("GUIDE", "الدليل")) { startActivity(Intent(this, GuideActivity::class.java)) },
             Triple("\u26E8", t("SECURITY", "الأمان")) { startActivity(Intent(this, SecurityActivity::class.java)) }
