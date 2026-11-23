@@ -228,3 +228,11 @@ class StreakTest {
         org.junit.Assert.assertTrue(Streak.greeting(19, 7, false).contains("week"))
     }
 }
+
+class ChessInsteadOfMePhraseTest {
+    @org.junit.Test fun gulfPhrasesStartThePilot() {
+        for (q in listOf("العب مكاني", "العبي مكاني", "العب بمكاني", "العب مكاني شطرنج", "يا كابري العبي مكاني", "العب مكاني اللعبة", "play chess instead of me"))
+            org.junit.Assert.assertEquals(q, "auto", QuickAsks.chessAuto(q))
+        org.junit.Assert.assertNull(QuickAsks.chessAuto("العب مع اخوي"))
+    }
+}

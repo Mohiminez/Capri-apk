@@ -3,6 +3,8 @@
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
 ## Newest
+- **In-app chess board:** pieces slide to their square (captured ones fade), drag and drop with your finger, soft shadows, richer colours, a haptic tick on every move, and she reacts when you take her piece or she takes yours.
+- **"Play instead of me":** «العب مكاني» (and variants) now starts the auto-player; before it fell through to the chat model.
 - **Play chess for me:** a live chip at the top of the screen shows what she is doing (looking for the board, board found, thinking, playing e2e4, waiting for their move; tap it to stop). If no board is visible she tells you after 4 seconds instead of staying silent. The safety question is asked only once, not every time (it used to expire unanswered, which looked like she did nothing).
 - **Home:** greeting by time of day, day streak, her rotating thoughts, a box to talk to her straight from the app, one-tap phrases, sections fade in.
 - **Her room:** wallpaper, curtains that sway, sunbeam/moonlight, desk with a flickering screen, cushion, neon heart (bond 2+), floating dust, vignette.

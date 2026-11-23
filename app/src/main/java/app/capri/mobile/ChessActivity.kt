@@ -27,12 +27,32 @@ class BoardView(ctx: Context) : View(ctx) {
     var accent = Color.parseColor("#FF2A6D")
     var onTap: (Int) -> Unit = {}
     var hint: Move? = null
+    var canDrag: (Int) -> Boolean = { false }
+
+    // a piece sliding to its new square, a captured piece fading out, a piece following your finger
+    private var animTo = -1; private var animFrom = -1; private var animStart = 0L
+    private var ghost = 0
+    private var dragSq = -1; private var dragX = 0f; private var dragY = 0f; private var downSq = -1; private var downX = 0f; private var downY = 0f
+    private val ANIM_MS = 230L
+
+    /** Call right after [pos] has been set to the position after [m]; [captured] is the piece that stood on the target (0 if none). */
+    fun animate(m: Move, captured: Int) {
+        animFrom = m.from; animTo = m.to; ghost = captured; animStart = android.os.SystemClock.uptimeMillis()
+        postInvalidateOnAnimation()
+    }
+
+    private fun progress(): Float {
+        if (animTo < 0) return 1f
+        val f = ((android.os.SystemClock.uptimeMillis() - animStart).toFloat() / ANIM_MS).coerceIn(0f, 1f)
+        if (f >= 1f) { animTo = -1; ghost = 0 }
+        return 1f - (1f - f) * (1f - f) * (1f - f)
+    }
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT }
     private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; color = Color.parseColor("#92828C") }
-    private val light = Color.parseColor("#2B2434")
-    private val dark = Color.parseColor("#15101C")
+    private val light = Color.parseColor("#3A3050")
+    private val dark = Color.parseColor("#1B1428")
 
     override fun onMeasure(w: Int, h: Int) {
         val s = MeasureSpec.getSize(w)
@@ -82,20 +102,22 @@ class BoardView(ctx: Context) : View(ctx) {
             if (r == 7) canvas.drawText("" + ('a' + sq % 8), rect.right - cell * 0.2f, rect.bottom - cell * 0.06f, label)
         }
         // pieces: both sides use the solid glyphs, tinted, with a dark edge so they read on any square
+        val prog = progress()
         for (r in 0..7) for (c in 0..7) {
             val sq = sqOf(r, c)
             val pc = pos.b[sq]
-            if (pc == 0) continue
-            val ch = "" + ('\u265A' + when (abs(pc)) { 6 -> 0; 5 -> 1; 4 -> 2; 3 -> 3; 2 -> 4; else -> 5 }) + "\uFE0E"
-            val cx = (c + 0.5f) * cell
-            val cy = (r + 0.5f) * cell + cell * 0.28f
-            glyph.style = Paint.Style.STROKE; glyph.strokeWidth = cell * 0.06f
-            glyph.color = if (pc > 0) Color.parseColor("#0A0A10") else Color.parseColor("#F2F2F2")
-            canvas.drawText(ch, cx, cy, glyph)
-            glyph.style = Paint.Style.FILL
-            glyph.color = if (pc > 0) Color.parseColor("#F4F0F2") else Color.parseColor("#E84246")
-            canvas.drawText(ch, cx, cy, glyph)
+            if (pc == 0 || (sq == animTo && prog < 1f) || sq == dragSq) continue
+            drawPiece(canvas, pc, (c + 0.5f) * cell, (r + 0.5f) * cell, cell, 255)
         }
+        if (animTo >= 0) {
+            val pc = pos.b[animTo]
+            fun cx(sq: Int): Float { var c = sq % 8; if (flipped) c = 7 - c; return (c + 0.5f) * cell }
+            fun cy(sq: Int): Float { var r = sq / 8; if (flipped) r = 7 - r; return (r + 0.5f) * cell }
+            if (ghost != 0) drawPiece(canvas, ghost, cx(animTo), cy(animTo), cell, ((1f - prog) * 255).toInt())
+            if (pc != 0) drawPiece(canvas, pc, cx(animFrom) + (cx(animTo) - cx(animFrom)) * prog, cy(animFrom) + (cy(animTo) - cy(animFrom)) * prog - kotlin.math.sin(prog * Math.PI).toFloat() * cell * 0.12f, cell, 255)
+            postInvalidateOnAnimation()
+        }
+        if (dragSq >= 0) { val pc = pos.b[dragSq]; if (pc != 0) drawPiece(canvas, pc, dragX, dragY - cell * 0.35f, cell * 1.12f, 255) }
         for (t in targets) {
             val r = if (flipped) 7 - t / 8 else t / 8
             val c = if (flipped) 7 - t % 8 else t % 8
@@ -106,7 +128,43 @@ class BoardView(ctx: Context) : View(ctx) {
         }
     }
 
+    private fun drawPiece(canvas: Canvas, pc: Int, cx: Float, cy0: Float, cell: Float, alpha: Int) {
+        glyph.textSize = cell * 0.82f
+        val ch = "" + ('\u265A' + when (abs(pc)) { 6 -> 0; 5 -> 1; 4 -> 2; 3 -> 3; 2 -> 4; else -> 5 }) + "\uFE0E"
+        val cy = cy0 + cell * 0.28f
+        glyph.style = Paint.Style.FILL; glyph.color = Color.argb(alpha / 3, 0, 0, 0)
+        canvas.drawText(ch, cx + cell * 0.03f, cy + cell * 0.04f, glyph)     // soft shadow
+        glyph.style = Paint.Style.STROKE; glyph.strokeWidth = cell * 0.06f
+        glyph.color = if (pc > 0) Color.argb(alpha, 10, 10, 16) else Color.argb(alpha, 242, 242, 242)
+        canvas.drawText(ch, cx, cy, glyph)
+        glyph.style = Paint.Style.FILL
+        glyph.color = if (pc > 0) Color.argb(alpha, 244, 240, 242) else Color.argb(alpha, 232, 66, 70)
+        canvas.drawText(ch, cx, cy, glyph)
+    }
+
+    private fun sqAt(x: Float, y: Float): Int {
+        val cell = width / 8f
+        return sqOf((y / cell).toInt().clampTo(0, 7), (x / cell).toInt().clampTo(0, 7))
+    }
+
     override fun onTouchEvent(e: MotionEvent): Boolean {
+        when (e.action) {
+            MotionEvent.ACTION_DOWN -> { downSq = sqAt(e.x, e.y); downX = e.x; downY = e.y; return true }
+            MotionEvent.ACTION_MOVE -> {
+                if (dragSq < 0 && downSq >= 0 && Math.hypot((e.x - downX).toDouble(), (e.y - downY).toDouble()) > width / 40.0 && canDrag(downSq)) {
+                    onTap(downSq)            // picks it up: shows where it can go
+                    dragSq = downSq; performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY)
+                }
+                if (dragSq >= 0) { dragX = e.x; dragY = e.y; invalidate() }
+                return true
+            }
+            MotionEvent.ACTION_CANCEL -> { dragSq = -1; invalidate(); return true }
+        }
+        if (dragSq >= 0 && e.action == MotionEvent.ACTION_UP) {
+            val target = sqAt(e.x, e.y); dragSq = -1
+            if (target != downSq) onTap(target)
+            invalidate(); return true
+        }
         if (e.action == MotionEvent.ACTION_UP) {
             val cell = width / 8f
             val c = (e.x / cell).toInt().clampTo(0, 7)
@@ -199,6 +257,7 @@ class ChessActivity : Activity() {
         board = BoardView(this)
         board.accent = accent
         board.onTap = { tap(it) }
+        board.canDrag = { sq -> !over && !thinking && pos.white == playerWhite && pos.b[sq] != 0 && (pos.b[sq] > 0) == playerWhite }
         root.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
 
         val row1 = LinearLayout(this); row1.orientation = LinearLayout.HORIZONTAL
@@ -447,6 +506,9 @@ class ChessActivity : Activity() {
         history.add(pos); moves.add(m); redo.clear()
         pos = Chess.make(pos, m)
         board.last = m
+        board.animate(m, before.b[m.to])
+        board.performHapticFeedback(if (before.b[m.to] != 0) android.view.HapticFeedbackConstants.LONG_PRESS else android.view.HapticFeedbackConstants.CLOCK_TICK)
+        if (before.b[m.to] != 0) { sprite.emote("angry"); sprite.squash(1f) }
         clearSel()
         refresh()
         if (finished(true)) { remark(talk.react(before, m, pos, false)); return }
@@ -473,6 +535,9 @@ class ChessActivity : Activity() {
                 history.add(pos); moves.add(m)
                 pos = Chess.make(pos, m)
                 board.last = m
+                board.animate(m, snapshot.b[m.to])
+                board.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK)
+                if (snapshot.b[m.to] != 0) { sprite.emote("star"); sprite.hop() }
                 if (a.depth >= 4) setEval(a, snapshot.white)
                 refresh()
                 val line = talk.react(snapshot, m, pos, true)

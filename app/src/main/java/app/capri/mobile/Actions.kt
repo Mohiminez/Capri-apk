@@ -261,11 +261,11 @@ object QuickAsks {
             .trim().replace(Regex("\\s+"), " ")
         if (t.isEmpty() || t.split(' ').size > 9) return null
         val chessWord = Regex("شطرنج|chess").containsMatchIn(t)
-        val forMe = Regex("(^| )(?:عني|عنّي|بدالي|بدلي|لي|for me|by myself)( |$)").containsMatchIn(t) ||
+        val forMe = Regex("(^| )(?:عني|عنّي|بدالي|بدلي|بمكاني|مكاني|مكانی|محلي|لي|for me|by myself|instead of me)( |$)").containsMatchIn(t) ||
             Regex("^(?:play|finish|continue|auto ?play)\\b.*\\b(?:game|chess)\\b").containsMatchIn(t) && t.contains("for me")
         val verb = Regex("(^| )(?:العبي?|لعب|كملي?|خلصي?|شغلي?|اكملي?|play|finish|continue|autoplay|auto)( |$)").containsMatchIn(t)
         if (chessWord && forMe && verb) return "auto"
-        if (Regex("^(?:العبي?|لعب|كملي?|خلصي?|اكملي?) (?:عني|بدالي|بدلي|لي)(?: (?:ال)?(?:لعبه|اللعبه|لعبه الشطرنج|شطرنج))?$").matches(t)) return "auto"
+        if (Regex("^(?:العبي?|لعب|كملي?|خلصي?|اكملي?) (?:عني|بدالي|بدلي|بمكاني|مكاني|محلي|لي)(?: (?:ال)?(?:لعبه|اللعبه|لعبه الشطرنج|شطرنج))?$").matches(t)) return "auto"
         return null
     }
 
