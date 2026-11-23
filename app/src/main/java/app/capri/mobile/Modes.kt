@@ -95,15 +95,15 @@ object Streak {
     /** What she says when you open the app: time of day, and a nudge on long streaks. */
     fun greeting(hour: Int, streak: Int, ar: Boolean): String {
         val base = when (hour) {
-            in 5..11 -> if (ar) "صباح الخير" else "Good morning"
-            in 12..16 -> if (ar) "هلا والله" else "Hey you"
-            in 17..21 -> if (ar) "مساء الخير" else "Good evening"
-            else -> if (ar) "للحين صاحي؟" else "Still up?"
+            in 5..11 -> if (ar) "صباح الخير" else "Morning, choom"
+            in 12..16 -> if (ar) "هلا والله" else "Hey, choom"
+            in 17..21 -> if (ar) "مساء الخير" else "Evening, choom"
+            else -> if (ar) "للحين صاحي؟" else "Still awake, choom?"
         }
         val tail = when {
-            streak >= 30 -> if (ar) " شهر كامل وانت وياي!" else " A whole month together!"
-            streak >= 7 -> if (ar) " أسبوع ورا بعض، حلو." else " A week in a row, nice."
-            streak >= 2 -> if (ar) " يوم $streak ورا بعض." else " Day $streak in a row."
+            streak >= 30 -> if (ar) " شهر كامل وانت وياي." else " A whole month. Respect."
+            streak >= 7 -> if (ar) " أسبوع ورا بعض." else " A week straight."
+            streak >= 2 -> if (ar) " يوم $streak ورا بعض." else " Day $streak."
             else -> ""
         }
         return base + tail

@@ -182,3 +182,42 @@ class BootReceiver : BroadcastReceiver() {
         try { ctx.startForegroundService(Intent(ctx, CapriService::class.java)) } catch (e: Throwable) { }
     }
 }
+
+
+// KEYS: the same one-tap actions from three places: long-press the launcher icon, the Quick Settings pull-down, the notification buttons.
+class KeyActivity : android.app.Activity() {
+    override fun onCreate(savedInstanceState: android.os.Bundle?) {
+        super.onCreate(savedInstanceState)
+        val key = intent?.getStringExtra("key") ?: ""
+        try {
+            val act = when (key) {
+                "talk" -> CapriService.ACT_TALK
+                "type" -> CapriService.ACT_TYPE
+                "hide" -> CapriService.ACT_HIDE
+                "quiet" -> CapriService.ACT_QUIET
+                "chess" -> CapriService.ACT_CHESS
+                "stop" -> CapriService.ACT_STOP
+                else -> ""
+            }
+            if (key == "room") startActivity(Intent(this, RoomActivity::class.java))
+            else if (act.isNotEmpty()) {
+                if (!Settings.canDrawOverlays(this)) startActivity(Intent(this, MainActivity::class.java))
+                else startForegroundService(Intent(this, CapriService::class.java).setAction(act).putExtra("mode", "auto"))
+            }
+        } catch (e: Throwable) { }
+        finish()
+    }
+}
+
+abstract class KeyTile(private val key: String, private val label: String) : TileService() {
+    override fun onStartListening() { qsTile?.let { it.state = Tile.STATE_INACTIVE; it.label = label; it.updateTile() } }
+    override fun onClick() {
+        try {
+            @Suppress("DEPRECATION")
+            startActivityAndCollapse(Intent(this, KeyActivity::class.java).putExtra("key", key).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        } catch (e: Exception) { }
+    }
+}
+class TalkTile : KeyTile("talk", "Capri: talk")
+class QuietTile : KeyTile("quiet", "Capri: quiet")
+class ChessTile : KeyTile("chess", "Capri: chess")

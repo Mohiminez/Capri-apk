@@ -1,0 +1,23 @@
+<?xml version="1.0" encoding="utf-8"?>
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut android:shortcutId="talk" android:enabled="true" android:icon="@drawable/ic_stat" android:shortcutShortLabel="@string/key_talk">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.capri.mobile" android:targetClass="app.capri.mobile.KeyActivity">
+            <extra android:name="key" android:value="talk" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="chess" android:enabled="true" android:icon="@drawable/ic_stat" android:shortcutShortLabel="@string/key_chess">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.capri.mobile" android:targetClass="app.capri.mobile.KeyActivity">
+            <extra android:name="key" android:value="chess" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="quiet" android:enabled="true" android:icon="@drawable/ic_stat" android:shortcutShortLabel="@string/key_quiet">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.capri.mobile" android:targetClass="app.capri.mobile.KeyActivity">
+            <extra android:name="key" android:value="quiet" />
+        </intent>
+    </shortcut>
+    <shortcut android:shortcutId="type" android:enabled="true" android:icon="@drawable/ic_stat" android:shortcutShortLabel="@string/key_type">
+        <intent android:action="android.intent.action.VIEW" android:targetPackage="app.capri.mobile" android:targetClass="app.capri.mobile.KeyActivity">
+            <extra android:name="key" android:value="type" />
+        </intent>
+    </shortcut>
+</shortcuts>

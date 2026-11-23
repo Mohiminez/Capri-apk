@@ -3,6 +3,16 @@
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
 ## Newest
+- **More brains:** 11 new providers, added at the end of the list so saved settings keep working: Zhipu GLM, GitHub Models, SiliconFlow (free tiers), Perplexity, Moonshot Kimi, Qwen, Cohere, DeepInfra, Hyperbolic, plus Ollama and LM Studio under OWN SERVER (DeepSeek, Mistral, OpenAI, Claude, Grok, Together, Fireworks, SambaNova, Hugging Face, Gemini, Groq, NVIDIA, OpenRouter, Cerebras were already there: 27 in all).
+- **Room camera:** the CAMERA button in her room shows your real room behind her, like the Room in the official Android app (no ARCore plane tracking). Asks for the camera permission only when you press it.
+- **Angular look:** panels, inputs and chips use the desktop's sharp-cornered style instead of pills.
+- **Back to her identity (cyberpunk, not a kids' app):** her room is now a rain-lit night-city apartment (skyline window, flickering CAPRI neon, terminal, cables, scanlines, data bits) instead of the pastel one; removed the emoji from menus, modes, chess chips, room buttons; lines are in her teasing-gremlin voice ("Hands. Watch the hands."); little pixel lights instead of sparkles.
+- **MAINFRAME band on Home** (BRAIN / VOICE / CAPRI) like the desktop control panel.
+- **KEYS:** long-press the launcher icon for Talk, Chess, Quiet, Type; three new Quick Settings tiles (Capri: talk / quiet / chess) next to the existing one; notification buttons stay.
+- New tone: ROMANTIC (next to Capri, Calm, Pro, Wild).
+- **"Accessibility currently unavailable":** Android marks the service dead after it is killed and ignores the switch. Capri now revives it herself (watchdog every 30 s, and a FIX ACCESSIBILITY tile) once she has the one-time permission `WRITE_SECURE_SETTINGS` (`adb shell pm grant app.capri.mobile android.permission.WRITE_SECURE_SETTINGS`, or the ROOT button). Without it she tries the older component-toggle trick.
+- **Green mic dot:** the wake word keeps the mic open. It now listens only for N minutes (default 3, setting in the voice section, 0 = always) after you last touched or talked to her, so the dot is off the rest of the time. Companion mode turns the wake word on; switch mode or the toggle to stop it.
+- **Looks:** little drifting lights around Capri that grow with the bond level.
 - **Stockfish 16 with its neural network (NNUE)** on 64-bit phones, about 300 Elo above Stockfish 11. The 40 MB network is downloaded by the CI build (or `tools/get_net.sh` for local builds), ships inside the app and is verified on first use; if anything is wrong she silently uses Stockfish 11. APK is about 40 MB bigger.
 - **Chess pilot never gives up mid-game:** when it loses track it re-reads the board from the pieces it learned and keeps trying (it used to stop and wait for you). A stuck move is retried instead of stopping. Capri steps off the board while playing instead of flickering.
 - **Chess stuck on "thinking":** a second screenshot right after the first is refused by Android; the pilot treated that as "the board changed" and re-thought forever. It now retries the screenshot, and after 4 tries acts on the first look. Capri also no longer vanishes at every screenshot: she hides only when she is actually on the board, so she stays draggable.

@@ -62,7 +62,7 @@ class GuideActivity : Activity() {
         box.setTextColor(Night.white); box.setHintTextColor(Night.faint); box.textSize = 15f
         box.setSingleLine(true)
         box.setPadding(dp(12), dp(8), dp(12), dp(8))
-        box.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
+        box.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
         root.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         root.addView(sv, LinearLayout.LayoutParams(-1, 0, 1f))
         list = root.tag as LinearLayout
@@ -97,7 +97,7 @@ class GuideActivity : Activity() {
             card.background = NeonPanel(resources.displayMetrics.density)
             val isOpen = t.id in open || topics.size == 1 && q.isNotBlank()
             val head = TextView(this)
-            head.text = t.icon + "  " + t.title(L.ar) + if (isOpen) "" else "  +"
+            head.text = "// " + t.title(L.ar).uppercase() + if (isOpen) "" else "  +"
             head.typeface = Typeface.DEFAULT_BOLD; head.textSize = 16f; head.setTextColor(Night.amber)
             head.setOnClickListener { if (!open.add(t.id)) open.remove(t.id); render(q) }
             card.addView(head)
@@ -231,7 +231,7 @@ class MemoryActivity : Activity() {
         box.hint = L.t("Search her notes...", "ابحث بملاحظاتها...")
         box.setTextColor(Night.white); box.setHintTextColor(Night.faint); box.textSize = 15f; box.setSingleLine(true)
         box.setPadding(dp(12), dp(8), dp(12), dp(8))
-        box.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
+        box.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
         root.addView(box, LinearLayout.LayoutParams(-1, -2).apply { bottomMargin = dp(8) })
         root.addView(sv, LinearLayout.LayoutParams(-1, 0, 1f))
         val add = EditText(this)
@@ -239,7 +239,7 @@ class MemoryActivity : Activity() {
         add.setTextColor(Night.white); add.setHintTextColor(Night.faint); add.textSize = 15f; add.setSingleLine(true)
         add.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_DONE
         add.setPadding(dp(12), dp(8), dp(12), dp(8))
-        add.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
+        add.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.field); setStroke(dp(1), Night.edge) }
         add.setOnEditorActionListener { v, _, _ -> prefs.addNote(v.text.toString()); v.text = ""; render(); true }
         root.addView(add, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
         list = root.tag as LinearLayout

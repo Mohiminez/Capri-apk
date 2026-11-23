@@ -17,6 +17,7 @@ import android.view.View
 import org.json.JSONObject
 import android.graphics.Typeface
 import kotlin.math.sin
+import kotlin.math.cos
 import kotlin.math.abs
 import kotlin.math.floor
 import kotlin.random.Random
@@ -132,6 +133,8 @@ class SpriteView(ctx: Context) : View(ctx) {
     var talk = false          // mouth overlay on top of whatever she is doing
     var glowColor = Color.parseColor("#FF2A6D")
     var glow = false          // soft aura while she talks
+    var sparkles = 0          // 0 none; 1..4 how many little lights drift around her (grows with the bond)
+    private val sparkPaint = Paint(Paint.ANTI_ALIAS_FLAG)
     var glitchFx = false      // RGB split while she thinks or is thrown
     var bob = true            // slow float
     var lowPower = false      // fewer frames per second
@@ -271,6 +274,18 @@ class SpriteView(ctx: Context) : View(ctx) {
                 Color.argb((70 * pulse).toInt(), Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor)),
                 Color.TRANSPARENT, Shader.TileMode.CLAMP)
             canvas.drawCircle(width / 2f, height - 384 * k * 0.55f, r, glowPaint)
+        }
+
+        if (sparkles > 0 && !lowPower) {
+            val t = now / 1000.0
+            for (n in 0 until sparkles + 1) {
+                val a = t * (0.5 + n * 0.13) + n * 2.1
+                val cx = width / 2f + (cos(a) * 384 * k * (0.26f + 0.03f * n)).toFloat()
+                val cy = height - 384 * k * (0.30f + 0.14f * n) + (sin(a * 1.3) * 384 * k * 0.05).toFloat()
+                val tw = (0.5 + 0.5 * sin(t * 3 + n * 1.7)).toFloat()
+                sparkPaint.color = Color.argb((60 + 150 * tw).toInt(), Color.red(glowColor), Color.green(glowColor), Color.blue(glowColor))
+                val px = 384 * k * (0.008f + 0.008f * tw); canvas.drawRect(cx - px, cy - px, cx + px, cy + px, sparkPaint)
+            }
         }
 
         // soft ground shadow: smaller and fainter while she floats up

@@ -98,6 +98,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         when (prefs.getI("tone", 0)) {
             1 -> sb.append("\nTone: calm, gentle and supportive. Tease much less than usual.")
             2 -> sb.append("\nTone: professional and concise, almost no slang, still recognisably you.")
+            4 -> sb.append("\nTone: openly affectionate and a little flirty, still teasing, still you; keep it tasteful, never explicit, and drop it the moment the user seems uncomfortable.")
             3 -> sb.append("\nTone: wilder and cheekier than usual, with more chaotic energy, but never cruel and never crossing your safety rules.")
         }
         val nick = prefs.getS("nick", "")

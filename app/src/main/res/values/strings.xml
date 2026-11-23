@@ -1,4 +1,8 @@
 <?xml version="1.0" encoding="utf-8"?>
 <resources>
     <string name="access_description">Lets Capri read what is on your screen and tap, type and scroll for you when you ask her to. Nothing is recorded; screen text only leaves your phone if you pick an online brain.</string>
+    <string name="key_talk">Talk to Capri</string>
+    <string name="key_chess">Play chess for me</string>
+    <string name="key_quiet">Quiet mode</string>
+    <string name="key_type">Type to Capri</string>
 </resources>

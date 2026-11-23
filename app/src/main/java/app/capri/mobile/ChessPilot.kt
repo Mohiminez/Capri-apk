@@ -106,7 +106,7 @@ class ChessPilot(
         var waitSaid = 0L
         tell(if (auto) t("Okay, I'm on the board. Hands off, I'll play.", "تمام، أنا على الرقعة. لا تلمس، أنا ألعب.") else t("I'm watching your game. I'll point at the best move.", "أراقب لعبتك. بأشر لك على أفضل نقلة."))
 
-        st(t("\uD83D\uDD0D Looking for the board...", "\uD83D\uDD0D أدوّر على الرقعة..."))
+        st(t("[SCAN] Looking for the board...", "[SCAN] أدوّر على الرقعة..."))
         while (running) {
             val scr = screen()
             if (scr == null) { tell(t("I lost my accessibility access.", "فقدت صلاحية الوصول.")); return }
@@ -120,7 +120,7 @@ class ChessPilot(
                 geo = BoardVision.detect(sh.px, sh.w, sh.h)
                 if (geo == null) {
                     prevObs = null
-                    st(t("\uD83D\uDD0D No board on screen. Open your chess game", "\uD83D\uDD0D ما أشوف رقعة. افتح لعبة الشطرنج"))
+                    st(t("[SCAN] No board on screen. Open your chess game", "[SCAN] ما أشوف رقعة. افتح لعبة الشطرنج"))
                     if (++lostFrames == 4) tell(t("I'm ready but I can't see a board yet. Open your chess game (chess.com, Lichess...) and I'll start.", "جاهزة بس ما أشوف رقعة للحين. افتح لعبة الشطرنج (chess.com أو Lichess...) وأبدأ."))
                     if (lostFrames == 12) tell(t("I can't see a chess board. Open your game and keep the board on screen.", "ما أشوف رقعة شطرنج. افتح اللعبة وخلي الرقعة على الشاشة."))
                     if (lostFrames > 60) { tell(t("No board for a while, so I'm stopping.", "ما فيه رقعة من فترة، فبوقف.")); return }
@@ -128,7 +128,7 @@ class ChessPilot(
                 }
                 lostFrames = 0
                 prevObs = null
-                st(t("\u2705 Board found", "\u2705 لقيت الرقعة"))
+                st(t("[OK] Board found", "[OK] لقيت الرقعة"))
                 geo?.let { scr.boardSeen((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
                 if (settings.frame) geo?.let { scr.frame((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
             }
@@ -180,7 +180,7 @@ class ChessPilot(
             if (r.unsure) { nap(450); continue }
             if (r.lost) {
                 lostGame++
-                st(t("\uD83D\uDD04 Lost the thread, re-reading the board...", "\uD83D\uDD04 ضاع علي الخيط، أعيد قراءة الرقعة..."))
+                st(t("[SYNC] Lost the thread, re-reading the board...", "[SYNC] ضاع علي الخيط، أعيد قراءة الرقعة..."))
                 if (lostGame >= 2) {
                     // first her own eyes (the pieces she learned), then a vision model if there is one, and she keeps trying instead of stopping
                     val mine = readOwn(sh, geo, obs)
@@ -229,10 +229,10 @@ class ChessPilot(
                 if (key != actedKey || stale) {
                     if (stale && ++tries >= 4) {
                         tell(t("My move isn't going through. Maybe a pop-up is in the way. I'll keep trying.", "نقلتي ما تمر. يمكن نافذة تغطي الرقعة. بكمل أحاول."))
-                        st(t("\u26A0 My move isn't going through, retrying...", "\u26A0 نقلتي ما تمر، أعيد..."))
+                        st(t("[WARN] My move isn't going through, retrying...", "[WARN] نقلتي ما تمر، أعيد..."))
                         nap(4000); tries = 1; actedKey = 0L; if (++stuckRounds >= 6) { tell(t("I can't make the move go through, so I'm stopping.", "ما أقدر أمرر النقلة، فبوقف.")); return }
                     }
-                    st(t("\uD83E\uDDE0 Thinking (${Engine.name})...", "\uD83E\uDDE0 أفكر (${Engine.name})..."))
+                    st(t("[CALC] Thinking (${Engine.name})...", "[CALC] أفكر (${Engine.name})..."))
                     val best = Engine.analyse(tr.pos, millis, 30, keys, true) ?: return
                     if (!running) return
                     // thinking took a while: look again, and only touch the screen if the board is exactly where and how it was
@@ -242,7 +242,7 @@ class ChessPilot(
                     val g = geo
                     val same = fresh != null && BoardVision.stillThere(fresh.px, fresh.w, fresh.h, g) &&
                         ChessTracker.mismatches(tr.boardView(BoardVision.read(fresh.px, fresh.w, fresh.h, g)), ChessTracker.occupancy(tr.pos)) <= 1
-                    if (!same && ++freshFails < 4) { st(t("\uD83D\uDC40 Checking the board again...", "\uD83D\uDC40 أتأكد من الرقعة مرة ثانية...")); prevObs = null; nap(400); continue }
+                    if (!same && ++freshFails < 4) { st(t("[WATCH] Checking the board again...", "[WATCH] أتأكد من الرقعة مرة ثانية...")); prevObs = null; nap(400); continue }
                     if (!same) log("acting on the first look (second look kept failing)")
                     freshFails = 0
                     val usedShot = fresh ?: sh
@@ -251,7 +251,7 @@ class ChessPilot(
                     val x1 = (fx * k).toInt(); val y1 = (fy * k).toInt(); val x2 = (tx * k).toInt(); val y2 = (ty * k).toInt()
                     actedKey = key; actedAt = System.currentTimeMillis()
                     val san = San.of(tr.pos, best.move)
-                    st(if (auto) t("\u265F Playing $san", "\u265F ألعب $san") else t("\u2B50 Best move: $san", "\u2B50 أفضل نقلة: $san"))
+                    st(if (auto) t("[MOVE] Playing $san", "[MOVE] ألعب $san") else t("[BEST] Best move: $san", "[BEST] أفضل نقلة: $san"))
                     if (!auto) {
                         tell(t("Best move: $san", "أفضل نقلة: $san") + (best.mateIn?.takeIf { it > 0 }?.let { t(" (mate in $it)", " (مات في $it)") } ?: ""))
                         scr.arrow(x1, y1, x2, y2, (g.cell * k).toInt())
@@ -277,7 +277,7 @@ class ChessPilot(
                 }
             }
             // nothing to do: it's their move. Say so once in a while, so a quiet pilot doesn't look dead.
-            st(if (tr.pos.white != mineWhite) t("\u23F3 Waiting for their move", "\u23F3 أنتظر نقلة الخصم") else t("\uD83D\uDC40 Watching the board", "\uD83D\uDC40 أراقب الرقعة"))
+            st(if (tr.pos.white != mineWhite) t("[WAIT] Waiting for their move", "[WAIT] أنتظر نقلة الخصم") else t("[WATCH] Watching the board", "[WATCH] أراقب الرقعة"))
             if (tr.pos.white != mineWhite && System.currentTimeMillis() - lastChange > 40_000L && System.currentTimeMillis() - waitSaid > 60_000L) {
                 waitSaid = System.currentTimeMillis()
                 tell(t("Waiting for the other side to move.", "أنتظر الخصم يلعب."))

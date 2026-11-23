@@ -3,6 +3,10 @@
     xmlns:tools="http://schemas.android.com/tools">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <uses-permission android:name="android.permission.CAMERA" />
+    <uses-feature android:name="android.hardware.camera" android:required="false" />
+    <!-- Optional, granted by hand once (adb or root): lets Capri revive her own accessibility service when Android marks it unavailable. -->
+    <uses-permission android:name="android.permission.WRITE_SECURE_SETTINGS" tools:ignore="ProtectedPermissions" />
     <uses-permission android:name="android.permission.ACCESS_NETWORK_STATE" />
     <uses-permission android:name="android.permission.SYSTEM_ALERT_WINDOW" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
@@ -36,7 +40,11 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data android:name="android.app.shortcuts" android:resource="@xml/shortcuts" />
         </activity>
+
+        <activity android:name=".KeyActivity" android:exported="true" android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.NoDisplay" android:taskAffinity="" />
 
         <activity
             android:name=".ChessActivity"
@@ -124,6 +132,22 @@
                 <data android:mimeType="text/*" />
             </intent-filter>
         </activity>
+
+
+        <service android:name=".TalkTile" android:exported="true" android:icon="@drawable/ic_stat" android:label="Capri: talk"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <service android:name=".QuietTile" android:exported="true" android:icon="@drawable/ic_stat" android:label="Capri: quiet"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
+        <service android:name=".ChessTile" android:exported="true" android:icon="@drawable/ic_stat" android:label="Capri: chess"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
 
         <service
             android:name=".CapriTile"

@@ -22,10 +22,22 @@ object Providers {
         Provider("Fireworks", "https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3p3-70b-instruct", "https://fireworks.ai/account/api-keys"),
         Provider("Hugging Face", "https://router.huggingface.co/v1", "meta-llama/Llama-3.3-70B-Instruct", "https://huggingface.co/settings/tokens"),
         Provider("On this phone (offline model)", "", ""),
-        Provider("Custom or local server (OpenAI-compatible)", "", "")
+        Provider("Custom or local server (OpenAI-compatible)", "", ""),
+        // added later: appended so the numbers saved by older versions still point at the same provider
+        Provider("Zhipu GLM (free flash model)", "https://api.z.ai/api/paas/v4", "glm-4.5-flash", "https://z.ai/manage-apikey/apikey-list"),
+        Provider("GitHub Models (free with a token)", "https://models.github.ai/inference", "openai/gpt-4o-mini", "https://github.com/settings/tokens"),
+        Provider("SiliconFlow (free small models)", "https://api.siliconflow.com/v1", "Qwen/Qwen2.5-7B-Instruct", "https://cloud.siliconflow.com/account/ak"),
+        Provider("Perplexity (answers with sources)", "https://api.perplexity.ai", "sonar", "https://www.perplexity.ai/settings/api"),
+        Provider("Moonshot Kimi", "https://api.moonshot.ai/v1", "kimi-latest", "https://platform.moonshot.ai/console/api-keys"),
+        Provider("Qwen (Alibaba)", "https://dashscope-intl.aliyuncs.com/compatible-mode/v1", "qwen-plus", "https://bailian.console.alibabacloud.com/?apiKey=1"),
+        Provider("Cohere", "https://api.cohere.ai/compatibility/v1", "command-a-03-2025", "https://dashboard.cohere.com/api-keys"),
+        Provider("DeepInfra", "https://api.deepinfra.com/v1/openai", "meta-llama/Llama-3.3-70B-Instruct", "https://deepinfra.com/dash/api_keys"),
+        Provider("Hyperbolic", "https://api.hyperbolic.xyz/v1", "meta-llama/Llama-3.3-70B-Instruct", "https://app.hyperbolic.xyz/settings"),
+        Provider("Ollama (this phone via Termux, or your PC)", "http://127.0.0.1:11434/v1", "llama3.2", "https://ollama.com"),
+        Provider("LM Studio (your PC)", "http://127.0.0.1:1234/v1", "local-model", "https://lmstudio.ai")
     )
     val LOCAL = all.indexOfFirst { it.name.startsWith("On this phone") }
-    val CUSTOM = all.size - 1
+    val CUSTOM = all.indexOfFirst { it.name.startsWith("Custom or local") }
     val GROQ = 1
 }
 

@@ -84,8 +84,9 @@ class MainActivity : Activity() {
     private val tabNames get() = listOf(t("HOME", "الرئيسية"), t("BRAIN", "العقل"), t("VOICE", "الصوت"), t("BEHAVIOR", "السلوك"), t("HANDS", "اليدين"), t("MORE", "المزيد"))
 
     // brain tiers, like the desktop's NORMAL / HIGHER / MAX
-    private val tier1 = listOf(0, 1, 2, 3, 4, 11)
-    private val tier2 = listOf(5, 6, 7, 8, 9, 10, 12, 13)
+    private val tier1 = listOf(0, 1, 2, 3, 4, 11, 16, 17, 18)
+    private val tier2 = listOf(5, 6, 7, 8, 9, 10, 12, 13, 19, 20, 21, 22, 23, 24)
+    private val tierOwn = listOf(15, 25, 26)
     private fun tierOf(i: Int) = when {
         i == Providers.LOCAL -> 0
         i in tier1 -> 1
@@ -166,7 +167,7 @@ class MainActivity : Activity() {
         searchBar.setHintTextColor(muted)
         searchBar.setSingleLine(true)
         searchBar.setPadding(dp(14), dp(8), dp(14), dp(8))
-        searchBar.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(Night.well); setStroke(dp(1), Night.cyan) }
+        searchBar.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.well); setStroke(dp(1), Night.cyan) }
         searchBar.visibility = View.GONE
         searchBar.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -379,7 +380,7 @@ class MainActivity : Activity() {
             tile.orientation = LinearLayout.VERTICAL
             tile.gravity = Gravity.CENTER
             tile.setPadding(dp(8), dp(14), dp(8), dp(12))
-            tile.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Night.hover); setStroke(dp(1), Night.edge) }
+            tile.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.hover); setStroke(dp(1), Night.edge) }
             tile.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 94, 240, 246)), null, null)
             val g = TextView(this)
             g.text = it.first; g.textSize = 26f; g.gravity = Gravity.CENTER; g.setTextColor(Night.cyan)
@@ -435,7 +436,7 @@ class MainActivity : Activity() {
         v.setTextColor(if (primary) Night.cyan else Night.white)
         v.setPadding(dp(16), dp(12), dp(16), dp(12))
         v.background = GradientDrawable().apply {
-            cornerRadius = dp(24).toFloat()
+            cornerRadius = dp(2).toFloat()
             setColor(if (primary) Night.deep else Night.field)
             setStroke(dp(if (primary) 2 else 1), if (primary) Night.cyan else Night.deepEdge)
         }
@@ -492,6 +493,20 @@ class MainActivity : Activity() {
         sw.setOnCheckedChangeListener { v, on -> v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); prefs.putB(k, on); extra?.invoke(on) }
         sw.setPadding(0, dp(8), 0, dp(8))
         p.addView(sw)
+    }
+
+    // One tap for "accessibility is currently unavailable": revive it, or explain the one-time step that lets her do it herself from then on.
+    private fun fixAccess() {
+        if (CapriAccess.instance != null) { toast(t("Accessibility is working.", "صلاحية الوصول شغّالة.")); return }
+        if (CapriAccess.revive(this)) { toast(t("Reviving... give it a few seconds.", "أنعشها... انتظر ثواني.")); page.postDelayed({ refresh() }, 3500); return }
+        if (!CapriAccess.canWriteSecure(this)) {
+            val cmd = CapriAccess.grantCommand(this)
+            android.app.AlertDialog.Builder(this).setTitle(t("One-time step", "خطوة وحدة بس"))
+                .setMessage(t("Android blocks apps from fixing this alone. Give Capri the permission once and she will revive her own accessibility whenever it breaks, with no more switching it off and on.\n\nFrom a computer:\n$cmd\n\nOn a rooted phone, tap ROOT.", "أندرويد يمنع التطبيقات تصلح هذا لحالها. عطِ كابري هالصلاحية مرة وحدة وبعدها تنعش صلاحيتها بنفسها كل ما تخرب، بدون ما تطفي وتشغّل.\n\nمن الكمبيوتر:\n$cmd\n\nإذا جوالك مروّت اضغط ROOT."))
+                .setPositiveButton("ROOT") { _, _ -> Thread { val ok = CapriAccess.grantWithRoot(this); runOnUiThread { toast(if (ok) t("Done. Tap FIX again.", "تم. اضغط إصلاح مرة ثانية.") else t("No root access.", "ما فيه صلاحية روت.")) } }.start() }
+                .setNeutralButton(t("COPY", "نسخ")) { _, _ -> (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("cmd", cmd)); toast(t("Copied.", "اننسخ.")) }
+                .setNegativeButton("OK", null).show()
+        } else { CapriAccess.rebind(this); toast(t("Trying to reconnect...", "أحاول أعيد الاتصال...")) }
     }
 
     private fun slider(p: LinearLayout, s: String, k: String, min: Int, max: Int, default: Int) {
@@ -637,14 +652,29 @@ class MainActivity : Activity() {
             pb.progress = Charm.progress(c)
         }
 
+        // MAINFRAME: three bands, the way the desktop version lays out her control panel
+        val frame = section(null)
+        val bands = listOf(
+            "BRAIN" to { Providers.all[prefs.cur].name.substringBefore(" (") + " / " + prefs.model(prefs.cur).substringAfterLast('/').take(22) },
+            "VOICE" to { if (prefs.getB("oneVoice", false)) "ONE VOICE" else listOf("PHONE", "GEMINI", "ELEVEN", "OPENAI", "KOKORO", "ARABIC", "FISH").getOrElse(prefs.getI("ttsEngine", 0)) { "PHONE" } },
+            "CAPRI" to { Modes.current(prefs).en.take(18).uppercase() + "  //  " + Charm.label(prefs.getI("charm", 0)).uppercase() + "  //  SEC " + prefs.getI("security", 1) })
+        for ((k, v) in bands) {
+            val r = LinearLayout(this); r.orientation = LinearLayout.HORIZONTAL; r.setPadding(0, dp(3), 0, dp(3))
+            val kt = TextView(this); kt.text = k; kt.typeface = tfMono; kt.textSize = 12f; kt.setTextColor(accent); kt.setPadding(0, 0, dp(14), 0)
+            val vt = TextView(this); vt.typeface = tfMono; vt.textSize = 12f; vt.setTextColor(Night.white); vt.maxLines = 1
+            refreshers.add { vt.text = try { v() } catch (e: Throwable) { "-" } }
+            r.addView(kt, LinearLayout.LayoutParams(dp(62), -2)); r.addView(vt, LinearLayout.LayoutParams(0, -2, 1f))
+            frame.addView(r)
+        }
+
         // a live card: greeting, her rotating thoughts, a box to talk to her, one-tap things to say
         val live = section(null)
         val streak = Streak.touch(prefs)
         val greet = body(live, Streak.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), streak, L.ar), 17f, Color.WHITE, true)
-        if (streak >= 2) body(live, "\uD83D\uDD25 " + t("$streak days in a row", "$streak يوم ورا بعض"), 13f, Night.amber)
+        if (streak >= 2) body(live, t("STREAK  $streak DAYS", "السلسلة  $streak يوم"), 13f, Night.amber)
         val thought = body(live, "", 14f, Night.cyan)
-        val thoughts = if (L.ar) listOf("تدري؟ أقدر ألعب شطرنج بدالك.", "جرّب تقول لي: «وضع الدراسة».", "اضغط على غرفتي، سوّيتها حلوة.", "قل «وش تقدرين تسوين؟» وأعلمك.", "أحب لما تسولف وياي.", "لا تنسى تدلّعني شوي ♥")
-            else listOf("I can play chess for you, you know.", "Try saying: \"study mode\".", "Visit my room, I decorated it.", "Say \"what can you do?\" and I'll show you.", "I like it when you chat with me.", "Don't forget to pet me a little \u2665")
+        val thoughts = if (L.ar) listOf("تدري؟ أقدر ألعب شطرنج بدالك. وأفوز.", "حذار: ممكن أستولي على معالجك البشري.", "قل «وضع الدراسة» وأخلي الإلهاءات تخلص.", "غرفتي فوضى. بس هذي فوضتي.", "أراقب. بصمت. تقريباً.", "اسألني أي شي. الجواب مو مضمون، بس ممتع.")
+            else listOf("I can play chess for you, you know. And win.", "Warning: I may try to take over your human CPU.", "Say \"study mode\" and I'll cut the distractions.", "My room is a mess. It's my mess.", "Watching. Quietly. Mostly.", "Ask me anything. Accuracy not guaranteed, entertainment is.")
         var ti = 0
         val rot = object : Runnable { override fun run() {
             thought.animate().alpha(0f).setDuration(250).withEndAction { thought.text = "\u201C" + thoughts[ti % thoughts.size] + "\u201D"; ti++; thought.animate().alpha(1f).setDuration(350).start() }.start()
@@ -655,7 +685,7 @@ class MainActivity : Activity() {
         chat.setTextColor(Night.white); chat.setHintTextColor(Night.faint); chat.textSize = 15f; chat.setSingleLine(true)
         chat.imeOptions = android.view.inputmethod.EditorInfo.IME_ACTION_SEND
         chat.setPadding(dp(14), dp(10), dp(14), dp(10))
-        chat.background = GradientDrawable().apply { cornerRadius = dp(24).toFloat(); setColor(Night.field); setStroke(dp(1), Night.deepEdge) }
+        chat.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.field); setStroke(dp(1), Night.deepEdge) }
         fun sendToHer(msg: String) {
             if (msg.isBlank()) return
             if (!Settings.canDrawOverlays(this)) { toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول.")); return }
@@ -668,13 +698,13 @@ class MainActivity : Activity() {
         val chipRow = LinearLayout(this); chipRow.orientation = LinearLayout.HORIZONTAL
         val chipScroll = android.widget.HorizontalScrollView(this); chipScroll.isHorizontalScrollBarEnabled = false; chipScroll.addView(chipRow)
         for ((label, msg) in listOf(
-            t("\u265E Play chess for me", "\u265E العبي شطرنج بدالي") to t("play chess for me", "العبي شطرنج بدالي"),
-            t("\uD83D\uDCD6 Study mode", "\uD83D\uDCD6 وضع الدراسة") to t("study mode", "وضع الدراسة"),
-            t("\uD83D\uDC40 Read my screen", "\uD83D\uDC40 اقري شاشتي") to t("what is on my screen?", "وش على شاشتي؟"),
-            t("\u2728 What can you do?", "\u2728 وش تقدرين تسوين؟") to t("what can you do?", "وش تقدرين تسوين؟"))) {
+            t("[ CHESS ] play for me", "[ شطرنج ] العب مكاني") to t("play chess for me", "العبي شطرنج بدالي"),
+            t("[ MODE ] study", "[ وضع ] دراسة") to t("study mode", "وضع الدراسة"),
+            t("[ EYES ] read my screen", "[ عيون ] اقري شاشتي") to t("what is on my screen?", "وش على شاشتي؟"),
+            t("[ INFO ] what can you do", "[ معلومات ] وش تقدرين تسوين") to t("what can you do?", "وش تقدرين تسوين؟"))) {
             val c = TextView(this); c.text = label; c.textSize = 13f; c.setTextColor(accent); c.typeface = tfMono
             c.setPadding(dp(14), dp(8), dp(14), dp(8))
-            c.background = GradientDrawable().apply { cornerRadius = dp(20).toFloat(); setColor(Night.deep); setStroke(dp(1), Night.deepEdge) }
+            c.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.deep); setStroke(dp(1), Night.deepEdge) }
             c.setOnClickListener { c.performHapticFeedback(android.view.HapticFeedbackConstants.VIRTUAL_KEY); sendToHer(msg) }
             chipRow.addView(c, LinearLayout.LayoutParams(-2, -2).apply { setMargins(0, 0, dp(8), 0) })
         }
@@ -695,6 +725,7 @@ class MainActivity : Activity() {
                 else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
                 else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
             },
+            Triple("\u267B", t("FIX ACCESSIBILITY", "إصلاح صلاحية الوصول")) { fixAccess() },
             Triple("\uD83D\uDD27", t("CHESS CHECK", "فحص الشطرنج")) {
                 if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else {
@@ -752,7 +783,7 @@ class MainActivity : Activity() {
 
         val modes = section(t("MODE", "الوضع"))
         val curMode = Modes.current(prefs)
-        radios(modes, Modes.all.map { Opt(it.icon + "  " + t(it.en, it.ar), t(it.descEn, it.descAr), if (it.id == "game") t("needs hands", "تحتاج اليدين") else "") }, Modes.all.indexOfFirst { it.id == curMode.id }.coerceAtLeast(0)) {
+        radios(modes, Modes.all.map { Opt(t(it.en, it.ar), t(it.descEn, it.descAr), if (it.id == "game") t("needs hands", "تحتاج اليدين") else "") }, Modes.all.indexOfFirst { it.id == curMode.id }.coerceAtLeast(0)) {
             val md = Modes.all[it]
             Modes.apply(prefs, md)
             if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_MODE).putExtra("mode", md.id))
@@ -804,7 +835,7 @@ class MainActivity : Activity() {
         if (tier == 0) {
             buildOffline()
         } else {
-            val list = when (tier) { 1 -> tier1; 2 -> tier2; else -> listOf(Providers.CUSTOM) }
+            val list = when (tier) { 1 -> tier1; 2 -> tier2; else -> tierOwn }
             val c = section(t("PROVIDER", "المزوّد"))
             if (list.size > 1) spin(c, list.map { Providers.all[it].name }, list.indexOf(cur).coerceAtLeast(0)) { n ->
                 prefs.putI("provider", list[n])
@@ -1095,6 +1126,7 @@ class MainActivity : Activity() {
         note(e, t("The phone's recogniser is free but weaker for Arabic dialects. \"Her own ears\" use Whisper (Groq is free and fast).",
             "تعرّف الجوال على الصوت مجاني بس أضعف مع اللهجات العربية. «أذنها الخاصة» تستخدم Whisper (وGroq مجاني وسريع)."))
         toggle(e, t("Wake word: say \"Capri\" / \"كابري\" and then what you want (uses the microphone and some battery while the screen is on)", "كلمة النداء: قل \"كابري\" ثم طلبك (تستخدم المايك وشوية بطارية والشاشة شغّالة)"), "wakeWord", false)
+        slider(e, t("Wake word listens for this many minutes after you last touched or talked to her (0 = always; the green mic dot only shows while she listens)", "كلمة النداء تسمع كم دقيقة بعد آخر مرة لمستها أو حكيت وياها (0 = دايماً؛ النقطة الخضراء للمايك تطلع بس وقت ما تسمع)"), "wakeIdleMin", 0, 30, 3)
         note(e, t("Examples: \"Capri, open WhatsApp\", \"hey Capri\" then wait for her \"yes?\". Works best with the phone recogniser.", "أمثلة: \"كابري افتحي واتساب\"، \"اهلا كابري\" وانتظر ترد \"نعم؟\". تشتغل أحسن مع تعرّف الجوال."))
         spin(e, listOf(t("Phone recogniser", "تعرّف الجوال"), t("Her own ears (Whisper)", "أذنها الخاصة (Whisper)")), prefs.getI("sttEngine", 0)) { prefs.putI("sttEngine", it) }
         edit(e, t("Ears key (empty = Groq key, then brain key)", "مفتاح الأذن (فاضي = مفتاح Groq ثم مفتاح العقل)"), prefs.getSecret("sttKey"), password = true) { prefs.putSecret("sttKey", it) }
@@ -1152,7 +1184,7 @@ class MainActivity : Activity() {
         val c = TextView(this)
         c.text = text; c.typeface = tfMono; c.textSize = 10f; c.setTextColor(color)
         c.setPadding(dp(8), dp(3), dp(8), dp(3))
-        c.background = GradientDrawable().apply { cornerRadius = dp(10).toFloat(); setColor(Color.argb(30, Color.red(color), Color.green(color), Color.blue(color))); setStroke(dp(1), Color.argb(140, Color.red(color), Color.green(color), Color.blue(color))) }
+        c.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Color.argb(30, Color.red(color), Color.green(color), Color.blue(color))); setStroke(dp(1), Color.argb(140, Color.red(color), Color.green(color), Color.blue(color))) }
         p.addView(c, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(3), dp(6), dp(3)) })
     }
 
@@ -1185,7 +1217,7 @@ class MainActivity : Activity() {
         bond.typeface = tfMono; bond.textSize = 11f; bond.setTextColor(Night.amber); bond.setPadding(0, dp(10), 0, 0)
         card.addView(bond)
         box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(4), 0, dp(6)) })
-        val tone = listOf(t("Normal", "عادي"), t("Calm and gentle", "هادية ولطيفة"), t("Professional", "رسمية"), t("Wild", "مجنونة"))
+        val tone = listOf(t("Normal", "عادي"), t("Calm and gentle", "هادية ولطيفة"), t("Professional", "رسمية"), t("Wild", "مجنونة"), t("Romantic", "رومانسية"))
         body(box, t("How she talks to you", "كيف تكلمك"), 14f, muted)
         spin(box, tone, prefs.getI("tone", 0)) { prefs.putI("tone", it) }
         edit(box, t("What she calls you (nickname)", "وش تناديك (لقب)"), prefs.getS("nick", "")) { prefs.putS("nick", it.trim().take(30)) }
@@ -1301,7 +1333,8 @@ class MainActivity : Activity() {
             Opt("CAPRI", t("Her usual teasing chaos", "أسلوبها المعتاد: شقاوة وتحدّي")),
             Opt(t("CALM", "هادئ"), t("Gentle and supportive", "لطيفة وداعمة")),
             Opt(t("PRO", "رسمي"), t("Short, little slang", "مختصرة وبدون عامية كثير")),
-            Opt(t("WILD", "جامح"), t("Cheekier, never cruel", "أجرأ وأكثر فوضى، بدون قسوة"))
+            Opt(t("WILD", "جامح"), t("Cheekier, never cruel", "أجرأ وأكثر فوضى، بدون قسوة")),
+            Opt(t("ROMANTIC", "رومانسي"), t("Warmer and flirty, tasteful", "أدفأ وأقرب، بذوق"))
         ), prefs.getI("tone", 0)) { prefs.putI("tone", it) }
         edit(tone, t("Always reply in this language (optional, e.g. Arabic, French)", "ترد دايماً بهذه اللغة (اختياري، مثلاً: العربية، الفرنسية)"), prefs.getS("replyLang", "")) { prefs.putS("replyLang", it.trim()) }
 

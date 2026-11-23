@@ -44,6 +44,39 @@ class CapriAccess : AccessibilityService() {
 
         private var lastRebind = 0L
 
+        fun canWriteSecure(ctx: android.content.Context) =
+            ctx.checkSelfPermission("android.permission.WRITE_SECURE_SETTINGS") == android.content.pm.PackageManager.PERMISSION_GRANTED
+
+        // Android sometimes marks a service "currently unavailable" (after it was killed or crashed) and ignores the on/off switch.
+        // Rewriting the list of enabled services clears that state: the same thing you do by switching it off and on by hand,
+        // but without you having to. Needs the one-time permission WRITE_SECURE_SETTINGS (see grantCommand).
+        fun revive(ctx: android.content.Context): Boolean {
+            if (instance != null || !canWriteSecure(ctx)) return false
+            return try {
+                val cr = ctx.contentResolver
+                val me = ctx.packageName + "/" + CapriAccess::class.java.name
+                val all = (android.provider.Settings.Secure.getString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES) ?: "").split(':').filter { it.isNotBlank() }
+                val others = all.filter { it != me && !it.startsWith(ctx.packageName + "/") }
+                android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, others.joinToString(":"))
+                Handler(Looper.getMainLooper()).postDelayed({
+                    try {
+                        android.provider.Settings.Secure.putString(cr, android.provider.Settings.Secure.ENABLED_ACCESSIBILITY_SERVICES, (others + me).joinToString(":"))
+                        android.provider.Settings.Secure.putInt(cr, android.provider.Settings.Secure.ACCESSIBILITY_ENABLED, 1)
+                    } catch (e: Throwable) { }
+                }, 800)
+                Diag.log("access", "revived through secure settings")
+                true
+            } catch (e: Throwable) { false }
+        }
+
+        fun grantCommand(ctx: android.content.Context) = "adb shell pm grant ${ctx.packageName} android.permission.WRITE_SECURE_SETTINGS"
+
+        /** For rooted phones: give ourselves that permission without a computer. */
+        fun grantWithRoot(ctx: android.content.Context): Boolean = try {
+            val p = Runtime.getRuntime().exec(arrayOf("su", "-c", "pm grant ${ctx.packageName} android.permission.WRITE_SECURE_SETTINGS"))
+            p.waitFor(6, TimeUnit.SECONDS) && p.exitValue() == 0 && canWriteSecure(ctx)
+        } catch (e: Throwable) { false }
+
         // "On but not working": Android lists the service as enabled yet never connected it. Turning the component off and on again
         // makes the system bind it, the same as you switching it off and on by hand. Returns true if it tried.
         fun rebind(ctx: android.content.Context): Boolean {

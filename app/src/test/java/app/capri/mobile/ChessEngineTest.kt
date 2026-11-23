@@ -223,7 +223,7 @@ class StreakTest {
         org.junit.Assert.assertEquals(1, Streak.next(100, 103, 9))
     }
     @org.junit.Test fun greetingFitsTheHour() {
-        org.junit.Assert.assertTrue(Streak.greeting(8, 1, false).startsWith("Good morning"))
+        org.junit.Assert.assertTrue(Streak.greeting(8, 1, false).startsWith("Morning"))
         org.junit.Assert.assertTrue(Streak.greeting(2, 1, true).contains("صاحي"))
         org.junit.Assert.assertTrue(Streak.greeting(19, 7, false).contains("week"))
     }
@@ -234,5 +234,23 @@ class ChessInsteadOfMePhraseTest {
         for (q in listOf("العب مكاني", "العبي مكاني", "العب بمكاني", "العب مكاني شطرنج", "يا كابري العبي مكاني", "العب مكاني اللعبة", "play chess instead of me"))
             org.junit.Assert.assertEquals(q, "auto", QuickAsks.chessAuto(q))
         org.junit.Assert.assertNull(QuickAsks.chessAuto("العب مع اخوي"))
+    }
+}
+
+class ProvidersTest {
+    @org.junit.Test fun oldNumbersStillPointAtTheSameProviders() {
+        org.junit.Assert.assertTrue(Providers.all[0].name.startsWith("Gemini"))
+        org.junit.Assert.assertTrue(Providers.all[8].name == "DeepSeek")
+        org.junit.Assert.assertEquals(14, Providers.LOCAL)
+        org.junit.Assert.assertEquals(15, Providers.CUSTOM)
+        org.junit.Assert.assertTrue(Providers.all.size >= 27)
+    }
+    @org.junit.Test fun everyOnlineProviderHasAnAddressAndAModel() {
+        for ((i, p) in Providers.all.withIndex()) {
+            if (i == Providers.LOCAL || i == Providers.CUSTOM) continue
+            org.junit.Assert.assertTrue(p.name, p.url.startsWith("https://") || p.url.startsWith("http://127.0.0.1"))
+            org.junit.Assert.assertTrue(p.name, p.model.isNotBlank())
+        }
+        org.junit.Assert.assertEquals(Providers.all.size - 1, (0 until Providers.all.size).count { it != Providers.LOCAL } )
     }
 }

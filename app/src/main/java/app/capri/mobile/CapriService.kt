@@ -61,6 +61,8 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_TEST = "app.capri.mobile.TEST"
         const val ACT_MODE = "app.capri.mobile.MODE"
         const val ACT_CHESS = "app.capri.mobile.CHESS"
+        const val ACT_TALK = "app.capri.mobile.TALK"
+        const val ACT_TYPE = "app.capri.mobile.TYPE"
         @Volatile var notifier: ((String) -> Unit)? = null
         private const val NOTE_ID = 1
         private const val OVERLAY = WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
@@ -190,6 +192,8 @@ class CapriService : Service(), Actions.Hooks {
                 return START_NOT_STICKY
             }
         }
+        if (intent?.action == ACT_TALK) h.postDelayed({ if (hidden) toggleHidden(); convoActive = prefs.getB("convo", false); startListening() }, 300)
+        if (intent?.action == ACT_TYPE) h.postDelayed({ if (hidden) toggleHidden(); showPanel() }, 300)
         if (intent?.action == ACT_HIDE) toggleHidden()
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
@@ -353,7 +357,7 @@ class CapriService : Service(), Actions.Hooks {
         s.glowColor = Themes.accent(prefs)
         s.lowPower = prefs.getB("lowPower", false)
         s.bob = !s.lowPower
-        s.setOnTouchListener(touch)
+        s.setOnTouchListener { v, e -> engagedAt = System.currentTimeMillis(); touch.onTouch(v, e) }
         s.alpha = 0f
         wm.addView(s, spriteLp)
         s.animate().alpha(1f).setDuration(400).start()
@@ -454,6 +458,7 @@ class CapriService : Service(), Actions.Hooks {
         val s = sprite ?: return
         if (scripted) return
         s.glow = talking && !s.lowPower
+        s.sparkles = (Charm.level(prefs.getI("charm", 0)) - 1).coerceIn(0, 4)
         s.glitchFx = busy || mode == 1
         s.talk = talking
         s.dancing = (dancing || danceAsked) && !talking && !busy && !asleep && mode == 0 && !scripted
@@ -1304,6 +1309,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun ask(text: String, hiddenPrompt: Boolean = false, image: String? = null, skipNothing: Boolean = false) {
+        engagedAt = System.currentTimeMillis()
         poke()
         if (!hiddenPrompt) {
             Charm.add(prefs, 2)
@@ -1359,7 +1365,7 @@ class CapriService : Service(), Actions.Hooks {
                 brain.ask("(You are a careful reviewer. Goal: $goal\nPlan:\n$plan\nIf any step sends, buys, deletes, pays or changes settings, answer with one short warning line starting with WARNING. Otherwise answer OK. Plain text, no tags.)", true, null, false) { rev, _ ->
                     busy = false
                     val warn = rev?.trim().orEmpty().takeIf { it.uppercase().startsWith("WARNING") }?.take(160)
-                    showConfirm(plan + (if (warn != null) "\n\n\u26A0 " + warn.removePrefix("WARNING").trimStart(':', ' ', '-') else "") + "\n\n" + L.t("Go?", "أبدأ؟")) { runJob(goal, plan) }
+                    showConfirm(plan + (if (warn != null) "\n\n[WARN] " + warn.removePrefix("WARNING").trimStart(':', ' ', '-') else "") + "\n\n" + L.t("Go?", "أبدأ؟")) { runJob(goal, plan) }
                     settle()
                 }
             }
@@ -1762,7 +1768,7 @@ class CapriService : Service(), Actions.Hooks {
         val v = TextView(this)
         v.text = text + tail; v.setTextColor(Night.white); v.textSize = 13f; v.maxLines = 2
         v.setPadding((14 * d).toInt(), (8 * d).toInt(), (14 * d).toInt(), (8 * d).toInt())
-        v.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 22 * d; setColor(Color.argb(225, 16, 12, 20)); setStroke((2 * d).toInt(), Themes.accent(prefs)) }
+        v.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 3 * d; setColor(Color.argb(235, 9, 11, 15)); setStroke((2 * d).toInt(), Themes.accent(prefs)) }
         v.setOnClickListener { pilot?.stop() }
         val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
@@ -1870,7 +1876,7 @@ class CapriService : Service(), Actions.Hooks {
     // One tap that tests every link of the chain and says which one is broken.
     private fun chessCheck() {
         say(L.t("Checking the chess chain. Keep the board on screen.", "أفحص كل خطوات الشطرنج. خلي الرقعة على الشاشة."), false)
-        chessChip(L.t("\uD83D\uDD27 Chess check...", "\uD83D\uDD27 فحص الشطرنج..."))
+        chessChip(L.t("[CHECK] Chess check...", "[CHECK] فحص الشطرنج..."))
         Thread({
             val sb = StringBuilder(); var firstBad: String? = null
             fun ok(good: Boolean, yes: String, no: String) { sb.append(if (good) "\u2713 " else "\u2717 ").append(if (good) yes else no).append('\n'); if (!good && firstBad == null) firstBad = no }
@@ -2180,26 +2186,26 @@ class CapriService : Service(), Actions.Hooks {
     private fun gamesMenu() {
         fun play(name: String, how: String) = Pair(name, { ask("(Start a quick game with the user: $how Keep it going turn by turn in this chat, one short message at a time. Begin now.)", true) })
         showMenu(listOf(
-            play(L.t("\uD83E\uDDE0 Trivia", "\uD83E\uDDE0 أسئلة ثقافية"), "trivia. Ask one question at a time with four options A to D, keep score."),
-            play(L.t("\uD83D\uDD75 20 questions", "\uD83D\uDD75 عشرين سؤال"), "twenty questions. You secretly think of something and they guess by asking yes or no questions."),
+            play(L.t("[CALC] Trivia", "[CALC] أسئلة ثقافية"), "trivia. Ask one question at a time with four options A to D, keep score."),
+            play(L.t("20 questions", "عشرين سؤال"), "twenty questions. You secretly think of something and they guess by asking yes or no questions."),
             play(L.t("\u2702 Rock paper scissors", "\u2702 حجر ورقة مقص"), "rock paper scissors, best of five. Pick your move secretly each round and reveal it after theirs."),
-            play(L.t("\uD83E\uDD14 Would you rather", "\uD83E\uDD14 تفضّل أيش"), "would you rather, with funny cyberpunk dilemmas."),
-            play(L.t("\uD83E\uDDE9 Riddles", "\uD83E\uDDE9 ألغاز"), "riddles. Give one riddle at a time and react to their answers.")
+            play(L.t("Would you rather", "تفضّل أيش"), "would you rather, with funny cyberpunk dilemmas."),
+            play(L.t("Riddles", "ألغاز"), "riddles. Give one riddle at a time and react to their answers.")
         ))
     }
 
     private fun mainMenu() {
         showMenu(listOf(
-            L.t("\uD83C\uDFAE Play a game", "\uD83C\uDFAE العب معي") to { gamesMenu() },
+            L.t("Play a game", "العب معي") to { gamesMenu() },
             L.t("\u2328 Dictate into a text box", "\u2328 الإملاء في خانة النص") to { startListening(true) },
-            L.t("\uD83D\uDDE3 Conversation mode", "\uD83D\uDDE3 وضع المحادثة الصوتية") to { convoActive = true; startListening() },
-            (if (quiet) L.t("\uD83D\uDD0A Unmute", "\uD83D\uDD0A إلغاء الصمت") else L.t("\uD83E\uDD2B Quiet mode", "\uD83E\uDD2B وضع الصمت")) to { toggleQuiet() },
-            L.t("\uD83C\uDF9A Mode: ", "\uD83C\uDF9A الوضع: ") + Modes.current(prefs).let { L.t(it.en, it.ar) } + L.t("  (tap for next)", "  (اضغط للتالي)") to { mode(Modes.next(Modes.current(prefs)).id) },
+            L.t("Conversation mode", "وضع المحادثة الصوتية") to { convoActive = true; startListening() },
+            (if (quiet) L.t("Unmute", "إلغاء الصمت") else L.t("Quiet mode", "وضع الصمت")) to { toggleQuiet() },
+            L.t("Mode: ", "الوضع: ") + Modes.current(prefs).let { L.t(it.en, it.ar) } + L.t("  (tap for next)", "  (اضغط للتالي)") to { mode(Modes.next(Modes.current(prefs)).id) },
             L.t("\u2764 Heart", "\u2764 قلب") to { emote("heart") },
             L.t("\u2726 Sparkle", "\u2726 نجوم") to { emote("star"); sprite?.hop() },
-            L.t("\uD83D\uDCA4 Zzz", "\uD83D\uDCA4 نوم") to { emote("sleep") },
-            L.t("\uD83D\uDC83 Dance (stop with the same)", "\uD83D\uDC83 ارقصي (وقّفيها بنفس الزر)") to { if (danceAsked) emote("stop") else emote("dance") },
-            L.t("\uD83D\uDCFA Scroll my videos for me", "\uD83D\uDCFA تصفّحي فيديوهاتي") to { watchAlong(!alongOn) },
+            L.t("Zzz", "نوم") to { emote("sleep") },
+            L.t("Dance (stop with the same)", "ارقصي (وقّفيها بنفس الزر)") to { if (danceAsked) emote("stop") else emote("dance") },
+            L.t("Scroll my videos for me", "تصفّحي فيديوهاتي") to { watchAlong(!alongOn) },
             L.t("\u26A1 Prank me", "\u26A1 مقلب") to { chaos() }
         ))
     }
@@ -2439,13 +2445,29 @@ class CapriService : Service(), Actions.Hooks {
     private var wakeRest = ""
     private var wakeCommit: Runnable? = null
 
-    private fun wakeWanted(): Boolean = prefs.getB("wakeWord", false) && screenOn && !talking && !busy && !cloudListening && !dictating &&
+    // The green mic dot: the wake word keeps the microphone open, so it only listens for a few minutes after you last touched or spoke to her (setting; 0 = always).
+    @Volatile private var engagedAt = System.currentTimeMillis()
+    private fun wakeWindowOpen(): Boolean { val m = prefs.getI("wakeIdleMin", 3); return m <= 0 || System.currentTimeMillis() - engagedAt < m * 60_000L }
+
+    private fun wakeWanted(): Boolean = prefs.getB("wakeWord", false) && screenOn && wakeWindowOpen() && !talking && !busy && !cloudListening && !dictating &&
         !(userListening && System.currentTimeMillis() - userListeningAt < 25_000L) && !agent.running &&
         checkSelfPermission(Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED && SpeechRecognizer.isRecognitionAvailable(this)
+
+    // If Android lists her accessibility as ON but she is not connected, try to bring it back by herself (and give up quietly if she can't).
+    private var accessWatchAt = 0L
+    private fun watchAccess() {
+        val now = System.currentTimeMillis()
+        if (now - accessWatchAt < 30_000L) return
+        accessWatchAt = now
+        if (CapriAccess.instance == null && CapriAccess.enabledInSettings(this)) {
+            if (!CapriAccess.revive(this)) CapriAccess.rebind(this)
+        }
+    }
 
     private val wakeTask = object : Runnable {
         override fun run() {
             try {
+                watchAccess()
                 if (wakeWanted()) { if (!wakeActive && System.currentTimeMillis() >= wakeNextAt) startWake() }
                 else if (wakeActive) stopWake()
             } catch (e: Throwable) { CrashLog.record(this@CapriService, e, "wake word") }
