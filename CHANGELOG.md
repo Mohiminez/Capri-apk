@@ -3,6 +3,7 @@
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
 ## Newest
+- **Chess stuck on "thinking":** a second screenshot right after the first is refused by Android; the pilot treated that as "the board changed" and re-thought forever. It now retries the screenshot, and after 4 tries acts on the first look. Capri also no longer vanishes at every screenshot: she hides only when she is actually on the board, so she stays draggable.
 - **Chess without words:** HOME tab has CHESS: PLAY FOR ME (starts the auto-player directly) and CHESS CHECK (tests overlay permission, accessibility, screenshot, board reading, engine, and names the broken step). The safety question no longer blocks the start.
 - **In-app chess board:** pieces slide to their square (captured ones fade), drag and drop with your finger, soft shadows, richer colours, a haptic tick on every move, and she reacts when you take her piece or she takes yours.
 - **"Play instead of me":** «العب مكاني» (and variants) now starts the auto-player; before it fell through to the chat model.

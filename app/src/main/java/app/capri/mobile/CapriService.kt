@@ -1783,19 +1783,39 @@ class CapriService : Service(), Actions.Hooks {
         return try { wm.addView(v, lp); boardOverlay = v; v } catch (e: Exception) { null }
     }
 
+    @Volatile private var boardRect: android.graphics.Rect? = null
+    private fun inTheWay(v: View?): Boolean {
+        if (v == null || v.visibility != View.VISIBLE) return false
+        val r = boardRect ?: return true
+        val loc = IntArray(2); v.getLocationOnScreen(loc)
+        return r.intersects(loc[0], loc[1], loc[0] + v.width, loc[1] + v.height)
+    }
+
     private val chessScreenImpl = object : PilotScreen {
         // her own bubble, body, cursor and drawings must not sit on the board when she takes the picture
         override fun shot(): PilotShot? {
             val a = CapriAccess.instance ?: return null
             val hid = java.util.concurrent.CountDownLatch(1)
             var sv = View.VISIBLE; var bv = View.VISIBLE; var ov = View.VISIBLE
-            h.post { sv = sprite?.visibility ?: View.VISIBLE; bv = bubble?.visibility ?: View.VISIBLE; ov = boardOverlay?.visibility ?: View.VISIBLE
-                sprite?.visibility = View.INVISIBLE; bubble?.visibility = View.INVISIBLE; boardOverlay?.visibility = View.INVISIBLE; a.cursorVisible(false); hid.countDown() }
+            h.post {
+                sv = sprite?.visibility ?: View.VISIBLE; bv = bubble?.visibility ?: View.VISIBLE; ov = boardOverlay?.visibility ?: View.VISIBLE
+                // she only vanishes for the picture when she (or her bubble) is actually on the board; otherwise she stays put and you can still move her
+                if (inTheWay(sprite)) sprite?.visibility = View.INVISIBLE
+                if (inTheWay(bubble)) bubble?.visibility = View.INVISIBLE
+                boardOverlay?.visibility = View.INVISIBLE; a.cursorVisible(false); hid.countDown() }
             hid.await(400, java.util.concurrent.TimeUnit.MILLISECONDS)
             try { Thread.sleep(130) } catch (e: InterruptedException) { }
-            try { return a.shotPixels()?.let { PilotShot(it.px, it.w, it.h, it.k) } }
+            try {
+                // Android refuses a screenshot that comes too soon after the last one: wait a moment and ask again
+                for (i in 0 until 4) {
+                    a.shotPixels()?.let { return PilotShot(it.px, it.w, it.h, it.k) }
+                    try { Thread.sleep(350) } catch (e: InterruptedException) { return null }
+                }
+                return null
+            }
             finally { h.post { sprite?.visibility = sv; bubble?.visibility = bv; boardOverlay?.visibility = ov; a.cursorVisible(true) } }
         }
+        override fun boardSeen(x: Int, y: Int, size: Int) { boardRect = android.graphics.Rect(x, y, x + size, y + size) }
         override fun tap(x: Int, y: Int) { CapriAccess.instance?.tap(x, y) }
         override fun point(x: Int, y: Int) { CapriAccess.instance?.point(x, y) }
         override fun drag(x1: Int, y1: Int, x2: Int, y2: Int) { CapriAccess.instance?.swipe(x1, y1, x2, y2, 240) }
@@ -1819,6 +1839,7 @@ class CapriService : Service(), Actions.Hooks {
         if (acc == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
         if (pilot?.running == true) { say(L.t("I'm already on a game. Say stop chess first.", "أنا على لعبة. قل وقفي الشطرنج أول."), false); return }
         val go = {
+            boardRect = null
             val screen = chessScreenImpl
             val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar, pieceStore, prefs.getB("chessFrame", false))
             val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null; chessChip(null) },

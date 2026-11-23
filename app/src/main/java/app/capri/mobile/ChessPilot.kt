@@ -14,6 +14,7 @@ interface PilotScreen {
     fun arrow(x1: Int, y1: Int, x2: Int, y2: Int, cell: Int) { }     // a drawn arrow over the board (coach mode)
     fun frame(x: Int, y: Int, size: Int) { }                           // an outline around the board
     fun clearArrow() { }
+    fun boardSeen(x: Int, y: Int, size: Int) { }                       // where the board is on the real screen, so her body can stay put when it is not in the way
     fun clearOverlay() { }
 }
 
@@ -100,6 +101,7 @@ class ChessPilot(
         val millis = when (settings.level) { 1 -> 500L; 2 -> 1200L; 3 -> 2500L; else -> 5000L }
         val keys = ArrayList<Long>()
         var unstable = 0
+        var freshFails = 0
         var waitSaid = 0L
         tell(if (auto) t("Okay, I'm on the board. Hands off, I'll play.", "تمام، أنا على الرقعة. لا تلمس، أنا ألعب.") else t("I'm watching your game. I'll point at the best move.", "أراقب لعبتك. بأشر لك على أفضل نقلة."))
 
@@ -126,6 +128,7 @@ class ChessPilot(
                 lostFrames = 0
                 prevObs = null
                 st(t("\u2705 Board found", "\u2705 لقيت الرقعة"))
+                geo?.let { scr.boardSeen((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
                 if (settings.frame) geo?.let { scr.frame((it.x * sh.k).toInt(), (it.y * sh.k).toInt(), (it.cell * 8 * sh.k).toInt()) }
             }
             val obs = BoardVision.read(sh.px, sh.w, sh.h, geo)
@@ -222,12 +225,18 @@ class ChessPilot(
                     val best = Engine.analyse(tr.pos, millis, 30, keys, true) ?: return
                     if (!running) return
                     // thinking took a while: look again, and only touch the screen if the board is exactly where and how it was
-                    val fresh = scr.shot()
+                    // (a phone allows only one screenshot every second or so, so a failed second look is retried, and never allowed to loop forever)
+                    var fresh = scr.shot()
+                    if (fresh == null) { nap(600); fresh = scr.shot() }
                     val g = geo
-                    if (fresh == null || !BoardVision.stillThere(fresh.px, fresh.w, fresh.h, g) ||
-                        ChessTracker.mismatches(tr.boardView(BoardVision.read(fresh.px, fresh.w, fresh.h, g)), ChessTracker.occupancy(tr.pos)) > 1) { prevObs = null; nap(400); continue }
+                    val same = fresh != null && BoardVision.stillThere(fresh.px, fresh.w, fresh.h, g) &&
+                        ChessTracker.mismatches(tr.boardView(BoardVision.read(fresh.px, fresh.w, fresh.h, g)), ChessTracker.occupancy(tr.pos)) <= 1
+                    if (!same && ++freshFails < 4) { st(t("\uD83D\uDC40 Checking the board again...", "\uD83D\uDC40 أتأكد من الرقعة مرة ثانية...")); prevObs = null; nap(400); continue }
+                    if (!same) log("acting on the first look (second look kept failing)")
+                    freshFails = 0
+                    val usedShot = fresh ?: sh
                     val (fx, fy) = tr.center(g, best.move.from); val (tx, ty) = tr.center(g, best.move.to)
-                    val k = fresh.k
+                    val k = usedShot.k
                     val x1 = (fx * k).toInt(); val y1 = (fy * k).toInt(); val x2 = (tx * k).toInt(); val y2 = (ty * k).toInt()
                     actedKey = key; actedAt = System.currentTimeMillis()
                     val san = San.of(tr.pos, best.move)
