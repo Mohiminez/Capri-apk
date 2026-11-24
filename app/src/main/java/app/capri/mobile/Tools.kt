@@ -110,15 +110,31 @@ object Tools {
         ctx.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse("geo:0,0?q=" + Uri.encode(place))).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
     }
 
+    // Only public hosts: never her own phone, the home router or anything on the local network, even after a redirect.
+    private fun publicHost(u: URL) {
+        val addrs = try { java.net.InetAddress.getAllByName(u.host) } catch (e: Exception) { throw Exception("unknown host") }
+        for (a in addrs) if (a.isLoopbackAddress || a.isSiteLocalAddress || a.isLinkLocalAddress || a.isAnyLocalAddress || a.isMulticastAddress) throw Exception("that address isn't public")
+        if (u.protocol != "http" && u.protocol != "https") throw Exception("not a web address")
+    }
+
     private fun getPage(url: String): String {
-        val c = URL(url).openConnection() as HttpURLConnection
-        c.connectTimeout = 10000; c.readTimeout = 12000; c.instanceFollowRedirects = true
-        c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36")
-        c.setRequestProperty("Accept-Language", "en,ar;q=0.8")
-        if (c.responseCode !in 200..299) throw Exception("HTTP ${c.responseCode}")
-        val type = c.contentType ?: ""
-        if (type.isNotEmpty() && !type.contains("html") && !type.contains("text")) throw Exception("not a text page")
-        return c.inputStream.use { it.readNBytes(600_000) }.toString(Charsets.UTF_8)
+        var cur = url
+        for (hop in 0..4) {
+            val u = URL(cur); publicHost(u)
+            val c = u.openConnection() as HttpURLConnection
+            c.connectTimeout = 10000; c.readTimeout = 12000; c.instanceFollowRedirects = false
+            c.setRequestProperty("User-Agent", "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124 Mobile Safari/537.36")
+            c.setRequestProperty("Accept-Language", "en,ar;q=0.8")
+            val code = c.responseCode
+            if (code in 300..399) { cur = URL(u, c.getHeaderField("Location") ?: throw Exception("bad redirect")).toString(); c.disconnect(); continue }
+            if (code !in 200..299) throw Exception("HTTP $code")
+            val type = c.contentType ?: ""
+            if (type.isNotEmpty() && !type.contains("html") && !type.contains("text")) throw Exception("not a text page")
+            val out = java.io.ByteArrayOutputStream(); val buf = ByteArray(16384)
+            c.inputStream.use { i -> while (out.size() < 600_000) { val n = i.read(buf); if (n < 0) break; out.write(buf, 0, n) } }
+            return out.toString("UTF-8")
+        }
+        throw Exception("too many redirects")
     }
 
     /** Page HTML reduced to the words a person would read. */

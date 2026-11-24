@@ -234,7 +234,7 @@ class CapriService : Service(), Actions.Hooks {
 
     override fun onDestroy() {
         running = false
-        stopShake(); husk?.stop(); clipSaved = null
+        stopShake(); husk?.stop(); clipSaved = null; chairShowing?.stop()
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
@@ -475,6 +475,7 @@ class CapriService : Service(), Actions.Hooks {
         s.dancing = (dancing || danceAsked) && !talking && !busy && !asleep && mode == 0 && !scripted
         val pick = when {
             dragging || mode == 1 -> "dangle"
+            mode == 2 -> "walk"
             hangPending || hanging -> {
                 if (hangPending) { hangPending = false; hanging = true; h.postDelayed(hangDrop, Random.nextLong(7_000, 15_000)) }
                 "dangle"
@@ -642,7 +643,7 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
     private fun dizzy() {
-        if (hidden || scripted || !screenOn || busy || pilot?.running == true) return
+        if (hidden || scripted || perchLeaving || gameRunning() || !screenOn || busy || pilot?.running == true) return
         val now = System.currentTimeMillis()
         if (now - lastShakeSay < 12_000) return
         lastShakeSay = now
@@ -691,7 +692,7 @@ class CapriService : Service(), Actions.Hooks {
             if (!exploring) return
             val acc = CapriAccess.instance
             if (!screenOn || acc == null || System.currentTimeMillis() - exploreStart > 10 * 60_000L) { exploreAway(false); return }
-            if (!talking && !busy && !dragging && !panelShown && !agent.running) {
+            if (!talking && !busy && !dragging && !panelShown && !agent.running && !gameRunning()) {
                 acc.scroll(Random.nextInt(100) < 85)
                 if (Random.nextInt(100) < 25) { sprite?.hop(); if (!quiet) say(listOf(
                     L.t("Ooh, what's down here?", "اوه، شنو هنا؟"), L.t("Scrolling your page, choom.", "أتصفح لك الصفحة، يا چوم."),
@@ -936,7 +937,7 @@ class CapriService : Service(), Actions.Hooks {
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
-    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !hanging && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running && pilot?.running != true
+    private fun canRoam() = screenOn && !scripted && !perchLeaving && !gameRunning() && !dancing && !danceAsked && !alongOn && !hanging && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running && pilot?.running != true
 
     private val wanderTask = object : Runnable {
         override fun run() {
@@ -994,6 +995,7 @@ class CapriService : Service(), Actions.Hooks {
     private var stuckTalking = 0
     private var stuckBusy = 0
     private var stuckMode = 0
+    private var stuckLeave = 0
     private val unstickTask = object : Runnable {
         override fun run() {
             stuckScripted = if (scripted) stuckScripted + 1 else 0
@@ -1004,6 +1006,8 @@ class CapriService : Service(), Actions.Hooks {
             if (stuckTalking > 30) { talking = false; stuckTalking = 0; Diag.log("unstick", "talking") }
             if (stuckBusy > 75) { busy = false; stuckBusy = 0; Diag.log("unstick", "busy") }
             if (stuckMode > 10) { mode = 0; stuckMode = 0; Diag.log("unstick", "mode") }
+            stuckLeave = if (perchLeaving) stuckLeave + 1 else 0
+            if (stuckLeave > 5) { perchLeaving = false; stuckLeave = 0; if (lying) lying = false; else perched = false; settle(); Diag.log("unstick", "perchLeaving") }
             val sp = sprite
             if (sp != null && !hidden && !scripted && !dragging && mode == 0 && sp.stalled) settle()
             h.postDelayed(this, 2000)
@@ -1627,7 +1631,7 @@ class CapriService : Service(), Actions.Hooks {
                     "read" -> Tools.readPage(arg)
                     else -> Tools.nowPlaying(this)
                 }
-            } catch (e: Exception) {
+            } catch (e: Throwable) {
                 "The lookup failed: " + (e.message ?: "no connection")
             }
             h.post {
@@ -2125,7 +2129,7 @@ class CapriService : Service(), Actions.Hooks {
             prefs.putB("gameAutoOk", true)
             say(L.t("Heads up: I look, think for a few seconds, then touch. I'm fine at puzzles, runners and turn-based games, and slow at fast shooters. I never buy anything.", "تنبيه: أطالع وأفكر كم ثانية وبعدين ألمس. زينة بالألغاز والجري والألعاب بالدور، وبطيئة بالتصويب السريع. وما أشتري شي أبداً."), false)
         }
-        val gp = GamePilot(this, brain, prefs, name, { t -> say(t, false) }, { chessChip(it) }, { msg ->
+        val gp = GamePilot(this, brain, prefs, name, { t -> h.post { say(t, false) } }, { t -> h.post { chessChip(t) } }, { msg ->
             h.post { gamePilot = null; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
         })
         gamePilot = gp

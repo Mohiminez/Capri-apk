@@ -5,8 +5,11 @@ import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class PerchClipsTest {
+    // Gradle runs unit tests from the module folder (app/), a plain shell run from the project root
+    private fun assets() = File("src/main/assets").takeIf { it.exists() } ?: File("app/src/main/assets")
+
     @Test fun desktopPerchSetShipsWithSheets() {
-        val dir = File("app/src/main/assets")
+        val dir = assets()
         val m = File(dir, "sprites.json").readText()
         for (n in listOf("perch_arrive", "perch_leave", "perch_glitch", "perch_blink_glitch", "perch_music", "idle_blink_glitch",
             "laydown", "laydown_blink", "laydown_glitch", "laydown_leave")) {
@@ -20,7 +23,7 @@ class PerchClipsTest {
         assertTrue(Modes.find("normal")!!.set["perchBias"] == 0)
     }
     @Test fun chairEmoteShips() {
-        val d = File("app/src/main/assets/emotes/chair")
+        val d = File(assets(), "emotes/chair")
         val n = File(d, "info.txt").readText().trim().split(" ")[0].toInt()
         assertTrue(n > 100)
         for (i in 0 until n) assertTrue("frame $i", File(d, "%03d.webp".format(i)).length() > 0)
@@ -72,7 +75,7 @@ class PerchClipsTest {
         assertTrue(Tools.readable("<html><script>x()</script><p>Hello &amp; <b>world</b></p></html>") == "Hello & world")
     }
     @Test fun gameSkillPacksAndDocs() {
-        val dir = File("app/src/main/assets/gameskills")
+        val dir = File(assets(), "gameskills")
         val skills = dir.listFiles()!!.mapNotNull { GameSkills.parse(it.readText()) }
         assertTrue(skills.size >= 6)
         assertTrue(GameSkills.forGame(skills, "Subway Surfers").contains("swipe"))

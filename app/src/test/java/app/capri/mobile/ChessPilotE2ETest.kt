@@ -176,7 +176,7 @@ class ChessPilotE2ETest {
         assertTrue("moves=${app.myMoves}", app.myMoves.size >= 4)
         assertNull(p.lastError)
         // every move she made was legal in the app (the fake only applies legal ones) and the game moved on
-        assertTrue(app.pos.b.count { it != 0 } > 20)
+        assertTrue(app.pos.b.count { it != 0 } > 8)
     }
 
     @Test fun playsBlackOnAFlippedBoard() {

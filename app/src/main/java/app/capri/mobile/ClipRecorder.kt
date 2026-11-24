@@ -56,9 +56,10 @@ class ClipService : Service() {
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
         when (intent?.action) {
-            ACT_SAVE -> { save(); return START_NOT_STICKY }
-            ACT_STOP -> { shutdown(); return START_NOT_STICKY }
+            ACT_SAVE -> { if (recording) save() else stopSelf(); return START_NOT_STICKY }
+            ACT_STOP -> { if (recording) shutdown() else stopSelf(); return START_NOT_STICKY }
         }
+        if (recording && intent?.hasExtra("code") == true) return START_NOT_STICKY
         val code = intent?.getIntExtra("code", Activity.RESULT_CANCELED) ?: Activity.RESULT_CANCELED
         val data: Intent? = if (Build.VERSION.SDK_INT >= 33) intent?.getParcelableExtra("data", Intent::class.java) else @Suppress("DEPRECATION") intent?.getParcelableExtra("data")
         if (code != Activity.RESULT_OK || data == null) { stopSelf(); return START_NOT_STICKY }
@@ -111,8 +112,7 @@ class ClipService : Service() {
 
     private fun finishPiece() {
         val f = current ?: return
-        pieces.add(f); current = null
-        while (pieces.size > KEEP) pieces.removeAt(0).delete()
+        synchronized(pieces) { pieces.add(f); current = null; while (pieces.size > KEEP) pieces.removeAt(0).delete() }
     }
 
     private val rotate = object : Runnable {
@@ -136,7 +136,7 @@ class ClipService : Service() {
                 Thread.sleep(900)
                 val list = synchronized(pieces) { pieces.toList() }.filter { it.exists() && it.length() > 2000 }
                 if (list.isNotEmpty()) {
-                    val out = File(cacheDir, "clip_out.mp4")
+                    val out = File(cacheDir, "clip_out_" + System.nanoTime() + ".mp4")
                     join(list, out)
                     name = "capri-clip-" + java.text.SimpleDateFormat("yyyyMMdd-HHmmss", java.util.Locale.US).format(java.util.Date()) + ".mp4"
                     val v = ContentValues().apply {
@@ -175,7 +175,7 @@ class ClipService : Service() {
                     ex.advance()
                 }
                 offset += lastUs + 33_000
-            } finally { ex.release() }
+            } catch (e: Throwable) { } finally { ex.release() }
         }
         if (track >= 0) muxer.stop()
         muxer.release()

@@ -81,9 +81,10 @@ class GamePilot(
             val line = j.optString("say")
             val state = j.optString("state")
             j.optString("learn").takeIf { it.isNotBlank() }?.let { n ->
-                val cur = notes(); if (!cur.contains(n.take(30))) prefs.putS("gamenotes_" + slug(), (cur + " " + n).takeLast(700).trim())
+                val cur = notes(); if (!cur.contains(n.take(30))) if (!risky.containsMatchIn(n) && n.length < 200) prefs.putS("gamenotes_" + slug(), (cur + " " + n).takeLast(700).trim())
             }
             if (line.isNotBlank()) { status("[GAME] " + line.take(70)); if (turns % 4 == 1) say(line) }
+            if (CapriAccess.foreground.contains("vending") || CapriAccess.foreground.contains("billing")) { ai.back(); return L.t("A payment screen opened, so I stopped.", "انفتحت شاشة دفع، فوقفت.") }
             when (act) {
                 "done" -> return line.ifBlank { L.t("Done!", "تمّت!") }
                 "fail" -> return line.ifBlank { L.t("I can't go on.", "ما أقدر أكمل.") }

@@ -63,7 +63,7 @@ object Actions {
                 continue
             }
             if (hooks != null && ((level == ASK_ALWAYS && name in controls) ||
-                    (level == GUARDED && (name in asksFirst || ((name == "hands" || name == "point") && !userInitiated))))) {
+                    (level == GUARDED && (name in asksFirst || (!userInitiated && name in setOf("playgame", "browse", "open", "remember")) || ((name == "hands" || name == "point") && !userInitiated))))) {
                 hooks.confirm(describe(name, arg)) { execute(ctx, prefs, name, arg, hooks) }
                 continue
             }
