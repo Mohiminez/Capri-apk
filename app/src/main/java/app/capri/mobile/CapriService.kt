@@ -47,6 +47,7 @@ import android.widget.TextView
 import android.widget.Toast
 import kotlin.math.abs
 import kotlin.math.hypot
+import kotlin.math.sqrt
 import kotlin.random.Random
 
 class CapriService : Service(), Actions.Hooks {
@@ -61,6 +62,9 @@ class CapriService : Service(), Actions.Hooks {
         const val ACT_TEST = "app.capri.mobile.TEST"
         const val ACT_MODE = "app.capri.mobile.MODE"
         const val ACT_CHESS = "app.capri.mobile.CHESS"
+        const val ACT_HUSK = "app.capri.mobile.HUSK"
+        @Volatile var clipSaved: ((String?) -> Unit)? = null
+        @Volatile var clipStopped: (() -> Unit)? = null
         const val ACT_TALK = "app.capri.mobile.TALK"
         const val ACT_TYPE = "app.capri.mobile.TYPE"
         @Volatile var notifier: ((String) -> Unit)? = null
@@ -198,6 +202,7 @@ class CapriService : Service(), Actions.Hooks {
         if (intent?.action == ACT_QUIET) toggleQuiet()
         if (intent?.action == ACT_TEST) h.postDelayed({ hands("test") }, 900)
         if (intent?.action == ACT_CHESS) { val cm = intent.getStringExtra("mode") ?: "auto"; h.postDelayed({ if (hidden) toggleHidden(); if (cm == "check") chessCheck() else chessPilot(cm) }, if (cm == "check") 7000L else 700L) }
+        if (intent?.action == ACT_HUSK) applyHusk()
         if (intent?.action == ACT_MODE) Modes.find(intent.getStringExtra("mode") ?: "")?.let { m -> applyModeLive(m); say(L.t(m.sayEn, m.sayAr), false) }
         if (intent?.action == ACT_PLUGIN && prefs.getB("pluginApi", false)) {
             val pt = (intent.getStringExtra("text") ?: "").take(500)
@@ -229,10 +234,11 @@ class CapriService : Service(), Actions.Hooks {
 
     override fun onDestroy() {
         running = false
+        stopShake(); husk?.stop(); clipSaved = null
         h.removeCallbacksAndMessages(null)
         Choreographer.getInstance().removeFrameCallback(frame)
         ReminderReceiver.speaker = null
-        pilot?.stop()
+        pilot?.stop(); gamePilot?.stop()
         ChessBridge.speaker = null
         ChessBridge.explainer = null
         try { miniPlayer.hide() } catch (e: Throwable) { }
@@ -379,10 +385,14 @@ class CapriService : Service(), Actions.Hooks {
         notifier = { line -> h.post { if (!quiet && !hidden && !busy) say(line) } }
         val filter = IntentFilter().apply {
             addAction(Intent.ACTION_SCREEN_OFF); addAction(Intent.ACTION_SCREEN_ON)
-            addAction(Intent.ACTION_BATTERY_LOW); addAction(Intent.ACTION_POWER_CONNECTED)
+            addAction(Intent.ACTION_BATTERY_LOW); addAction(Intent.ACTION_POWER_CONNECTED); addAction(Intent.ACTION_POWER_DISCONNECTED)
+            addAction(Intent.ACTION_HEADSET_PLUG); addAction(android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY)
         }
         if (Build.VERSION.SDK_INT >= 33) registerReceiver(events, filter, Context.RECEIVER_NOT_EXPORTED) else registerReceiver(events, filter)
 
+        if (!prefs.getB("lowPower", false)) startShake()
+        applyHusk()
+        clipSaved = { name -> if (name != null) { sprite?.emote("star"); say(L.t("Clip saved in Movies/Capri.", "انحفظ المقطع بـ Movies/Capri."), false) } else say(L.t("I couldn't save the clip.", "ما قدرت أحفظ المقطع."), false) }
         tts = TextToSpeech(this) { status ->
             if (status == TextToSpeech.SUCCESS) {
                 val loc = L.locale(prefs)
@@ -456,42 +466,113 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun settle() {
         val s = sprite ?: return
-        if (scripted) return
+        if (scripted || perchLeaving) return
+        if (lying && (talking || busy || dragging || mode != 0 || asleep)) lying = false
         s.glow = talking && !s.lowPower
         s.sparkles = (Charm.level(prefs.getI("charm", 0)) - 1).coerceIn(0, 4)
         s.glitchFx = busy || mode == 1
         s.talk = talking
         s.dancing = (dancing || danceAsked) && !talking && !busy && !asleep && mode == 0 && !scripted
-        clip(when {
+        val pick = when {
             dragging || mode == 1 -> "dangle"
+            hangPending || hanging -> {
+                if (hangPending) { hangPending = false; hanging = true; h.postDelayed(hangDrop, Random.nextLong(7_000, 15_000)) }
+                "dangle"
+            }
             mode == 2 -> "walk"
             busy -> "glitch"
             asleep -> if (grounded()) "laydown_sleep" else "sleep"
             perchPending || perched -> {
-                if (perchPending) { perchPending = false; perched = true; h.postDelayed(perchEnd, Random.nextLong(25_000, 70_000)) }
-                "perch"
+                var intro = false
+                if (perchPending) {
+                    perchPending = false; perched = true; intro = has("perch_arrive")
+                    h.postDelayed(perchEnd, Random.nextLong(45_000, 110_000))
+                    if (has("laydown")) h.postDelayed(lieTask, Random.nextLong(12_000, 30_000))
+                }
+                when {
+                    intro -> "perch_arrive"
+                    lying -> "laydown"
+                    (dancing || danceAsked) && has("perch_music") -> "perch_music"
+                    else -> "perch"
+                }
             }
             else -> "idle"
-        })
+        }
+        val once = pick == "perch_arrive"
+        clip(pick, !once) { if (once) settle() }
     }
+
+    private fun has(name: String) = SpriteBank.info(this, name) != null
 
     // She sometimes walks to the bottom of the screen and sits there, legs hanging over the edge, like her perch on the desktop.
     private var perched = false
     private var perchPending = false
-    private val perchEnd = Runnable { if (perched) { perched = false; settle() } }
-
-    private fun endPerch() {
-        perched = false; perchPending = false
-        h.removeCallbacks(perchEnd)
+    private var lying = false
+    private var perchLeaving = false
+    private val perchEnd: Runnable = Runnable {
+        if (perched && !perchLeaving) {
+            val out = when { lying && has("laydown_leave") -> "laydown_leave"; has("perch_leave") -> "perch_leave"; else -> "" }
+            if (out.isEmpty()) { perched = false; lying = false; settle() }
+            else {
+                perchLeaving = true
+                clip(out, false) {
+                    perchLeaving = false
+                    if (lying) { lying = false; h.post(perchEnd) } else { perched = false; settle() }
+                }
+            }
+        }
     }
 
-    private fun perchSomewhere() {
+    // After sitting a while she lies back along the ledge, like on the desktop, then sits up again.
+    private val lieTask = Runnable {
+        if (perched && !lying && !perchLeaving && !talking && !busy && !dragging && mode == 0 && !asleep) {
+            lying = true
+            settle()
+            h.postDelayed(standTask, Random.nextLong(20_000, 40_000))
+        }
+    }
+    private val standTask = Runnable {
+        if (lying && !perchLeaving) {
+            perchLeaving = true
+            clip(if (has("laydown_leave")) "laydown_leave" else "perch", false) { perchLeaving = false; lying = false; settle() }
+        }
+    }
+
+    private fun endPerch() {
+        perched = false; perchPending = false; lying = false; perchLeaving = false
+        h.removeCallbacks(perchEnd); h.removeCallbacks(lieTask); h.removeCallbacks(standTask)
+    }
+
+    // She can also sit on the top edge of something in the app you have open: a toolbar, a card, a picture, a list row.
+    private var windowPerched = false
+    private var windowPerchPkg = ""
+    private fun dropFromWindow() {
+        if (!windowPerched) return
+        windowPerched = false
+        endPerch(); vx = 0f; vy = 0f; startMotion(1)
+    }
+
+    private fun perchSomewhere(onWindow: Boolean = false) {
         val sp = sprite ?: return
         if (sp.sizeFor("perch").second <= 0 || SpriteBank.info(this, "perch") == null) return
         fx = spriteLp.x.toFloat()
         fy = spriteLp.y.toFloat()
-        walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
-        walkTy = (floorY() + dp(18)).coerceAtMost((screenH - spriteLp.height).toFloat())
+        var tx = Random.nextFloat() * (maxX() - minX()) + minX()
+        var ty = (floorY() + dp(18)).coerceAtMost((screenH - spriteLp.height).toFloat())
+        windowPerched = false
+        val acc = CapriAccess.instance
+        if (acc != null && CapriAccess.foreground.isNotEmpty() && prefs.getB("windowPerch", true) && !gameRunning() && (onWindow || Random.nextInt(100) < 55)) {
+            val ledges = try { acc.ledges() } catch (e: Throwable) { emptyList() }
+            if (ledges.isNotEmpty()) {
+                val r = ledges.random()
+                tx = (r.left + Random.nextFloat() * r.width() - spriteLp.width / 2f).coerceIn(minX(), maxX())
+                // her seat sits about 60% down the perch frame, so her legs hang over the edge
+                ty = (r.top - spriteLp.height * 0.6f).coerceIn(dp(24).toFloat(), floorY())
+                windowPerched = true; windowPerchPkg = CapriAccess.foreground
+            }
+        }
+        walkTx = tx
+        walkTy = ty
         walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
         sprite?.flip = walkTx < fx
         perchPending = true
@@ -501,8 +582,15 @@ class CapriService : Service(), Actions.Hooks {
     private val blinkTask = object : Runnable {
         override fun run() {
             val s = sprite
-            if (s != null && !asleep && !busy && !dragging && !hidden && !scripted && mode == 0 && (s.current == "idle" || s.current == "perch")) {
-                clip(if (s.current == "perch") "perch_blink" else "idle_blink", false) { settle() }
+            if (s != null && !asleep && !busy && !dragging && !hidden && !scripted && !perchLeaving && mode == 0 && (s.current == "idle" || s.current == "perch" || s.current == "laydown")) {
+                val glitchy = Random.nextInt(100) < 22
+                val rare = Random.nextInt(100) < 8
+                val pick = when (s.current) {
+                    "perch" -> if (rare && has("perch_glitch")) "perch_glitch" else if (glitchy && has("perch_blink_glitch")) "perch_blink_glitch" else "perch_blink"
+                    "laydown" -> if (rare && has("laydown_glitch")) "laydown_glitch" else "laydown_blink"
+                    else -> if (glitchy && has("idle_blink_glitch")) "idle_blink_glitch" else "idle_blink"
+                }
+                if (has(pick)) clip(pick, false) { settle() }
             }
             h.postDelayed(this, Random.nextLong(3500, 8000))
         }
@@ -535,6 +623,99 @@ class CapriService : Service(), Actions.Hooks {
             }
             miniPlayer.tick(am.isMusicActive && prefs.getB("miniPlayer", true) && !hidden && !quiet && screenOn)
             h.postDelayed(this, 3000)
+        }
+    }
+
+    // ---- shake: she gets dizzy, like the desktop's dizzy glitch when she's thrown around ----
+    private var shakeHits = 0
+    private var shakeFirst = 0L
+    private var lastShakeSay = 0L
+    private val shakeListener = object : android.hardware.SensorEventListener {
+        override fun onAccuracyChanged(sensor: android.hardware.Sensor?, accuracy: Int) {}
+        override fun onSensorChanged(e: android.hardware.SensorEvent) {
+            val g = sqrt(e.values[0] * e.values[0] + e.values[1] * e.values[1] + e.values[2] * e.values[2]) / 9.81f
+            if (g < 2.6f) return
+            val now = System.currentTimeMillis()
+            if (now - shakeFirst > 1800) { shakeFirst = now; shakeHits = 0 }
+            shakeHits++
+            if (shakeHits == 6) h.post { dizzy() }
+        }
+    }
+    private fun dizzy() {
+        if (hidden || scripted || !screenOn || busy || pilot?.running == true) return
+        val now = System.currentTimeMillis()
+        if (now - lastShakeSay < 12_000) return
+        lastShakeSay = now
+        sprite?.emote("glitch"); sprite?.squash(1.3f)
+        clip("glitch", false) { settle() }
+        if (!quiet) say(listOf(L.t("Whoa, whoa, I'm getting dizzy!", "واااو واو، دوخت!"), L.t("Stop shaking me, choom!", "لا تهزني يا چوم!"),
+            L.t("My pixels are rattling.", "البكسلات تتخرعت."), L.t("Rude. I'm glitching now.", "قليل أدب. صرت أعلق.")).random(), false)
+    }
+    private fun startShake() {
+        try {
+            val sm = getSystemService(SENSOR_SERVICE) as android.hardware.SensorManager
+            sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(shakeListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
+        } catch (e: Throwable) { }
+    }
+    private fun stopShake() { try { (getSystemService(SENSOR_SERVICE) as android.hardware.SensorManager).unregisterListener(shakeListener) } catch (e: Throwable) { } }
+
+    // She climbs to the top edge and dangles by her hands for a while, then drops, like the desktop's hang.
+    private var hanging = false
+    private var hangPending = false
+    private fun hangSomewhere() {
+        if (!has("dangle")) return
+        fx = spriteLp.x.toFloat(); fy = spriteLp.y.toFloat()
+        walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
+        walkTy = dp(6).toFloat()
+        walkTotal = maxOf(1f, hypot(walkTx - fx, walkTy - fy))
+        sprite?.flip = walkTx < fx
+        hangPending = true
+        startMotion(2)
+    }
+    private val hangDrop = Runnable {
+        if (hanging && !dragging) { hanging = false; vx = 0f; vy = 0f; startMotion(1) } else hanging = false
+    }
+
+    // A few seconds of dancing, for party moods.
+    private fun danceBurst() {
+        if (danceAsked) return
+        danceAsked = true; settle()
+        h.postDelayed({ if (danceAsked) { danceAsked = false; settle() } }, Random.nextLong(7_000, 14_000))
+    }
+
+    // "Explores while you're away", like the desktop: she scrolls the page you left open and comments, until the screen turns off,
+    // you tap her, or ten minutes pass.
+    private var exploring = false
+    private val exploreTask = object : Runnable {
+        override fun run() {
+            if (!exploring) return
+            val acc = CapriAccess.instance
+            if (!screenOn || acc == null || System.currentTimeMillis() - exploreStart > 10 * 60_000L) { exploreAway(false); return }
+            if (!talking && !busy && !dragging && !panelShown && !agent.running) {
+                acc.scroll(Random.nextInt(100) < 85)
+                if (Random.nextInt(100) < 25) { sprite?.hop(); if (!quiet) say(listOf(
+                    L.t("Ooh, what's down here?", "اوه، شنو هنا؟"), L.t("Scrolling your page, choom.", "أتصفح لك الصفحة، يا چوم."),
+                    L.t("Interesting...", "ممم مثير..."), L.t("I'm just looking around.", "بس أطالع حولي.")).random(), false) }
+            }
+            h.postDelayed(this, Random.nextLong(7_000, 14_000))
+        }
+    }
+    private var exploreStart = 0L
+    private fun exploreAway(on: Boolean) {
+        if (on == exploring) return
+        if (on) {
+            if (CapriAccess.instance == null) {
+                confirm(L.t("I need my accessibility access to look around. Tap Yes to open the setting.", "أحتاج صلاحية الوصول عشان أتجول. اضغط نعم لفتح الإعداد.")) {
+                    startActivity(Intent(Settings.ACTION_ACCESSIBILITY_SETTINGS).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                }
+                return
+            }
+            exploring = true; exploreStart = System.currentTimeMillis()
+            say(L.t("Okay, I'll look around while you're away. Tap me to stop.", "تمام، بتجول وانت بعيد. اضغط علي عشان أوقف."), false)
+            h.postDelayed(exploreTask, 6_000)
+        } else {
+            exploring = false; h.removeCallbacks(exploreTask)
+            say(L.t("Done exploring.", "خلصت تجوال."), false)
         }
     }
 
@@ -620,10 +801,17 @@ class CapriService : Service(), Actions.Hooks {
 
         private fun handle(i: Intent) {
             when (i.action) {
-                Intent.ACTION_SCREEN_OFF -> { screenOn = false; Voice.stop(); tts?.stop() }
-                Intent.ACTION_SCREEN_ON -> screenOn = true
+                Intent.ACTION_SCREEN_OFF -> { screenOn = false; Voice.stop(); tts?.stop(); stopShake() }
+                Intent.ACTION_SCREEN_ON -> { screenOn = true; if (!prefs.getB("lowPower", false)) startShake() }
                 Intent.ACTION_BATTERY_LOW -> if (prefs.getB("events", true) && idleOk())
                     say(L.t("You're nearly out of battery. Find a charger, gonk.", "البطارية على وشك تخلص. دوّر لك شاحن يا خوي."))
+                Intent.ACTION_POWER_DISCONNECTED -> if (prefs.getB("events", true) && idleOk() && Random.nextInt(100) < 25)
+                    say(L.t("Unplugged. Don't wander far.", "فصلت الشاحن. لا تبعد."), false)
+                Intent.ACTION_HEADSET_PLUG -> if (prefs.getB("events", true) && idleOk() && Random.nextInt(100) < 50) {
+                    if (i.getIntExtra("state", 0) == 1) { sprite?.emote("note"); say(L.t("Headphones in. Put on something good.", "السماعة انحطت. شغّل شي حلو."), false) }
+                    else say(L.t("Headphones out. Everyone can hear me now.", "طلعت السماعة. الكل يسمعني الحين."), false)
+                }
+                android.media.AudioManager.ACTION_AUDIO_BECOMING_NOISY -> sprite?.hop()
                 Intent.ACTION_POWER_CONNECTED -> if (prefs.getB("events", true) && idleOk() && Random.nextInt(100) < 40)
                     say(L.t("Charging. Good.", "الشحن اشتغل. زين."), false)
             }
@@ -679,6 +867,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun startMotion(m: Int) {
         if (m != 2 || !perchPending) endPerch()
+        if (m != 2 || !hangPending) { if (hanging && m != 1) { hanging = false; h.removeCallbacks(hangDrop) } }
         mode = m
         lastNs = 0L
         choreo.removeFrameCallback(frame)
@@ -747,14 +936,23 @@ class CapriService : Service(), Actions.Hooks {
         if (mode == 0) { prefs.putI("x", spriteLp.x); prefs.putI("y", spriteLp.y) }
     }
 
-    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running && pilot?.running != true
+    private fun canRoam() = screenOn && !scripted && !dancing && !danceAsked && !alongOn && !hanging && !asleep && !talking && !busy && !dragging && !hidden && !panelShown && mode == 0 && !agent.running && pilot?.running != true
 
     private val wanderTask = object : Runnable {
         override fun run() {
             val pace = prefs.getI("wanderPace", 1)
             if (pace > 0 && canRoam()) {
                 val r = Random.nextInt(100)
+                val ledge = prefs.getI("perchBias", 0) > 0 && has("perch")
+                val party = prefs.getI("wanderMix", 0) == 2
                 when {
+                    party && r < 18 -> danceBurst()
+                    party && r < 34 -> hangSomewhere()
+                    party && r < 52 -> teleport()
+                    party && r < 70 -> walkSomewhere()
+                    !ledge && !party && r in 90..93 -> hangSomewhere()
+                    ledge && r < 15 -> walkSomewhere()
+                    ledge && r < 85 -> perchSomewhere()
                     r < 52 -> walkSomewhere()
                     r < 62 -> teleport()
                     r < 76 -> perchSomewhere()
@@ -912,6 +1110,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     private fun tapped() {
+        if (exploring) { exploreAway(false); return }
         if (crowd.isNotEmpty()) {
             clearClones()
             say(L.t("Poof.", "بوف."), false)
@@ -1406,6 +1605,7 @@ class CapriService : Service(), Actions.Hooks {
 
     // Weather, Wikipedia and "what's playing": she fetches it, then tells you in her own words.
     override fun tool(name: String, arg: String) {
+        if ((name == "web" || name == "read" || name == "brief") && !prefs.getB("tool_web", true)) { say(L.t("Web lookups are off in my settings.", "البحث بالنت مطفي بالإعدادات."), false); return }
         busy = true
         settle()
         showBubble("...", 90_000L, false)
@@ -1414,6 +1614,17 @@ class CapriService : Service(), Actions.Hooks {
                 when (name) {
                     "weather" -> Tools.weather(arg)
                     "wiki" -> Tools.wiki(arg)
+                    "web" -> Tools.web(arg)
+                    "brief" -> {
+                        val sb = StringBuilder("Their day so far.\n")
+                        val city = prefs.getS("briefCity", "").trim()
+                        if (city.isNotEmpty()) sb.append("Weather: ").append(try { Tools.weather(city) } catch (e: Exception) { "unavailable" }).append("\n")
+                        val rem = Reminders.today(this)
+                        sb.append("Reminders today: ").append(if (rem.isEmpty()) "none" else rem.joinToString("; ")).append("\n")
+                        sb.append(try { Tools.web(if (L.ar) "أهم أخبار اليوم" else "top news today") } catch (e: Exception) { "News unavailable." }.take(1800))
+                        sb.toString()
+                    }
+                    "read" -> Tools.readPage(arg)
                     else -> Tools.nowPlaying(this)
                 }
             } catch (e: Exception) {
@@ -1424,6 +1635,11 @@ class CapriService : Service(), Actions.Hooks {
                 ask("(Result of your lookup \"$name $arg\": $result\nTell them the answer in your own words, one or two short lines, in their language.)", true)
             }
         }
+    }
+
+    // Her own browser: a page of her own she can open a site or a search in, read, and answer questions about.
+    override fun browse(target: String) {
+        startActivity(Intent(this, BrowserActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("target", target))
     }
 
     // In Guarded mode she asks first: a bubble you tap to allow.
@@ -1493,9 +1709,48 @@ class CapriService : Service(), Actions.Hooks {
             }
             "stop" -> { danceAsked = false; dancing = false; settle() }
             "heart" -> { sprite?.emote("heart"); Charm.add(prefs, 1) }
+            "chair" -> if (chairShowing == null) {
+                val c = ChairEmote(this); chairShowing = c
+                if (!c.play(wm, h) { chairShowing = null }) chairShowing = null else Charm.add(prefs, 1)
+            } else chairShowing?.stop()
             else -> sprite?.emote(name.lowercase().trim())
         }
     }
+
+    // ---- Claude Code link (the desktop's Husk mode): she reacts to what a coding agent is doing ----
+    private var husk: Husk? = null
+    private val huskLog = Any()
+    private var huskSaidAt = 0L
+    private var huskLastKey = ""
+    private fun huskToken(): String = prefs.getS("huskToken", "").ifBlank { java.util.UUID.randomUUID().toString().replace("-", "").take(14).also { prefs.putS("huskToken", it) } }
+
+    private fun applyHusk() {
+        husk?.stop(); husk = null
+        if (!prefs.getB("husk", false)) return
+        val hk = Husk(huskToken(), prefs.getI("huskPort", 8765), prefs.getB("huskLan", false)) { e -> h.post { huskReact(e) } }
+        if (hk.start()) husk = hk else say(L.t("I couldn't open the Claude Code link (port busy?).", "ما قدرت أفتح رابط كلود كود (المنفذ مشغول؟)."), false)
+    }
+
+    private fun huskReact(e: Husk.Event) {
+        ActionLog.add(prefs, "claude-code", Husk.describe(e, false).take(60))
+        if (hidden || quiet && e.kind != "Notification" && e.kind != "Stop") { return }
+        val now = System.currentTimeMillis()
+        val line = Husk.describe(e, L.ar)
+        when (e.kind) {
+            "Notification" -> { sprite?.emote("surprise"); sprite?.hop(); say(line, !quiet); return }
+            "Stop" -> { sprite?.emote("star"); sprite?.hop(); say(line, !quiet); if (danceAsked.not() && Random.nextInt(100) < 40) danceBurst(); return }
+            "UserPromptSubmit" -> { sprite?.emote("question"); say(line, false); return }
+        }
+        // tool uses come fast: she comments on one every ~12 s, and the chip-like glitch shows she's linked in between
+        val key = e.tool + e.detail
+        if (now - huskSaidAt > 12_000 && key != huskLastKey && talking.not() && busy.not()) {
+            huskSaidAt = now; huskLastKey = key
+            sprite?.emote("glitch")
+            say(line, false)
+        }
+    }
+
+    private var chairShowing: ChairEmote? = null
 
     private val arColors = mapOf("احمر" to "Red", "أحمر" to "Red", "وردي" to "Pink", "برتقالي" to "Orange", "اصفر" to "Yellow", "أصفر" to "Yellow",
         "اخضر" to "Green", "أخضر" to "Green", "سماوي" to "Cyan", "ازرق" to "Blue", "أزرق" to "Blue", "بنفسجي" to "Violet", "ابيض" to "White", "أبيض" to "White", "اسود" to "Black", "أسود" to "Black")
@@ -1514,6 +1769,20 @@ class CapriService : Service(), Actions.Hooks {
                 resizeSprite(n)
                 said = if (n == cur) L.t("That's as ${if (v == "bigger") "big" else "small"} as I go.", "هذا أقصى حجم أقدر عليه.") else L.t("Better?", "أحسن؟")
             }
+            "clip" -> {
+                when (v) {
+                    "save", "that" -> {
+                        val cs = ClipService.instance
+                        if (cs == null) { say(L.t("Clip recording is off. Turn on \"Clip my games\" first.", "تسجيل المقاطع مطفي. شغّل \"سجلي ألعابي\" أول."), false) }
+                        else { say(L.t("Saving that...", "أحفظها..."), false); cs.save() }
+                    }
+                    "off" -> ClipService.instance?.let { startService(Intent(this, ClipService::class.java).setAction(ClipService.ACT_STOP)) }
+                    else -> { startActivity(Intent(this, ClipActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)); say(L.t("Allow the screen recording once and I'll keep your last 30 seconds.", "اسمح بتسجيل الشاشة مرة وبحتفظ بآخر ٣٠ ثانية."), false) }
+                }
+                return
+            }
+            "huskstatus" -> { val hl = husk?.log; say(Husk.summary(if (hl == null) emptyList() else synchronized(hl) { hl.toList() }, L.ar), false); return }
+            "explore" -> { exploreAway(on || v == "toggle"); return }
             "wander" -> {
                 val cur = prefs.getI("wanderPace", 1)
                 val n = when (v) { "off", "0", "no", "false" -> 0; "more", "up" -> minOf(3, cur + 1); "less", "down" -> maxOf(0, cur - 1); else -> v.toIntOrNull()?.coerceIn(0, 3) ?: 1 }
@@ -1769,7 +2038,7 @@ class CapriService : Service(), Actions.Hooks {
         v.text = text + tail; v.setTextColor(Night.white); v.textSize = 13f; v.maxLines = 2
         v.setPadding((14 * d).toInt(), (8 * d).toInt(), (14 * d).toInt(), (8 * d).toInt())
         v.background = android.graphics.drawable.GradientDrawable().apply { cornerRadius = 3 * d; setColor(Color.argb(235, 9, 11, 15)); setStroke((2 * d).toInt(), Themes.accent(prefs)) }
-        v.setOnClickListener { pilot?.stop() }
+        v.setOnClickListener { pilot?.stop(); gamePilot?.stop() }
         val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT,
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT)
@@ -1846,8 +2115,27 @@ class CapriService : Service(), Actions.Hooks {
 
     private var pilot: ChessPilot? = null
 
+    // ---- she plays a game for you ----
+    private var gamePilot: GamePilot? = null
+    override fun playGame(name: String) {
+        if (CapriAccess.instance == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
+        if (gamePilot?.running == true) { say(L.t("I'm already playing. Tap my chip to stop me first.", "أنا ألعب الحين. اضغط الشريط عشان توقفني أول."), false); return }
+        if (pilot?.running == true) pilot?.stop()
+        if (!prefs.getB("gameAutoOk", false)) {
+            prefs.putB("gameAutoOk", true)
+            say(L.t("Heads up: I look, think for a few seconds, then touch. I'm fine at puzzles, runners and turn-based games, and slow at fast shooters. I never buy anything.", "تنبيه: أطالع وأفكر كم ثانية وبعدين ألمس. زينة بالألغاز والجري والألعاب بالدور، وبطيئة بالتصويب السريع. وما أشتري شي أبداً."), false)
+        }
+        val gp = GamePilot(this, brain, prefs, name, { t -> say(t, false) }, { chessChip(it) }, { msg ->
+            h.post { gamePilot = null; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
+        })
+        gamePilot = gp
+        sprite?.visibility = View.INVISIBLE
+        chessChip(L.t("[GAME] Starting $name", "[لعبة] أبدأ $name"))
+        gp.start(prefs.getI("gameMinutes", 20))
+    }
+
     override fun chessPilot(mode: String) {
-        if (mode == "stop") { pilot?.stop(); return }
+        if (mode == "stop") { pilot?.stop(); gamePilot?.stop(); return }
         if (mode == "scan" || mode == "learn") {
             if (CapriAccess.instance == null) { say(L.t("Turn on my accessibility access in the Capri app first.", "شغّل صلاحية الوصول من تطبيق كابري أول."), false); return }
             say(L.t("Let me look...", "خليني أشوف..."), false)
@@ -2115,7 +2403,10 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     // "Cheating on me with ChatGPT?"
+    private fun gameRunning() = gamePilot?.running == true
+
     private fun foregroundChanged(pkg: String) {
+        if (windowPerched && pkg != windowPerchPkg) dropFromWindow()
         if (pkg in aiApps && prefs.getB("jealous", true) && idleOk()) {
             val now = System.currentTimeMillis()
             if (now - lastJealous < 30 * 60_000L) return
@@ -2129,6 +2420,7 @@ class CapriService : Service(), Actions.Hooks {
 
     // Doomscroll guard: after the limit she tells you, then offers to take you home.
     private fun scrolled(pkg: String) {
+        if (windowPerched && !perchPending) dropFromWindow()
         if (alongOn && System.currentTimeMillis() - ownScrollAt > 2500L) userScrollAt = System.currentTimeMillis()
         val limit = prefs.getI("scrollLimit", 0)
         if (limit <= 0 || pkg !in feedApps || quiet || alongOn) return
@@ -2204,8 +2496,12 @@ class CapriService : Service(), Actions.Hooks {
             L.t("\u2764 Heart", "\u2764 قلب") to { emote("heart") },
             L.t("\u2726 Sparkle", "\u2726 نجوم") to { emote("star"); sprite?.hop() },
             L.t("Zzz", "نوم") to { emote("sleep") },
+            L.t("Chair", "كرسي") to { emote("chair") },
             L.t("Dance (stop with the same)", "ارقصي (وقّفيها بنفس الزر)") to { if (danceAsked) emote("stop") else emote("dance") },
             L.t("Scroll my videos for me", "تصفّحي فيديوهاتي") to { watchAlong(!alongOn) },
+            (if (ClipService.instance != null) L.t("Save a clip of the last 30 s", "احفظي آخر ٣٠ ثانية") else L.t("Clip my games", "سجلي ألعابي")) to { setting("clip", if (ClipService.instance != null) "save" else "on") },
+            L.t("Sit on this screen", "اجلسي على هالشاشة") to { perchSomewhere(true) },
+            (if (exploring) L.t("Stop exploring", "وقّفي التجوال") else L.t("Explore while I'm away", "تجولي وأنا بعيد")) to { exploreAway(!exploring) },
             L.t("\u26A1 Prank me", "\u26A1 مقلب") to { chaos() }
         ))
     }

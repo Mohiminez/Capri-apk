@@ -1,0 +1,7 @@
+---
+capri-skill: 1
+id: match3
+name: Match-3 puzzles
+games: Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast
+---
+Match-3 boards: swap two neighbouring pieces with a short swipe (about one cell wide, 150 ms) to line up three or more of the same kind. Prefer moves that make four or five in a line, special pieces, or clear the level's goal pieces (shown at the top). Look for a swap near the bottom first (the board then cascades by itself). Make exactly one swap per turn, then look again because the board animates for 1 to 2 seconds. When a level ends, tap the continue or next button. Never use boosters that cost real money and decline lives purchases.

@@ -31,6 +31,15 @@ object Reminders {
         return true
     }
 
+    /** Reminders that are due before midnight tonight, soonest first, as "HH:mm text". */
+    fun today(ctx: Context): List<String> {
+        val list = load(Prefs(ctx)); val now = System.currentTimeMillis()
+        val end = java.util.Calendar.getInstance().apply { set(java.util.Calendar.HOUR_OF_DAY, 23); set(java.util.Calendar.MINUTE, 59) }.timeInMillis
+        val out = ArrayList<Pair<Long, String>>()
+        for (i in 0 until list.length()) { val o = list.getJSONObject(i); val at = o.getLong("at"); if (at in now..end) out.add(at to SimpleDateFormat("HH:mm", Locale.US).format(java.util.Date(at)) + " " + o.getString("text")) }
+        return out.sortedBy { it.first }.map { it.second }
+    }
+
     fun count(ctx: Context): Int = load(Prefs(ctx)).length()
 
     private fun load(prefs: Prefs): JSONArray = try { JSONArray(prefs.getS("reminders", "[]")) } catch (e: Exception) { JSONArray() }

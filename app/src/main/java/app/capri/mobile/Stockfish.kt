@@ -33,8 +33,31 @@ object Stockfish {
         if (netSource != null) return
         val app = ctx.applicationContext
         netPath = java.io.File(java.io.File(app.filesDir, "sf").also { it.mkdirs() }, NET_NAME)
-        netSource = { app.assets.open(NET_NAME) }
+        // Not bundled (keeps the APK ~40 MB smaller): a copy in assets wins if someone builds with one, otherwise it is downloaded once.
+        netSource = {
+            try { app.assets.open(NET_NAME) } catch (e: java.io.FileNotFoundException) {
+                val c = java.net.URL(NET_URL).openConnection() as java.net.HttpURLConnection
+                c.connectTimeout = 15000; c.readTimeout = 30000; c.instanceFollowRedirects = true
+                c.inputStream
+            }
+        }
+        // fetch quietly in the background so the strong engine is ready by the first game; Stockfish 11 plays until then
+        if (netPath?.let { it.exists() && it.length() == NET_SIZE } != true && !hasAsset(app) && !fetching) {
+            fetching = true
+            Thread {
+                try {
+                    val f = netPath!!
+                    val tmp = java.io.File(f.path + ".part")
+                    netSource!!().use { i -> tmp.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
+                    if (tmp.length() == NET_SIZE) tmp.renameTo(f) else tmp.delete()
+                } catch (t: Throwable) { lastError = "net download: $t" } finally { fetching = false }
+            }.also { it.isDaemon = true }.start()
+        }
     }
+    @Volatile private var fetching = false
+    const val NET_URL = "https://github.com/official-stockfish/networks/raw/master/nn-5af11540bbfe.nnue"
+    private fun hasAsset(app: android.content.Context) = try { app.assets.open(NET_NAME).close(); true } catch (e: Exception) { false }
+
 
     private fun send(c: String) = if (version == 16) Stockfish16Native.send(c) else StockfishNative.send(c)
     private fun read(ms: Int): String? = if (version == 16) Stockfish16Native.read(ms) else StockfishNative.read(ms)
@@ -44,6 +67,7 @@ object Stockfish {
     private fun tryNew(): Boolean {
         try {
             val f = netPath ?: return false
+            if (fetching && !f.exists()) return false
             if (!f.exists() || f.length() != NET_SIZE) {
                 val src = netSource ?: return false
                 val tmp = java.io.File(f.path + ".part")

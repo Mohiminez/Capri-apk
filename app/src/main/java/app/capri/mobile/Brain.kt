@@ -36,8 +36,10 @@ object Persona {
         "Tags: [[open:App name]] opens an app, [[url:https://...]] opens a website, [[music:song and artist]] plays a song, " +
         "[[media:pause]] controls playing media (pause, play, next, previous), [[timer:seconds|label]] starts a timer, [[alarm:HH:MM|label]] sets an alarm (24-hour time), " +
         "[[remind:yyyy-MM-dd HH:mm|text]] sets a reminder at that local time (work the date out from today's date below), " +
+        "When one request has several steps (like \"open Spotify, search X and play it\"), put the tags in order in the same reply: [[open:Spotify]] then [[do:search for X in the app and play the first result]], and [[do:...]] can also open the app by itself. " +
         "[[look:question]] looks at their screen to answer it, " +
         "[[do:goal]] does a multi-step job on the phone by tapping, typing and scrolling for them, like finding something in an app or joining a Discord voice channel, " +
+        "[[web:query]] searches the web and reads the top page, use it BY YOURSELF whenever you are not sure of a fact, or it is recent news, a price, a score, a release, a person or anything that may have changed: never guess, look it up and then answer from the result, [[read:https://...]] reads one web page, [[browse:site or search]] opens YOUR OWN browser for them to look at, "+
         "[[weather:city]] and [[wiki:topic]] and [[playing:x]] look something up (the weather, a Wikipedia summary, the song playing now) and you then answer from the result, " +
         "[[flash:on]] or [[flash:off]] is the torch, [[volume:up]] [[volume:down]] or [[volume:60]] the music volume, [[nav:place]] opens directions, [[search:query]] a web search, " +
         "[[hands:type|text]] types text into the open text box, [[hands:openType|app|text]] opens an app and types text in it, [[hands:tap|label]] taps a button by its label, " +
@@ -101,6 +103,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             4 -> sb.append("\nTone: openly affectionate and a little flirty, still teasing, still you; keep it tasteful, never explicit, and drop it the moment the user seems uncomfortable.")
             3 -> sb.append("\nTone: wilder and cheekier than usual, with more chaotic energy, but never cruel and never crossing your safety rules.")
         }
+        if (prefs.getB("deep", false)) sb.append("\nDeep thinking is on: for anything with several steps, maths, code, planning or a decision, reason it through carefully first, check your work, then give the answer clearly. Stay short unless they ask for detail.")
         val nick = prefs.getS("nick", "")
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
         sb.append("\nHow well you know them: ").append(listOf("barely at all", "a little", "as friends", "closely", "like ride-or-die family")[Charm.level(prefs.getI("charm", 0))])

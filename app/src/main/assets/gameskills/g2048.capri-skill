@@ -1,0 +1,7 @@
+---
+capri-skill: 1
+id: g2048
+name: 2048 and number slides
+games: 2048, 2048 Puzzle, Threes, 1024
+---
+Swipe the whole board in one direction; tiles with the same number merge. Keep the biggest tile in a corner (for example bottom-left) and build a snake of descending numbers along the edge. Mostly alternate between two directions (down and left) and use the third (right) only when you must, never the fourth (up) if you can avoid it. One long swipe (about 300 px, 150 ms) per turn. Check the board after each swipe: if nothing moved, pick another direction.

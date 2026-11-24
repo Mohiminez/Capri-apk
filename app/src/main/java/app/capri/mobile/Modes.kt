@@ -15,26 +15,30 @@ object Modes {
     private val base: Map<String, Any> = mapOf(
         "quiet" to false, "gameMode" to false, "voice" to true, "wanderPace" to 1, "popMin" to 30, "sleepMin" to 3,
         "lowPower" to false, "chimes" to false, "dance" to true, "events" to true, "mischief" to false,
-        "careWater" to false, "careStretch" to false, "checkin" to false, "convo" to false, "intro" to true, "miniPlayer" to true
+        "perchBias" to 0, "wanderMix" to 0, "careWater" to false, "careStretch" to false, "checkin" to false, "convo" to false, "intro" to true, "miniPlayer" to true
     )
 
     private fun mode(id: String, icon: String, en: String, ar: String, dEn: String, dAr: String, sayEn: String, sayAr: String, vararg over: Pair<String, Any>) =
         Mode(id, icon, en, ar, dEn, dAr, base + over, sayEn, sayAr)
 
     val all: List<Mode> = listOf(
-        mode("normal", "☺", "NORMAL", "عادي", "She talks, wanders, reacts", "تتكلم وتتمشى وتتفاعل", "Back to normal!", "رجعت عادي!"),
-        mode("quiet", "🔇", "QUIET", "هادئ", "She only types, never speaks aloud, stays calm", "تكتب بس وما تتكلم بصوت، وتبقى هادية",
+        mode("normal", "◉", "NORMAL", "عادي", "She talks, wanders, reacts", "تتكلم وتتمشى وتتفاعل", "Back to normal!", "رجعت عادي!"),
+        mode("quiet", "◌", "QUIET", "هادئ", "She only types, never speaks aloud, stays calm", "تكتب بس وما تتكلم بصوت، وتبقى هادية",
             "Quiet mode. I'll only type.", "وضع هادئ. بكتب لك بس.", "quiet" to true, "wanderPace" to 0, "popMin" to 90, "chimes" to false, "mischief" to false, "events" to false, "dance" to false),
-        mode("game", "🎮", "GAME", "لعب", "Stays out of the way, light on the phone, comments while a game is open", "تبعد عن طريقك وخفيفة على الجوال وتعلّق وقت اللعب",
+        mode("game", "▶", "GAME", "لعب", "Stays out of the way, light on the phone, comments while a game is open", "تبعد عن طريقك وخفيفة على الجوال وتعلّق وقت اللعب",
             "Game mode. I'll stay out of your way.", "وضع اللعب. بخلي عنك الطريق.", "gameMode" to true, "quiet" to true, "wanderPace" to 0, "popMin" to 120, "lowPower" to true, "miniPlayer" to false, "intro" to false, "events" to false, "dance" to false),
-        mode("study", "📚", "STUDY", "دراسة", "Silent and still, reminds you to drink water and stretch", "ساكتة وثابتة، وتذكّرك بالموية والحركة",
+        mode("study", "≣", "STUDY", "دراسة", "Silent and still, reminds you to drink water and stretch", "ساكتة وثابتة، وتذكّرك بالموية والحركة",
             "Study mode. Focus, I'll remind you to drink and stretch.", "وضع الدراسة. ركّز، وبذكّرك بالموية والحركة.", "quiet" to true, "wanderPace" to 0, "popMin" to 120, "careWater" to true, "careStretch" to true, "events" to false, "dance" to false, "sleepMin" to 2),
-        mode("battery", "🔋", "BATTERY SAVER", "توفير بطارية", "Fewer frames, no glow or floating, rare pop-ins", "إطارات أقل وبدون هالة وطفو، وتطل نادراً",
+        mode("battery", "▮", "BATTERY SAVER", "توفير بطارية", "Fewer frames, no glow or floating, rare pop-ins", "إطارات أقل وبدون هالة وطفو، وتطل نادراً",
             "Battery saver. I'll go easy on the phone.", "توفير بطارية. بخفف على الجوال.", "lowPower" to true, "wanderPace" to 0, "popMin" to 120, "intro" to false, "dance" to false, "chimes" to false, "checkin" to false, "sleepMin" to 1),
-        mode("companion", "♥", "COMPANION", "رفيقة", "Hands-free chat: wake word and conversation mode, checks on you, wanders around", "محادثة بدون يدين: كلمة النداء ووضع المحادثة، وتطمّن عليك وتتمشى",
+        mode("companion", "♡", "COMPANION", "رفيقة", "Hands-free chat: wake word and conversation mode, checks on you, wanders around", "محادثة بدون يدين: كلمة النداء ووضع المحادثة، وتطمّن عليك وتتمشى",
             "Companion mode. Just talk to me.", "وضع الرفيقة. بس حچي وياي.", "convo" to true, "wakeWord" to true, "wanderPace" to 2, "popMin" to 15, "careWater" to true, "checkin" to true),
-        mode("party", "🎉", "PARTY", "حفلة", "Max energy: wanders a lot, pops in often, mischief and blips", "أقصى طاقة: تتمشى هواي وتطل كثير وتشاغب",
-            "Party time!", "وقت الحفلة!", "wanderPace" to 3, "popMin" to 10, "mischief" to true, "chimes" to true, "dance" to true, "sleepMin" to 0)
+        mode("party", "✦", "PARTY", "حفلة", "Max energy: wanders a lot, pops in often, mischief and blips", "أقصى طاقة: تتمشى هواي وتطل كثير وتشاغب",
+            "Party time!", "وقت الحفلة!", "wanderPace" to 3, "popMin" to 10, "mischief" to true, "chimes" to true, "dance" to true, "sleepMin" to 0, "wanderMix" to 2),
+        mode("chill", "~", "LEDGE", "جلسة", "She sits on the bottom edge, lies back, naps and sways to your music", "تجلس على حافة الشاشة وتستلقي وتنام وتتمايل مع موسيقاك",
+            "Ledge mode. I'll sit this one out.", "وضع الجلسة. بجلس وأريّح.", "perchBias" to 1, "wanderPace" to 1, "popMin" to 60, "sleepMin" to 6, "dance" to true),
+        mode("night", "☾", "NIGHT", "ليل", "Dim and quiet: she sits on the ledge, naps early, no chimes, no pop-ins", "هادية وخفيفة: تجلس على الحافة وتنام بدري وبدون أصوات وإطلالات",
+            "Night mode. Sleep soon, choom.", "وضع الليل. نام بدري يا چوم.", "quiet" to true, "perchBias" to 1, "wanderPace" to 1, "popMin" to 120, "sleepMin" to 1, "chimes" to false, "intro" to false, "dance" to false, "events" to false, "lowPower" to true)
     )
 
     fun find(id: String): Mode? = all.firstOrNull { it.id == id.lowercase().trim() }
@@ -60,7 +64,8 @@ object Modes {
         "normal" to listOf("normal", "default", "عادي", "طبيعي"), "quiet" to listOf("quiet", "silent", "هادئ", "هادي", "صامت"),
         "game" to listOf("game", "gaming", "لعب", "العاب", "قيم"), "study" to listOf("study", "focus", "دراسه", "دراسة", "مذاكره", "مذاكرة", "تركيز"),
         "battery" to listOf("battery", "battery saver", "power saver", "بطاريه", "بطارية", "توفير"), "companion" to listOf("companion", "رفيقه", "رفيقة", "صديقه", "صديقة"),
-        "party" to listOf("party", "حفله", "حفلة", "بارتي")
+        "party" to listOf("party", "حفله", "حفلة", "بارتي"),
+        "chill" to listOf("ledge", "chill", "perch", "جلسه", "جلسة", "حافه", "حافة", "استرخاء"), "night" to listOf("night", "bedtime", "ليل", "الليل", "نوم")
     )
 
     fun fromPhrase(raw: String): String? {

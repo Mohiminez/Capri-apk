@@ -20,15 +20,7 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      # The Stockfish 16 neural network (40 MB) is not kept in the repository: fetch it from the official networks repo and check its size.
-      - name: Fetch Stockfish network
-        run: |
-          mkdir -p app/src/main/assets
-          f=app/src/main/assets/nn-5af11540bbfe.nnue
-          if [ ! -f "$f" ] || [ "$(stat -c%s "$f")" != "40119326" ]; then
-            curl -fL --retry 3 -o "$f" https://github.com/official-stockfish/networks/raw/master/nn-5af11540bbfe.nnue
-          fi
-          test "$(stat -c%s "$f")" = "40119326"
+      # The Stockfish 16 network (40 MB) is no longer bundled: the app downloads it once on first run (Stockfish 11 plays until then).
 
       - uses: actions/setup-java@v4
         with:

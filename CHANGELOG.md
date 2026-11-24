@@ -2,7 +2,29 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
-## Newest
+## Newest: the desktop's perch, for real
+
+- She now moves like the PC version: walks to the bottom edge and **arrives** onto it, sits with her legs hanging, blinks (sometimes with a glitch), now and then glitches, **lies back along the ledge and naps**, sits up, and **leaves** with the proper leave clip. Music makes her sway on the ledge (perch_music).
+- **Smaller APK (~40 MB less):** the Stockfish 16 network is no longer bundled; it downloads once in the background (Stockfish 11 plays until it is there).
+- **Explore while I'm away:** menu item or "I'm away": she scrolls the open page and comments, stops when you tap her, the screen turns off or after 10 minutes.
+- **Game skill packs** (`.capri-skill`, the desktop's format): six built in (runners, match-3, 2048, tower defense, idle/clicker, action/shooters) and you can import more in HER LIBRARY. She reads the ones that fit when she plays.
+- **Library takes more:** `.docx` and `.html` files besides text.
+- **Daily briefing:** "ملخص اليوم" / "briefing": weather for your city (set in Settings), today's reminders, and the top news, told in her words.
+- **Deep thinking** toggle: she reasons harder on maths, code and decisions.
+- **She researches by herself:** when she isn't sure (news, prices, scores, anything that may have changed) she searches the web, reads the results and the top page, and answers from them. "ابحثلي عن ..." / "search for ..." does it directly. Switch off in Settings.
+- **Her own browser** (tile "HER BROWSER", or "open the browser", "go to example.com"): sites and searches, plus SUM UP / ASK CAPRI so she reads the page for you.
+- **Chained jobs:** "open Spotify and search for X and play it" / "افتح يوتيوب وابحث عن ... وشغل اول نتيجة" run as one job.
+- **She plays games for you:** "العبلي فورت نايت" / "play fortnite for me" opens the game and plays it: screenshot, decide, real multi-finger touches (joystick + fire button at once), repeat. She remembers each game's controls, never taps anything that looks like buying, stops when you tap her chip. Needs a brain that can see (Gemini etc.); good at puzzles, runners, idle and turn-based games, slow at twitch shooters.
+- **She sits on other apps:** on the top edges of toolbars, cards, pictures and list rows in the app you have open (accessibility), and falls off when you scroll or switch app. Menu: "Sit on this screen".
+- **Claude Code link (Husk mode):** Claude Code (in Termux on the phone, or on a PC on your Wi-Fi) reports its hooks to a tiny local server; she reacts to prompts, tools, notifications and when it finishes, and answers "what is Claude doing?". One-line setup is copied from Settings; `tools/capri-husk.sh`. She only watches.
+- **Game clips:** keeps your last ~30 s of screen in small pieces; "clip that" / "سجلي المقطع" joins them into Movies/Capri. Asks Android's recording permission once.
+- **Her chair emote** from the desktop (Qewiw's drawings): menu "Chair" or say "chair"/"كرسي"; tap it to close. 151 small WebP frames (~1.8 MB, `tools/make_chair.py`).
+- **Shake her** and she gets dizzy and glitches. **Headphones** in/out, **unplugging the charger** and the first charge get a reaction.
+- **Hanging:** she climbs to the top edge, dangles by her hands, then drops with real gravity. **PARTY** mode now mixes dance bursts, hanging, teleports and walks; new **NIGHT** mode (ledge, quiet, early naps).
+- New mode **LEDGE**: she mostly sits and lies on the edge. Mode icons are plain glyphs now, no emoji.
+- New sheets (from capri-desktop, `tools/add_pc_clips.py`): perch_arrive, perch_leave, perch_glitch, perch_blink_glitch, perch_music, idle_blink_glitch, laydown, laydown_blink, laydown_glitch, laydown_leave.
+
+## Before that
 - **More brains:** 11 new providers, added at the end of the list so saved settings keep working: Zhipu GLM, GitHub Models, SiliconFlow (free tiers), Perplexity, Moonshot Kimi, Qwen, Cohere, DeepInfra, Hyperbolic, plus Ollama and LM Studio under OWN SERVER (DeepSeek, Mistral, OpenAI, Claude, Grok, Together, Fireworks, SambaNova, Hugging Face, Gemini, Groq, NVIDIA, OpenRouter, Cerebras were already there: 27 in all).
 - **Room camera:** the CAMERA button in her room shows your real room behind her, like the Room in the official Android app (no ARCore plane tracking). Asks for the camera permission only when you press it.
 - **Angular look:** panels, inputs and chips use the desktop's sharp-cornered style instead of pills.

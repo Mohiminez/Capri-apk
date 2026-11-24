@@ -726,6 +726,7 @@ class MainActivity : Activity() {
                 else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
             },
             Triple("\u267B", t("FIX ACCESSIBILITY", "إصلاح صلاحية الوصول")) { fixAccess() },
+            Triple("\u25CE", t("HER BROWSER", "متصفحها")) { startActivity(Intent(this, BrowserActivity::class.java)) },
             Triple("\uD83D\uDD27", t("CHESS CHECK", "فحص الشطرنج")) {
                 if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else {
@@ -1343,6 +1344,24 @@ class MainActivity : Activity() {
         slider(life, t("How often she pops in (minutes)", "كل كم دقيقة تطلّ عليك"), "popMin", 10, 120, 30)
         slider(life, t("Doomscroll guard: nag me after (minutes, 0 = off, needs hands)", "حارس التصفّح: نبّهني بعد (دقائق، ٠ = مطفي، يحتاج اليدين)"), "scrollLimit", 0, 60, 0)
         toggle(life, t("She gets jealous when I open another AI app", "تغار لما أفتح تطبيق ذكاء اصطناعي ثاني"), "jealous", true)
+        toggle(life, t("She sits on edges of the app I have open (toolbars, cards, pictures)", "تجلس على حواف التطبيق المفتوح (الشريط والبطاقات والصور)"), "windowPerch", true)
+        slider(life, t("Minutes she plays a game before asking if you want more", "كم دقيقة تلعب قبل ما تسألك تكمل"), "gameMinutes", 5, 60, 20)
+        val clips = section(t("GAME CLIPS", "مقاطع الألعاب"))
+        btn(clips, t("START CLIP RECORDING (asks Android once)", "ابدأ تسجيل المقاطع (يسأل أندرويد مرة)")) { startActivity(Intent(this, ClipActivity::class.java)) }
+        toggle(clips, t("Only keep footage while a game is open", "احتفظ باللقطات بس لما تكون لعبة مفتوحة"), "clipGamesOnly", true)
+        val link = section(t("CLAUDE CODE LINK", "رابط كلود كود"))
+        toggle(link, t("Let Capri watch Claude Code work (she only watches, never approves)", "خلي كابري تراقب كلود كود وهو يشتغل (تراقب بس وما توافق على شي)"), "husk", false) {
+            if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_HUSK))
+        }
+        btn(link, t("COPY THE ONE-LINE SETUP FOR CLAUDE CODE", "انسخ أمر التفعيل لكلود كود")) {
+            val tok = prefs.getS("huskToken", "").ifBlank { java.util.UUID.randomUUID().toString().replace("-", "").take(14).also { prefs.putS("huskToken", it) } }
+            val cmd = "curl -fsSL https://raw.githubusercontent.com/Mohiminez/Capri-apk/main/tools/capri-husk.sh | sh -s -- $tok 127.0.0.1 ${prefs.getI("huskPort", 8765)}"
+            (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("cmd", cmd))
+            toast(t("Copied. Paste it in Termux (where Claude Code runs).", "انسخ. الصقه بـ Termux (مكان تشغيل كلود كود)."))
+        }
+        toggle(link, t("Accept it from my PC on the same Wi-Fi too (uses the token)", "اقبله من الكمبيوتر على نفس الواي فاي بعد (بالرمز)"), "huskLan", false) {
+            if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_HUSK))
+        }
         toggle(life, t("Hologram: she can't be touched, taps go through (restart her)", "هولوغرام: ما تنلمس والضغطات تمرّ من خلالها (أعد تشغيلها)"), "hologram", false)
         slider(life, t("How much she wanders (0 = stays put)", "قد إيش تتمشى (٠ = تثبت مكانها)"), "wanderPace", 0, 3, 1)
         toggle(life, t("She checks in on me now and then (uses your key)", "تطمّن علي من وقت لوقت (تستهلك مفتاحك)"), "checkin", false)
@@ -1396,6 +1415,9 @@ class MainActivity : Activity() {
         toggle(tools, t("Music, media and volume", "الموسيقى والميديا والصوت"), "tool_media", true)
         toggle(tools, t("Timers, alarms and reminders", "المؤقتات والمنبهات والتذكيرات"), "tool_alerts", true)
         toggle(tools, t("Torch, maps, search and clipboard", "الكشاف والخرائط والبحث والحافظة"), "tool_device", true)
+        toggle(tools, t("She searches the web by herself when she's not sure (reads results and the top page)", "تبحث بالنت لحالها لما ما تكون متأكدة (تقرأ النتائج وأول صفحة)"), "tool_web", true)
+        toggle(tools, t("Deep thinking: she reasons harder on maths, code and decisions (slower, uses more of your key)", "تفكير عميق: تفكر أكثر بالحسابات والكود والقرارات (أبطأ وتستهلك مفتاحك أكثر)"), "deep", false)
+        edit(tools, t("City for her daily briefing (say \"briefing\")", "مدينة ملخص اليوم (قل \"ملخص اليوم\")"), prefs.getS("briefCity", "")) { prefs.putS("briefCity", it) }
         toggle(tools, t("Weather, Wikipedia and what's playing", "الطقس وويكيبيديا والأغنية الحالية"), "tool_lookup", true)
         btn(tools, t("TEST HER HANDS", "اختبار اليدين"), true) {
             if (CapriAccess.instance == null) toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول."))
@@ -1440,8 +1462,10 @@ class MainActivity : Activity() {
         val kb = section(t("HER LIBRARY", "مكتبتها"), false)
         note(kb, t("Add text or notes files (.txt, .md). When you ask something, the best matching passages are used to answer. Stored only on this phone.", "أضف ملفات نصية أو ملاحظات (.txt و .md). لما تسألها، تستخدم أقرب المقاطع للجواب. تنحفظ على هذا الجوال بس."))
         for (d in Knowledge.docs(this)) btn(kb, "\u2715  $d") { Knowledge.remove(this, d); showTab(tab) }
+        for (sk in GameSkills.imported(this)) btn(kb, "\u2715  " + t("Game skill: ", "مهارة لعبة: ") + sk.name) { GameSkills.remove(this, sk.id); showTab(tab) }
+        note(kb, t("Also accepted: .docx and .html pages, and game skill packs (.capri-skill from the desktop version) that she uses when she plays a game. ${GameSkills.bundled(this).size} come built in.", "ينقبل بعد: ملفات .docx وصفحات .html، وحزم مهارات الألعاب (.capri-skill من نسخة سطح المكتب) تستخدمها لما تلعب. ${GameSkills.bundled(this).size} جاهزة بالتطبيق."))
         btn(kb, t("ADD A FILE", "أضف ملف")) {
-            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("text/*"), 8)
+            startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 8)
         }
         toggle(kb, t("Let other apps (Tasker, MacroDroid) make her talk or answer, through her plugin API", "اسمح لتطبيقات ثانية (Tasker وMacroDroid) تخليها تتكلم أو ترد، عن طريق واجهة الإضافات"), "pluginApi", false)
         note(kb, t("Home screen: long-press your wallpaper > Widgets > Capri.", "الشاشة الرئيسية: اضغط مطولاً على الخلفية > ويدجت > Capri."))
@@ -1602,7 +1626,8 @@ class MainActivity : Activity() {
             val u = data?.data ?: return
             try {
                 val name = contentResolver.query(u, arrayOf(android.provider.OpenableColumns.DISPLAY_NAME), null, null, null)?.use { if (it.moveToFirst()) it.getString(0) else null } ?: "notes"
-                val txt = contentResolver.openInputStream(u)?.bufferedReader()?.use { it.readText().take(200_000) } ?: return
+                val txt = DocText.read(this, u, name) ?: return
+                GameSkills.add(this, txt)?.let { sn -> toast(t("Game skill added: $sn", "انضافت مهارة لعبة: $sn")); showTab(tab); return }
                 val n = Knowledge.add(this, name.take(40), txt)
                 toast(if (n > 0) t("Added: $name", "انضاف: $name") else t("That file has no text, or I couldn't lock it.", "الملف ما فيه نص، أو ما قدرت أقفله."))
                 showTab(tab)

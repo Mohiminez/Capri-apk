@@ -156,6 +156,27 @@ class CapriAccess : AccessibilityService() {
         return sb.toString()
     }
 
+    /** Flat edges in the app on screen she can sit on: the top edge of wide, visible boxes (toolbars, cards, images, list rows). Main thread safe. */
+    fun ledges(): List<android.graphics.Rect> {
+        val root = try { rootInActiveWindow } catch (e: Throwable) { null } ?: return emptyList()
+        if (root.packageName?.toString() == packageName) return emptyList()
+        val dm = resources.displayMetrics
+        val out = ArrayList<android.graphics.Rect>()
+        var seen = 0
+        fun go(n: AccessibilityNodeInfo?, depth: Int) {
+            if (n == null || depth > 30 || seen > 500) return
+            seen++
+            if (n.isVisibleToUser) {
+                val r = android.graphics.Rect(); n.getBoundsInScreen(r)
+                if (r.width() >= dm.widthPixels * 0.3f && r.height() >= 24 * dm.density && r.top > 90 * dm.density && r.top < dm.heightPixels - 220 * dm.density &&
+                    out.none { Math.abs(it.top - r.top) < 14 * dm.density && it.left < r.right && r.left < it.right }) out.add(r)
+            }
+            for (i in 0 until n.childCount) go(n.getChild(i), depth + 1)
+        }
+        go(root, 0)
+        return out
+    }
+
     private fun walk(n: AccessibilityNodeInfo?, out: MutableList<ScreenNode>, depth: Int) {
         if (n == null || out.size >= 150 || depth > 40) return
         if (n.isVisibleToUser) {
@@ -309,6 +330,28 @@ class CapriAccess : AccessibilityService() {
     fun swipe(x1: Int, y1: Int, x2: Int, y2: Int, ms: Long = 350): Boolean {
         val p = Path().apply { moveTo(x1.toFloat(), y1.toFloat()); lineTo(x2.toFloat(), y2.toFloat()) }
         return dispatchGesture(GestureDescription.Builder().addStroke(GestureDescription.StrokeDescription(p, 0, ms)).build(), null, null)
+    }
+
+    /** One finger of a multi-touch move: a press (x1==x2, y1==y2) or a drag, starting [start] ms into the batch and lasting [dur] ms. */
+    class Finger(val x1: Int, val y1: Int, val x2: Int, val y2: Int, val start: Long, val dur: Long)
+
+    /** Several fingers at once (for example a joystick thumb and a fire button), sent as one gesture; waits until it has played. */
+    fun fingers(list: List<Finger>): Boolean {
+        if (list.isEmpty()) return false
+        return try {
+            val b = GestureDescription.Builder()
+            for (f in list.take(6)) {
+                val p = Path().apply { moveTo(f.x1.toFloat(), f.y1.toFloat()); if (f.x1 != f.x2 || f.y1 != f.y2) lineTo(f.x2.toFloat(), f.y2.toFloat()) else lineTo(f.x1 + 0.5f, f.y1.toFloat()) }
+                b.addStroke(GestureDescription.StrokeDescription(p, f.start.coerceAtLeast(0), f.dur.coerceIn(30, 4000)))
+            }
+            val latch = CountDownLatch(1)
+            val sent = dispatchGesture(b.build(), object : GestureResultCallback() {
+                override fun onCompleted(g: GestureDescription?) { latch.countDown() }
+                override fun onCancelled(g: GestureDescription?) { latch.countDown() }
+            }, null)
+            if (sent) latch.await(6, TimeUnit.SECONDS)
+            sent
+        } catch (e: Throwable) { false }
     }
 
     // scroll_down reveals content further down the page (the finger moves up).

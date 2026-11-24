@@ -27,6 +27,8 @@ object Actions {
         fun clones(count: Int)
         fun chess()
         fun chessScreen() {}
+        fun playGame(name: String) {}
+        fun browse(target: String) {}
         fun chessPilot(mode: String) {}
         fun screen(name: String, arg: String = "") {}
         fun mode(id: String) {}
@@ -39,11 +41,11 @@ object Actions {
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "wiki", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
+    private val readOnly = setOf("weather", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
-    private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos", "watch", "point")
+    private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos", "watch", "point", "playgame", "browse")
 
     fun strip(s: String): String = tag.replace(s, "").replace(Regex("\\s+"), " ").trim()
 
@@ -85,11 +87,11 @@ object Actions {
     // Tools you can switch off one by one (Hands tab), like the desktop's explicit permissions.
     private val groups = mapOf(
         "open" to "apps", "url" to "apps", "look" to "screen",
-        "hands" to "control", "do" to "control", "watch" to "screen", "point" to "screen", "scrollforme" to "control", "dictate" to "control",
+        "hands" to "control", "do" to "control", "playgame" to "control", "watch" to "screen", "point" to "screen", "scrollforme" to "control", "dictate" to "control",
         "music" to "media", "media" to "media", "volume" to "media",
         "timer" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
         "flash" to "device", "nav" to "device", "search" to "device", "copy" to "device",
-        "weather" to "lookup", "wiki" to "lookup", "playing" to "lookup")
+        "weather" to "lookup", "wiki" to "lookup", "web" to "lookup", "read" to "lookup", "brief" to "lookup", "browse" to "apps", "playing" to "lookup")
 
     // Returns extra text to add to her reply when something went wrong.
     private fun execute(ctx: Context, prefs: Prefs, name: String, arg: String, hooks: Hooks?): String {
@@ -124,7 +126,8 @@ object Actions {
                 "remember" -> prefs.addNote(arg)
                 "do" -> hooks?.startJob(arg)
                 "look" -> hooks?.look(arg)
-                "weather", "wiki", "playing" -> hooks?.tool(name, arg)
+                "weather", "wiki", "web", "read", "brief", "playing" -> hooks?.tool(name, arg)
+                "browse" -> hooks?.browse(arg)
                 "flash" -> Tools.flashlight(ctx, !arg.lowercase().startsWith("off"))
                 "volume" -> Tools.volume(ctx, arg)
                 "nav" -> Tools.navigate(ctx, arg)
@@ -141,6 +144,7 @@ object Actions {
                 "point" -> hooks?.point(arg)
                 "guide", "security", "room" -> hooks?.screen(name, arg.trim())
                 "mode" -> hooks?.mode(arg.trim())
+                "playgame" -> hooks?.playGame(arg.trim())
                 "chess" -> when (arg.trim()) { "screen" -> hooks?.chessScreen(); "auto", "coach", "stop", "scan", "learn" -> hooks?.chessPilot(arg.trim()); else -> hooks?.chess() }
                 "clones" -> hooks?.clones(arg.trim().toIntOrNull() ?: if (arg.trim().lowercase() in setOf("off", "clear", "stop")) 0 else 4)
             }
@@ -252,6 +256,25 @@ object QuickAsks {
 
     private fun clean(s: String) = s.trim().replace("]", ")").replace("|", "/")
 
+    private val knownGames = "fortnite|pubg|minecraft|roblox|genshin(?: impact)?|free ?fire|clash royale|clash of clans|brawl stars|among us|subway surfers|temple run|candy crush|call of duty|cod mobile|mobile legends|8 ball pool|ludo(?: king)?|geometry dash|flappy bird|2048|stumble guys|hay day|cookie run|honkai|wuthering waves|asphalt|hill climb racing|plants vs zombies|zombie|tower defense|فورت ?نايت|ببجي|ماين ?كرافت|روبلوكس|فري ?فاير|كلاش|براول|امونج|أمونج|سب ?واي|كاندي|كول اوف ديوتي|لودو|ليدو"
+
+    /** "العبلي فورت نايت", "العب لي ببجي", "play fortnite for me", "play the game subway surfers": opens that game and plays it. Chess has its own route. */
+    internal fun gameAsk(raw: String): String? {
+        val t = raw.lowercase().trim().replace(Regex("[^a-z0-9 ؀-ۿ]"), " ").replace(Regex("\\s+"), " ").replace('أ', 'ا').replace('إ', 'ا')
+        if (Regex("شطرنج|chess").containsMatchIn(t)) return null
+        Regex("^(?:play|launch and play|start playing|open and play) (?:the game |game )?(.+?)(?: for me| game)?$").find(t)?.let { m ->
+            val g = m.groupValues[1].trim()
+            if (Regex("^(?:this|my|the|that|a|it|some)\\b.*").matches(g) && !Regex("^(?:$knownGames)$").matches(g)) return null
+            val forMe = t.endsWith("for me") || t.contains("the game") || t.endsWith(" game") || t.startsWith("launch and play") || t.startsWith("open and play")
+            if (g.isNotEmpty() && (forMe || Regex("^(?:$knownGames)$").matches(g))) return g
+        }
+        Regex("^(?:ال?عب(?:ي)?(?: ?لي| لي| عني| بدالي| مكاني)?|شغل(?:ي)?(?: ?لي)? و?ال?عب(?:ي)?) (?:لعبه |لعبة )?(.+?)(?: عني| بدالي| مكاني| لي)?$").find(t)?.let { m ->
+            val g = m.groupValues[1].trim()
+            if (g.isNotEmpty() && g !in setOf("عني", "لي", "مكاني", "بدالي", "بمكاني", "محلي") && !g.startsWith("شطرنج") && !g.startsWith("موسيق") && !g.startsWith("اغنيه") && !g.startsWith("اغنية")) return g
+        }
+        return null
+    }
+
     /** "العب عني شطرنج", "العب شطرنج عني", "كملي لي اللعبة", "play the chess game for me": short and loose, so the word order never decides. */
     internal fun chessAuto(raw: String): String? {
         var t = raw.lowercase().replace(Regex("[\\u064B-\\u0652\\u0640]"), "")
@@ -285,6 +308,17 @@ object QuickAsks {
         var t = raw.lowercase().replace("\u2019", "'").replace("'", " ").replace(Regex("[^a-z0-9 \u0600-\u06FF]"), " ").replace(Regex("\\s+"), " ").trim()
         t = t.replace(Regex("^(hey |hi |ok |okay )?(capri )?(please |can you |could you )*"), "").replace(Regex(" please$"), "").trim()
         if (t.isEmpty()) return null
+        if (Regex("^(?:my )?(?:daily )?(?:briefing|brief me|brief|what(?:s| is) my day(?: like)?|catch me up|ملخص (?:اليوم|يومي)|شنو (?:عندي|اخبار) اليوم|وش (?:عندي|اخبار) اليوم|لخصي يومي)$").matches(t)) return L.t("Let me put your day together. [[brief:today]]", "خلني أجمع لك يومك. [[brief:today]]")
+        Regex("^(?:open|launch|start|افتح(?:ي)?(?: لي)?|افتحلي|شغل(?:ي)?(?: لي)?) (.+?) (?:and |then |و|ثم )(?:search(?: for)?|look up|ابحث(?:ي)?(?: لي)?(?: عن)?|ابحثلي(?: عن)?|دور(?:ي)?(?: لي)?(?: على)?) (.+)$").find(t)?.let { m ->
+            val app = m.groupValues[1].trim(); var q = m.groupValues[2].trim()
+            var then = ""
+            Regex("^(.+?) (?:and |then |و|ثم )(play|open|watch|شغل(?:ي)?(?: لي)?|افتح(?:ي)?|شوف(?:ي)?)(?: it| اول نتيجه| اول نتيجة| the first result| first result)?$").find(q)?.let { q2 -> q = q2.groupValues[1].trim(); then = q2.groupValues[2] }
+            val goal = "Open the app \"$app\", search for \"$q\" in it" + (if (then.isNotEmpty()) ", then " + (if (Regex("play|شغل").containsMatchIn(then)) "play" else "open") + " the first result" else "") + "."
+            return L.t("On it. [[do:$goal]]", "أبشر. [[do:$goal]]")
+        }
+        if (Regex("^(?:open|launch|افتح(?:ي)?|شغل(?:ي)?) (?:your |the |ال)?(?:browser|متصفح(?:ك)?|المتصفح)$").matches(t)) return L.t("Opening my browser. [[browse:https://duckduckgo.com]]", "أفتح متصفحي. [[browse:https://duckduckgo.com]]")
+        Regex("^(?:open (?:the )?(?:site|website|page)|go to|visit|افتح(?:ي)?(?: لي)? (?:موقع|الموقع|صفحه|صفحة)) (\\S+)$").find(raw.trim().lowercase().replace(Regex("^(hey |ok |please )+"), ""))?.let { m -> return L.t("Opening it. [[browse:${m.groupValues[1]}]]", "أفتحه. [[browse:${m.groupValues[1]}]]") }
+        Regex("^(?:search(?: the web)?(?: for)?|google|look up|ابحث(?:ي)?(?: لي)?(?: عن)?|ابحثلي(?: عن)?|دور(?:ي)?(?: لي)?(?: على)?|دورلي(?: على)?) (.{2,})$").find(t)?.let { m -> return L.t("Let me look that up. [[web:${m.groupValues[1]}]]", "خلني أبحث. [[web:${m.groupValues[1]}]]") }
         if (Regex("^(?:help|guide|help me|open (?:the )?(?:help|guide)|show (?:me )?(?:the )?(?:help|guide)|how does this app work|what can you do|how do i use (?:this|you|capri)|مساعده|مساعدة|الدليل|دليل|افتحي? (?:ال)?(?:مساعده|مساعدة|دليل|الدليل)|وريني الدليل|كيف استخدمك|شلون استخدمك|شنو تقدرين تسوين|شنو تسوين|وش تسوين)$").matches(t))
             return L.t("Here's my guide. [[guide:open]]", "هذا دليلي. [[guide:open]]")
         if (Regex("^(?:security(?: center| centre)?|open (?:the )?security(?: center| centre)?|is (?:this app|capri|my phone) safe|مركز الامان|مركز الأمان|الامان|الأمان|افتحي? (?:مركز )?(?:ال)?(?:امان|أمان)|هل التطبيق امن|هل التطبيق آمن)$").matches(t))
@@ -315,6 +349,11 @@ object QuickAsks {
         if (Regex("^(resume|play|unpause)$").matches(t)) return "Playing. [[media:play]]"
         if (Regex("^(next|skip|next song|skip song|skip this|next track)$").matches(t)) return "Skipping. [[media:next]]"
         if (Regex("^(previous|prev|previous song|last song|previous track)$").matches(t)) return "Going back. [[media:previous]]"
+        if (Regex("^(?:what(?:s| is) (?:claude|claude code|codex) doing|how(?:s| is) (?:claude|claude code) (?:doing|going)|claude status|وش يسوي كلود|شنو يسوي كلود|وش وصل كلود كود)$").matches(t)) return "[[set:huskstatus|1]]"
+        if (Regex("^(?:clip that|save that clip|save the clip|clip it|سجلي (?:المقطع|هاي|هذي|اللقطه|اللقطة)|احفظي (?:المقطع|اللقطه|اللقطة)|سجلي اللي صار)$").matches(t)) return L.t("On it. [[set:clip|save]]", "أبشر. [[set:clip|save]]")
+        if (Regex("^(?:clip my games|record my games|start clipping|سجلي ألعابي|سجلي العابي|سجلي لعبي)$").matches(t)) return L.t("Okay. [[set:clip|on]]", "تمام. [[set:clip|on]]")
+        if (Regex("^(?:stop clipping|stop recording my games|وقفي التسجيل|وقفي المقاطع)$").matches(t)) return L.t("Stopped. [[set:clip|off]]", "وقفت. [[set:clip|off]]")
+        gameAsk(t)?.let { g -> return L.t("On it. I'll open $g and play it, tap my chip to stop. [[playgame:$g]]", "أبشر. بفتح $g وألعبها، اضغط على الشريط عشان توقفني. [[playgame:$g]]") }
         Regex("^play (?!(?:a |some |this |my |the )?(?:game of )?chess\\b|(?:this|my|the) game\\b)(.+)$").find(t)?.let { return "On it. [[music:${it.groupValues[1]}]]" }
         Regex("^(?:set )?(?:a )?timer (?:for )?(\\d+) ?(seconds?|secs?|minutes?|mins?|hours?)$").find(t)?.let {
             val n = it.groupValues[1].toInt()
@@ -341,6 +380,9 @@ object QuickAsks {
         if (Regex("^(dance|dance for me|start dancing|ارقص|ارقصي|ارقص لي)$").matches(t)) return "[[emote:dance]]"
         if (Regex("^(stop dancing|enough dancing|وقف الرقص|بس رقص|بطلي رقص|وقفي الرقص)$").matches(t)) return "[[emote:stop]]"
         if (Regex("^(scroll for me|doomscroll for me|scroll tiktok for me|scroll shorts for me|react to my tiktoks|lets doomscroll|تصفح لي|تصفحي لي|سكرول لي|سكرولي)$").matches(t)) return "[[scrollforme:on]]"
+        if (Regex("^(explore while i'm away|explore while im away|look around while i'm away|i'm away|im away|تجولي وأنا بعيد|تجولي|أنا بعيد|انا بعيد)$").matches(t)) return "[[set:explore|on]]"
+        if (Regex("^(stop exploring|i'm back|im back|وقفي التجوال|رجعت)$").matches(t)) return "[[set:explore|off]]"
+        if (Regex("^(chair|sit on (?:your|the) chair|take a seat|show me your chair|كرسي|اجلسي على الكرسي|وريني الكرسي)$").matches(t)) return "[[emote:chair]]"
         if (Regex("^(stop scrolling|stop scrolling for me|stop the scrolling|وقف التصفح|وقفي التصفح|بس تصفح)$").matches(t)) return "[[scrollforme:off]]"
         chessAuto(t)?.let { return L.t("On it. Open your chess game and keep the board visible, I'll show you what I'm doing on top of the screen. [[chess:auto]]", "أبشر. افتح لعبة الشطرنج وخلي الرقعة ظاهرة، وبوريك فوق الشاشة وش قاعدة أسوي. [[chess:auto]]") }
         if (Regex("^(?:learn my (?:chess )?pieces|learn (?:the |my )?(?:chess )?(?:pieces|theme)|scan (?:the |my )?(?:chess )?board|look at (?:the |my )?chess board|can you read my chess board)$|^(?:تعلمي|تعلم) (?:قطعي|قطع الشطرنج|شكل القطع)$|^(?:شوفي|اقرأي|افحصي) (?:الرقعة|رقعة الشطرنج)$").matches(t))

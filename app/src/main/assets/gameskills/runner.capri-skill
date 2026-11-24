@@ -1,0 +1,7 @@
+---
+capri-skill: 1
+id: runner
+name: Endless runners
+games: Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash
+---
+How these games work on a phone: the character runs by itself. Swipe left or right to change lane, swipe up to jump, swipe down to roll or slide, tap for the main action in one-button games. Each turn: look at what is coming in the next second, choose ONE swipe or tap, and play only 1 or 2 touches per turn because the world keeps moving. Dodge obstacles first; coins and power-ups second. A swipe is about 250 px long and takes 120 ms. When the game ends, tap the play or retry button, then keep going. Ignore offers to revive for gems or to watch ads for rewards: close them.
