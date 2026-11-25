@@ -72,10 +72,10 @@ object Guide {
 
         GuideTopic("chess", "♞", "Chess", "الشطرنج",
             "Play her: say \"let's play chess\" or press CHESS on HOME. Full rules (castling, en passant, promotion, check, mate, stalemate, repetition, fifty moves), undo and redo, play as white or black, hints, EXPLAIN (why this move), load a game from PGN or FEN.\n\n" +
-                "Strength: she plays with the real Stockfish 11 engine when it is built into your copy of the app; otherwise with her own engine. Levels 1 and 2 are deliberately easy.\n\n" +
+                "Strength: she plays with Stockfish 16 (the strongest) once its 40 MB network file is on your phone, otherwise with Stockfish 11. To get the strong one: HOME > tile STRONG ENGINE > DOWNLOAD (Wi-Fi, keep the app open until it says installed). It downloads once from the official Stockfish GitHub. CHESS CHECK shows which engine is playing. Levels 1 and 2 are deliberately easy.\n\n" +
                 "In another chess app (chess.com, Lichess...): \"play chess for me\" (she taps the pieces; use it for practice, bots or games where help is allowed, not rated games against people) or \"coach me\" (she only draws an arrow). The first time on a new board theme, open a NEW game and say \"learn my pieces\"; after that she can read any game by herself.",
             "تلعب وياها: كول «نلعب شطرنج» أو اضغط شطرنج بالرئيسية. كل القوانين (التبييت، الأخذ بالمرور، الترقية، الكش، المات، التعادل، التكرار، الخمسين نقلة)، تراجع وإعادة، العب أبيض أو أسود، تلميح، «اشرح» (ليش هالنقلة)، وتحميل لعبة من PGN أو FEN.\n\n" +
-                "القوة: تلعب بمحرك Stockfish 11 الحقيقي إذا كان مبني بنسختك، وإلا بمحركها الخاص. المستويين 1 و2 سهلين قصداً.\n\n" +
+                "القوة: تلعب بـ Stockfish 16 (الأقوى) لما ينزل ملف شبكته (40 ميغا) على جوالك، وإلا بـ Stockfish 11. لتجيب الأقوى: الرئيسية ← زر المحرك القوي ← تنزيل (واي فاي، وخلي التطبيق مفتوح لحد ما يقول منزّل). ينزل مرة وحدة من GitHub الرسمي لـ Stockfish. فحص الشطرنج يبين أي محرك يلعب. المستويين 1 و2 سهلين قصداً.\n\n" +
                 "بتطبيق شطرنج ثاني (chess.com، Lichess...): «العب عني شطرنج» (تلمس القطع هي؛ استخدمها للتدريب أو البوتات أو لعب يسمح بالمساعدة، مو اللعب المصنّف ضد ناس) أو «دربني» (ترسم سهم بس). أول مرة على ثيم جديد افتح لعبة جديدة وكول «تعلمي قطعي»، وبعدها تقرا أي لعبة لحالها.",
             listOf("let's play chess", "play chess for me", "coach me", "learn my pieces"), listOf("نلعب شطرنج", "العب عني شطرنج", "دربني", "تعلمي قطعي")),
 

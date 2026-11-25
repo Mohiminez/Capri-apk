@@ -86,4 +86,11 @@ class PerchClipsTest {
         assertTrue(DocText.docx("<w:p><w:r><w:t>Hello &amp; hi</w:t></w:r></w:p><w:p><w:r><w:t>Two</w:t></w:r></w:p>") == "Hello & hi\n\nTwo")
         assertTrue(QuickAsks.match("ملخص اليوم")!!.contains("[[brief:today]]"))
     }
+    @Test fun arabicGameNamesMatchEnglishAppLabels() {
+        val pairs = listOf("فورت نايت" to "Fortnite", "ببجي" to "PUBG MOBILE", "ماين كرافت" to "Minecraft", "روبلوكس" to "Roblox", "فري فاير" to "Free Fire", "كلاش رويال" to "Clash Royale")
+        for ((ar, en) in pairs) {
+            val a = Actions.skeletonOf(ar); val e = Actions.skeletonOf(en)
+            assertTrue("$ar=$a $en=$e", a == e || e.startsWith(a) || a.startsWith(e))
+        }
+    }
 }

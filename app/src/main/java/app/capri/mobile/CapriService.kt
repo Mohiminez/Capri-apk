@@ -503,7 +503,10 @@ class CapriService : Service(), Actions.Hooks {
         clip(pick, !once) { if (once) settle() }
     }
 
-    private fun has(name: String) = SpriteBank.info(this, name) != null
+    // "Classic movement" in Settings turns the desktop-style extras off (arrive/leave, lying down, glitch blinks, hanging, window perch, shake) if one ever misbehaves.
+    private val pcClips = setOf("perch_arrive", "perch_leave", "perch_glitch", "perch_blink_glitch", "perch_music", "idle_blink_glitch", "laydown", "laydown_blink", "laydown_glitch", "laydown_leave")
+    private fun pcMoves() = prefs.getB("pcMoves", true)
+    private fun has(name: String) = (name !in pcClips || pcMoves()) && SpriteBank.info(this, name) != null
 
     // She sometimes walks to the bottom of the screen and sits there, legs hanging over the edge, like her perch on the desktop.
     private var perched = false
@@ -562,13 +565,16 @@ class CapriService : Service(), Actions.Hooks {
         var ty = (floorY() + dp(18)).coerceAtMost((screenH - spriteLp.height).toFloat())
         windowPerched = false
         val acc = CapriAccess.instance
-        if (acc != null && CapriAccess.foreground.isNotEmpty() && prefs.getB("windowPerch", true) && !gameRunning() && (onWindow || Random.nextInt(100) < 55)) {
+        if (acc != null && CapriAccess.foreground.isNotEmpty() && prefs.getB("windowPerch", true) && pcMoves() && !gameRunning() && (onWindow || (prefs.getI("perchBias", 0) > 0 && Random.nextInt(100) < 60))) {
             val ledges = try { acc.ledges() } catch (e: Throwable) { emptyList() }
             if (ledges.isNotEmpty()) {
                 val r = ledges.random()
                 tx = (r.left + Random.nextFloat() * r.width() - spriteLp.width / 2f).coerceIn(minX(), maxX())
                 // her seat sits about 60% down the perch frame, so her legs hang over the edge
-                ty = (r.top - spriteLp.height * 0.6f).coerceIn(dp(24).toFloat(), floorY())
+                // ledge coordinates are screen pixels; her window starts below the status bar, so measure the difference
+                val loc = IntArray(2); try { sp.getLocationOnScreen(loc) } catch (e: Exception) { }
+                val off = (loc[1] - spriteLp.y).coerceAtLeast(0)
+                ty = (r.top - off - spriteLp.height * 0.6f).coerceIn(dp(24).toFloat(), floorY())
                 windowPerched = true; windowPerchPkg = CapriAccess.foreground
             }
         }
@@ -653,6 +659,7 @@ class CapriService : Service(), Actions.Hooks {
             L.t("My pixels are rattling.", "البكسلات تتخرعت."), L.t("Rude. I'm glitching now.", "قليل أدب. صرت أعلق.")).random(), false)
     }
     private fun startShake() {
+        if (!pcMoves()) return
         try {
             val sm = getSystemService(SENSOR_SERVICE) as android.hardware.SensorManager
             sm.getDefaultSensor(android.hardware.Sensor.TYPE_ACCELEROMETER)?.let { sm.registerListener(shakeListener, it, android.hardware.SensorManager.SENSOR_DELAY_UI) }
@@ -664,7 +671,7 @@ class CapriService : Service(), Actions.Hooks {
     private var hanging = false
     private var hangPending = false
     private fun hangSomewhere() {
-        if (!has("dangle")) return
+        if (!has("dangle") || !pcMoves()) return
         fx = spriteLp.x.toFloat(); fy = spriteLp.y.toFloat()
         walkTx = Random.nextFloat() * (maxX() - minX()) + minX()
         walkTy = dp(6).toFloat()
@@ -2194,6 +2201,7 @@ class CapriService : Service(), Actions.Hooks {
                 }
                 val a = Engine.analyse(Chess.start(), 300, 8)
                 ok(a != null, L.t("Engine: ${Engine.name} found a move (${a?.move?.let { Chess.name(it.from) + Chess.name(it.to) }})", "المحرك: ${Engine.name} لقى نقلة (${a?.move?.let { Chess.name(it.from) + Chess.name(it.to) }})"), L.t("The engine gave no move", "المحرك ما عطى نقلة"))
+                sb.append("\u2022 ").append(L.t("Strong engine file: ", "ملف المحرك القوي: ")).append(Stockfish.netStatus(this)).append(L.t(" (tile STRONG ENGINE downloads it)", " (زر المحرك القوي ينزله)")).append('\n')
                 Stockfish.lastError?.let { sb.append("\u2022 Stockfish: ").append(it.take(120)).append('\n') }
             } catch (e: Throwable) { sb.append("\u2717 ").append(e.toString().take(160)).append('\n'); if (firstBad == null) firstBad = e.toString() }
             val report = sb.toString()

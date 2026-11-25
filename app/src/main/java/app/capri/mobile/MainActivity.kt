@@ -496,6 +496,22 @@ class MainActivity : Activity() {
     }
 
     // One tap for "accessibility is currently unavailable": revive it, or explain the one-time step that lets her do it herself from then on.
+    // The strongest chess engine needs one 40 MB file. It downloads by itself, but this shows what is happening and lets you start it by hand.
+    private fun strongEngine() {
+        Stockfish.prepare(this)
+        val st = Stockfish.netStatus(this)
+        val msg = when {
+            st == "ready" -> t("The strong engine (Stockfish 16 NNUE) is installed. She plays at full strength.\n\nIf the check still says Stockfish 11, your phone is not 64-bit (arm64); that one can only run the older engine.", "المحرك القوي (Stockfish 16 NNUE) منزّل. تلعب بأقصى قوة.\n\nإذا الفحص لسه يقول Stockfish 11 فجوالك مب 64-بت (arm64) وما يشغّل غير الأقدم.")
+            st.startsWith("downloading") -> t("Downloading the strong engine: ${st.substringAfter(' ')}. Keep the app open and stay online. Until it finishes she plays with Stockfish 11.", "جاري تنزيل المحرك القوي: ${st.substringAfter(' ')}. خلي التطبيق مفتوح وخلك متصل بالنت. لحد ما يخلص تلعب بـ Stockfish 11.")
+            else -> t("The strong engine is one 40 MB file that is not on the phone yet" + (if (st.startsWith("failed")) " ($st)" else "") + ".\n\nTap DOWNLOAD (Wi-Fi recommended). It fetches the official Stockfish network from GitHub, once. Until then she plays with Stockfish 11, which is already good.", "المحرك القوي ملف واحد حجمه 40 ميغا وما نزل على الجوال للحين" + (if (st.startsWith("failed")) " ($st)" else "") + ".\n\nاضغط تنزيل (يفضل واي فاي). ينزل شبكة Stockfish الرسمية من GitHub مرة وحدة. لحد ذاك تلعب بـ Stockfish 11 وهو قوي أصلاً.")
+        }
+        val d = android.app.AlertDialog.Builder(this).setTitle(t("Strong engine", "المحرك القوي")).setMessage(msg).setNegativeButton("OK", null)
+        if (st != "ready" && !st.startsWith("downloading")) d.setPositiveButton(t("DOWNLOAD", "تنزيل")) { _, _ ->
+            Stockfish.startFetch(); toast(t("Downloading... tap this tile again to see progress.", "ينزل... اضغط الزر مرة ثانية تشوف التقدم."))
+        }
+        d.show()
+    }
+
     private fun fixAccess() {
         if (CapriAccess.instance != null) { toast(t("Accessibility is working.", "صلاحية الوصول شغّالة.")); return }
         if (CapriAccess.revive(this)) { toast(t("Reviving... give it a few seconds.", "أنعشها... انتظر ثواني.")); page.postDelayed({ refresh() }, 3500); return }
@@ -725,6 +741,7 @@ class MainActivity : Activity() {
                 else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
                 else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
             },
+            Triple("\u265B", t("STRONG ENGINE (Stockfish 16)", "المحرك القوي (Stockfish 16)")) { strongEngine() },
             Triple("\u267B", t("FIX ACCESSIBILITY", "إصلاح صلاحية الوصول")) { fixAccess() },
             Triple("\u25CE", t("HER BROWSER", "متصفحها")) { startActivity(Intent(this, BrowserActivity::class.java)) },
             Triple("\uD83D\uDD27", t("CHESS CHECK", "فحص الشطرنج")) {
@@ -1344,6 +1361,7 @@ class MainActivity : Activity() {
         slider(life, t("How often she pops in (minutes)", "كل كم دقيقة تطلّ عليك"), "popMin", 10, 120, 30)
         slider(life, t("Doomscroll guard: nag me after (minutes, 0 = off, needs hands)", "حارس التصفّح: نبّهني بعد (دقائق، ٠ = مطفي، يحتاج اليدين)"), "scrollLimit", 0, 60, 0)
         toggle(life, t("She gets jealous when I open another AI app", "تغار لما أفتح تطبيق ذكاء اصطناعي ثاني"), "jealous", true)
+        toggle(life, t("Desktop-style movement: arrive/leave, lying down, hanging, glitch blinks, sitting on apps, dizzy when shaken (turn off for classic movement, then restart her)", "حركات سطح المكتب: وصول ومغادرة واستلقاء وتعلّق ورمشات تشويش وجلوس على التطبيقات ودوخة بالهز (طفّها للحركة الكلاسيكية ثم أعد تشغيلها)"), "pcMoves", true)
         toggle(life, t("She sits on edges of the app I have open (toolbars, cards, pictures)", "تجلس على حواف التطبيق المفتوح (الشريط والبطاقات والصور)"), "windowPerch", true)
         slider(life, t("Minutes she plays a game before asking if you want more", "كم دقيقة تلعب قبل ما تسألك تكمل"), "gameMinutes", 5, 60, 20)
         val clips = section(t("GAME CLIPS", "مقاطع الألعاب"))

@@ -42,17 +42,37 @@ object Stockfish {
             }
         }
         // fetch quietly in the background so the strong engine is ready by the first game; Stockfish 11 plays until then
-        if (netPath?.let { it.exists() && it.length() == NET_SIZE } != true && !hasAsset(app) && !fetching) {
-            fetching = true
-            Thread {
-                try {
-                    val f = netPath!!
-                    val tmp = java.io.File(f.path + ".part")
-                    netSource!!().use { i -> tmp.outputStream().use { o -> i.copyTo(o, 1 shl 16) } }
-                    if (tmp.length() == NET_SIZE) tmp.renameTo(f) else tmp.delete()
-                } catch (t: Throwable) { lastError = "net download: $t" } finally { fetching = false }
-            }.also { it.isDaemon = true }.start()
-        }
+        if (!netReady() && !hasAsset(app)) startFetch()
+    }
+
+    fun netReady() = netPath?.let { it.exists() && it.length() == NET_SIZE } == true
+    @Volatile var downloaded = 0L
+        private set
+    @Volatile var fetchError = ""
+        private set
+
+    /** One line for the screen: what the strong engine's file is doing. */
+    fun netStatus(ctx: android.content.Context): String {
+        if (netReady() || hasAsset(ctx)) return "ready"
+        if (fetching) return "downloading " + (downloaded * 100 / NET_SIZE).coerceIn(0, 99) + "%"
+        return if (fetchError.isNotEmpty()) "failed: $fetchError" else "missing"
+    }
+
+    /** Downloads the Stockfish 16 network (40 MB) in the background. Safe to call again after a failure. */
+    fun startFetch() {
+        if (fetching || netReady()) return
+        val f = netPath ?: return
+        fetching = true; downloaded = 0; fetchError = ""
+        Thread {
+            try {
+                val tmp = java.io.File(f.path + ".part")
+                netSource!!().use { i -> tmp.outputStream().use { o ->
+                    val buf = ByteArray(1 shl 16)
+                    while (true) { val n = i.read(buf); if (n < 0) break; o.write(buf, 0, n); downloaded += n }
+                } }
+                if (tmp.length() == NET_SIZE) tmp.renameTo(f) else { fetchError = "incomplete (" + tmp.length() / 1024 + " KB)"; tmp.delete() }
+            } catch (t: Throwable) { fetchError = (t.message ?: t.javaClass.simpleName).take(60); lastError = "net download: $t" } finally { fetching = false }
+        }.also { it.isDaemon = true }.start()
     }
     @Volatile private var fetching = false
     const val NET_URL = "https://github.com/official-stockfish/networks/raw/master/nn-5af11540bbfe.nnue"

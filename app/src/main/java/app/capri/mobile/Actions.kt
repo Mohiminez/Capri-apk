@@ -191,6 +191,25 @@ object Actions {
     private fun norm(s: String): String = s.lowercase().replace(Regex("[\u064B-\u065F\u0640]"), "")
         .replace('أ', 'ا').replace('إ', 'ا').replace('آ', 'ا').replace('ة', 'ه').replace('ى', 'ي').replace(Regex("[^a-z0-9\u0600-\u06FF ]"), "").replace(Regex("\\s+"), " ").trim()
 
+    /** A rough sound skeleton so "فورت نايت", "ببجي" or "ماين كرافت" still find "Fortnite", "PUBG" or "Minecraft": vowels dropped, look-alike consonants merged. */
+    fun skeletonOf(raw: String) = skeleton(raw)
+    internal fun skeleton(raw: String): String {
+        val ar = mapOf('ب' to "b", 'پ' to "b", 'ت' to "t", 'ث' to "s", 'ج' to "j", 'چ' to "j", 'ح' to "h", 'خ' to "k", 'د' to "d", 'ذ' to "s", 'ر' to "r", 'ز' to "s", 'س' to "s",
+            'ش' to "sh", 'ص' to "s", 'ض' to "d", 'ط' to "t", 'ظ' to "s", 'غ' to "j", 'ف' to "f", 'ڤ' to "f", 'ق' to "k", 'ك' to "k", 'ک' to "k", 'ل' to "l", 'م' to "m", 'ن' to "n", 'ه' to "h", 'ة' to "h")
+        val sb = StringBuilder()
+        for (c in raw.lowercase()) {
+            val r = ar[c]
+            if (r != null) { sb.append(r); continue }
+            when (c) {
+                'p' -> sb.append('b'); 'g' -> sb.append('j'); 'c', 'q' -> sb.append('k'); 'v' -> sb.append('f'); 'z' -> sb.append('s'); 'x' -> sb.append("ks")
+                'a', 'e', 'i', 'o', 'u', 'y', 'w' -> {}
+                in 'a'..'z' -> sb.append(c)
+            }
+        }
+        // collapse doubled letters ("Minecraft" has none, "Candy Crush"/"Call" do)
+        return sb.toString().replace(Regex("(.)\\1+"), "$1")
+    }
+
     fun findApp(ctx: Context, name: String): Pair<String, String>? {
         val pm = ctx.packageManager
         val apps = try { pm.queryIntentActivities(Intent(Intent.ACTION_MAIN).addCategory(Intent.CATEGORY_LAUNCHER), 0) } catch (e: Throwable) { emptyList() }
@@ -205,13 +224,17 @@ object Actions {
             return null
         }
         if (apps.isEmpty()) return viaKnown()
+        val sk = skeleton(q)
         fun label(i: Int) = norm(apps[i].loadLabel(pm).toString())
         fun pkg(i: Int) = apps[i].activityInfo.packageName.lowercase()
         val idx = apps.indices.firstOrNull { label(it) == q }
             ?: apps.indices.firstOrNull { label(it).startsWith(q) }
             ?: apps.indices.firstOrNull { label(it).contains(q) }
             ?: apps.indices.firstOrNull { pkg(it).contains(q.replace(" ", "")) }
-            ?: return viaKnown()
+            ?: viaKnown()?.let { return it }
+            ?: (if (sk.length >= 3) apps.indices.firstOrNull { skeleton(apps[it].loadLabel(pm).toString()) == sk } else null)
+            ?: (if (sk.length >= 4) apps.indices.firstOrNull { val l = skeleton(apps[it].loadLabel(pm).toString()); l.length >= 4 && (l.startsWith(sk) || sk.startsWith(l)) } else null)
+            ?: return null
         return Pair(apps[idx].loadLabel(pm).toString(), apps[idx].activityInfo.packageName)
     }
 
