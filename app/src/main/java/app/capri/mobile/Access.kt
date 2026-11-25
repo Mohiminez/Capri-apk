@@ -227,6 +227,63 @@ class CapriAccess : AccessibilityService() {
         return result
     }
 
+    /** One look at the screen for the game player: the JPEG (optionally with a labelled grid, Set-of-Mark style: cells A1, B1 ...),
+     *  a small pixel copy for local colour tests, and the scale back to real screen pixels. */
+    class Seen(val b64: String, val frame: Reflex.Frame, val scale: Float, val cols: Int, val rows: Int, val cellW: Float, val cellH: Float)
+
+    fun shotSee(grid: Boolean): Seen? {
+        if (Build.VERSION.SDK_INT < 30) return null
+        var result: Seen? = null
+        val latch = CountDownLatch(1)
+        takeScreenshot(Display.DEFAULT_DISPLAY, shots, object : AccessibilityService.TakeScreenshotCallback {
+            override fun onSuccess(screenshot: AccessibilityService.ScreenshotResult) {
+                try {
+                    val hw = Bitmap.wrapHardwareBuffer(screenshot.hardwareBuffer, screenshot.colorSpace)
+                    if (hw != null) {
+                        val soft = hw.copy(Bitmap.Config.ARGB_8888, true)
+                        val sc = if (soft.width > 720) 720f / soft.width else 1f
+                        val big = if (sc < 1f) Bitmap.createScaledBitmap(soft, 720, (soft.height * sc).toInt(), true) else soft
+                        val tiny = Bitmap.createScaledBitmap(big, 144, (big.height * 144f / big.width).toInt().coerceAtLeast(2), true)
+                        val px = IntArray(tiny.width * tiny.height); tiny.getPixels(px, 0, tiny.width, 0, 0, tiny.width, tiny.height)
+                        val frame = Reflex.Frame(px, tiny.width, tiny.height)
+                        val cols = 8; val cellW = big.width / cols.toFloat(); val rows = (big.height / cellW).toInt().coerceAtLeast(1); val cellH = big.height / rows.toFloat()
+                        val canvasBmp = if (big.isMutable) big else big.copy(Bitmap.Config.ARGB_8888, true)
+                        if (grid) {
+                            val c = android.graphics.Canvas(canvasBmp)
+                            val line = android.graphics.Paint().apply { color = 0x66FFFF00; strokeWidth = 1f }
+                            val txt = android.graphics.Paint().apply { color = 0xCCFFFF00.toInt(); textSize = cellW * 0.2f; isAntiAlias = true; setShadowLayer(2f, 0f, 0f, 0xFF000000.toInt()) }
+                            for (i in 1 until cols) c.drawLine(i * cellW, 0f, i * cellW, canvasBmp.height.toFloat(), line)
+                            for (j in 1 until rows) c.drawLine(0f, j * cellH, canvasBmp.width.toFloat(), j * cellH, line)
+                            for (j in 0 until rows) for (i in 0 until cols) c.drawText(('A' + i).toString() + (j + 1), i * cellW + 3f, j * cellH + txt.textSize, txt)
+                        }
+                        val bos = ByteArrayOutputStream()
+                        canvasBmp.compress(Bitmap.CompressFormat.JPEG, 70, bos)
+                        result = Seen(Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP), frame, 1f / sc, cols, rows, cellW, cellH)
+                        lastShotScale = 1f / sc
+                    }
+                    screenshot.hardwareBuffer.close()
+                } catch (e: Throwable) { }
+                latch.countDown()
+            }
+            override fun onFailure(errorCode: Int) { latch.countDown() }
+        })
+        latch.await(6, TimeUnit.SECONDS)
+        return result
+    }
+
+    /** Buttons and texts the system itself reports (not guessed from pixels): "label @x,y" in the same pixels as the screenshot sent. */
+    fun controlsList(scale: Float, max: Int = 14): List<String> {
+        dump()
+        val r = android.graphics.Rect(); val out = ArrayList<String>()
+        for (n in nodes) {
+            if (n.label.isBlank() || out.size >= max) continue
+            try { n.node.getBoundsInScreen(r) } catch (e: Exception) { continue }
+            if (r.width() <= 0) continue
+            out.add(n.label.take(24) + " @" + (r.centerX() / scale).toInt() + "," + (r.centerY() / scale).toInt())
+        }
+        return out
+    }
+
     // A JPEG of the screen as base64, or null (needs Android 11+). Blocks up to 6 seconds.
     fun shotBlocking(): String? {
         if (Build.VERSION.SDK_INT < 30) return null

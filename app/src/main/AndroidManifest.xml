@@ -136,6 +136,9 @@
 
 
         <activity android:name=".BrowserActivity" android:exported="false" android:launchMode="singleTop" android:theme="@android:style/Theme.DeviceDefault.NoActionBar" />
+        <service android:name=".FastCaptureService" android:exported="false" android:foregroundServiceType="mediaProjection" />
+        <activity android:name=".FastCaptureActivity" android:exported="false" android:excludeFromRecents="true"
+            android:theme="@android:style/Theme.Translucent.NoTitleBar" android:taskAffinity="" />
         <service android:name=".ClipService" android:exported="false" android:foregroundServiceType="mediaProjection" />
         <activity android:name=".ClipActivity" android:exported="false" android:excludeFromRecents="true"
             android:theme="@android:style/Theme.Translucent.NoTitleBar" android:taskAffinity="" />

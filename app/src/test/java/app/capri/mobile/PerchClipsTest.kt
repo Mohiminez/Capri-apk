@@ -2,6 +2,8 @@ package app.capri.mobile
 
 import java.io.File
 import org.junit.Assert.assertTrue
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertEquals
 import org.junit.Test
 
 class PerchClipsTest {
@@ -92,5 +94,35 @@ class PerchClipsTest {
             val a = Actions.skeletonOf(ar); val e = Actions.skeletonOf(en)
             assertTrue("$ar=$a $en=$e", a == e || e.startsWith(a) || a.startsWith(e))
         }
+    }
+    private fun frame(w: Int, h: Int, bg: Int, vararg boxes: IntArray): Reflex.Frame {
+        val px = IntArray(w * h) { bg }
+        for (b in boxes) for (y in b[1] until b[3]) for (x in b[0] until b[2]) px[y * w + x] = b[4]
+        return Reflex.Frame(px, w, h)
+    }
+    private val BLACK = 0xFF000000.toInt(); private val WHITE = 0xFFFFFFFF.toInt()
+    @Test fun reflexTapsLowestDarkTile() {
+        val f = frame(100, 200, WHITE, intArrayOf(10, 20, 30, 50, BLACK), intArrayOf(60, 120, 80, 150, BLACK))
+        val r = Reflex(listOf(Reflex.Rule(Reflex.Cond("blob", "dark", pick = "lowest"), listOf(Reflex.Do("tapblob")), 0)), 10_000, 8)
+        val a = r.step(f, null, 0)
+        assertEquals(1, a.size)
+        assertTrue(Math.abs(a[0].x1 - 0.70f) < 0.06f); assertTrue(Math.abs(a[0].y1 - 0.675f) < 0.06f)
+    }
+    @Test fun reflexColorsAndCooldownAndChange() {
+        assertTrue(Reflex.matches(0xFFE02020.toInt(), "red")); assertTrue(Reflex.matches(0xFF20C040.toInt(), "green")); assertFalse(Reflex.matches(WHITE, "red"))
+        val f = frame(60, 60, WHITE)
+        val r = Reflex(listOf(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("tap", doubleArrayOf(0.5, 0.9))), 300)), 10_000, 8)
+        assertEquals(1, r.step(f, null, 1000).size); assertEquals(0, r.step(f, null, 1100).size); assertEquals(1, r.step(f, null, 1400).size)
+        val g = frame(60, 60, WHITE, intArrayOf(0, 0, 60, 60, BLACK))
+        assertTrue(Reflex.changed(g, f, Reflex.Cond("changed"))); assertFalse(Reflex.changed(f, f, Reflex.Cond("changed")))
+    }
+    @Test fun reflexNoBlobNoAction() {
+        val f = frame(60, 60, WHITE)
+        val r = Reflex(listOf(Reflex.Rule(Reflex.Cond("blob", "red"), listOf(Reflex.Do("tapblob")), 0)), 10_000, 8)
+        assertEquals(0, r.step(f, null, 0).size)
+    }
+    @Test fun gridCellParse() {
+        assertEquals(Pair(2, 4), GamePilot.parseCell("C5", 8, 14)); assertEquals(Pair(0, 0), GamePilot.parseCell(" a1 ", 8, 14))
+        assertTrue(GamePilot.parseCell("Z9", 8, 14) == null); assertTrue(GamePilot.parseCell("A15", 8, 14) == null); assertTrue(GamePilot.parseCell("", 8, 14) == null)
     }
 }

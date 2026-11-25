@@ -2,7 +2,19 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
-## Newest: the desktop's perch, for real
+## Newest: fast eyes for games
+
+- When she starts a game she asks Android's screen-capture permission once and then **watches the game live (20-60 frames a second)** instead of one screenshot a second. Her local rules react to what is happening now. Frames stay in memory, never saved or sent; the capture stops when she stops playing. Switch off with pref `fastEyes`.
+
+## Before: she plays games better
+
+Techniques taken from recent game-agent research ([PORTAL](https://arxiv.org/abs/2503.13356), [GameSense](https://arxiv.org/abs/2503.21263), Set-of-Mark prompting):
+- **Grid on the screenshot** (cells A1, B1 ...): the model points at a cell instead of guessing pixels, so taps land where they should.
+- **Real buttons list** from the accessibility tree is sent with every look, so menus are tapped by their actual position.
+- **Stuck detection:** if the screen doesn't change after her actions, she is told and must try something else.
+- **Fast policies:** for quick games the model writes small rules ("tap the lowest dark tile", "hold fire while a red patch is visible", "push the stick toward the target") and the phone runs them locally several times a second without asking the model, then reports what happened so she can improve the rules. Limit: Android allows about one screenshot per second, so conditions refresh at ~1 Hz; blind rules (spam a button) run faster.
+
+## Before: the desktop's perch, for real
 
 - She now moves like the PC version: walks to the bottom edge and **arrives** onto it, sits with her legs hanging, blinks (sometimes with a glitch), now and then glitches, **lies back along the ledge and naps**, sits up, and **leaves** with the proper leave clip. Music makes her sway on the ledge (perch_music).
 - **Smaller APK (~40 MB less):** the Stockfish 16 network is no longer bundled; it downloads once in the background (Stockfish 11 plays until it is there).

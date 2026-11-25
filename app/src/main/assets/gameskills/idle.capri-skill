@@ -5,3 +5,4 @@ name: Idle and clicker games
 games: Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes
 ---
 Idle games reward patience: tap the main object several times (hold a tap repeatedly), then spend currency on the cheapest upgrade that gives the best return, and collect offline rewards when asked. Do not tap any button that shows a real-money price. Rewarded ads: skip them. Each turn do 3 or 4 quick taps in different spots at once.
+Fast policy idea: tiles to tap are usually dark on a light lane: {"policy":{"ms":8000,"hz":4,"rules":[{"when":{"blob":{"color":"dark","region":[0,0.3,1,0.9],"pick":"lowest"}},"do":[{"tapblob":[0,0]}],"cool":150}]}}.

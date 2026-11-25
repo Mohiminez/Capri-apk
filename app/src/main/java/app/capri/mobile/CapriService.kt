@@ -2137,12 +2137,18 @@ class CapriService : Service(), Actions.Hooks {
             say(L.t("Heads up: I look, think for a few seconds, then touch. I'm fine at puzzles, runners and turn-based games, and slow at fast shooters. I never buy anything.", "تنبيه: أطالع وأفكر كم ثانية وبعدين ألمس. زينة بالألغاز والجري والألعاب بالدور، وبطيئة بالتصويب السريع. وما أشتري شي أبداً."), false)
         }
         val gp = GamePilot(this, brain, prefs, name, { t -> h.post { say(t, false) } }, { t -> h.post { chessChip(t) } }, { msg ->
-            h.post { gamePilot = null; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
+            h.post { gamePilot = null; FastCaptureService.instance?.let { startService(Intent(this, FastCaptureService::class.java).setAction(FastCaptureService.ACT_STOP)) }; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
         })
         gamePilot = gp
         sprite?.visibility = View.INVISIBLE
         chessChip(L.t("[GAME] Starting $name", "[لعبة] أبدأ $name"))
-        gp.start(prefs.getI("gameMinutes", 20))
+        val needEyes = prefs.getB("fastEyes", true) && !FastCaptureService.active() && Build.VERSION.SDK_INT >= 29
+        if (needEyes) {
+            say(L.t("Allow screen capture once so I can see the game live (frames stay in memory).", "اسمح بتصوير الشاشة مرة عشان أشوف اللعبة مباشرة (الصور تبقى بالذاكرة فقط)."), false)
+            try { startActivity(Intent(this, FastCaptureActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) } catch (e: Throwable) { }
+        }
+        val wrapped = gp
+        h.postDelayed({ if (gamePilot === wrapped) wrapped.start(prefs.getI("gameMinutes", 20)) }, if (needEyes) 7000L else 0L)
     }
 
     override fun chessPilot(mode: String) {
