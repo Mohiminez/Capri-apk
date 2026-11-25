@@ -245,7 +245,36 @@ object Actions {
         return true
     }
 
-    private fun playMusic(ctx: Context, query: String) {
+    private fun installed(ctx: Context, pkg: String): Boolean =
+        try { ctx.packageManager.getPackageInfo(pkg, 0); true } catch (e: Exception) { false }
+
+    // [[music:song]] plays in whatever the phone picks; [[music:song|anghami]] plays in that app (or on its website when it isn't installed).
+    // With no app named, the one chosen in Settings (pref "musicApp") is used when there is one.
+    private fun playMusic(ctx: Context, arg: String) {
+        val (query, named) = MusicApps.split(arg)
+        val chosen = named ?: MusicApps.byKey(Prefs(ctx).getS("musicApp", ""))
+        if (chosen != null) {
+            val pkg = chosen.packages.firstOrNull { installed(ctx, it) }
+            if (pkg != null) {
+                try {
+                    if (query.isBlank()) {
+                        val launch = ctx.packageManager.getLaunchIntentForPackage(pkg)
+                        if (launch != null) { start(ctx, launch); return }
+                    } else {
+                        start(ctx, Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
+                            .setPackage(pkg)
+                            .putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
+                            .putExtra(SearchManager.QUERY, query))
+                        return
+                    }
+                } catch (e: Exception) { }
+            }
+            try { start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(chosen.searchUrl(query)))); return } catch (e: Exception) { }
+        }
+        playMusicAnywhere(ctx, query)
+    }
+
+    private fun playMusicAnywhere(ctx: Context, query: String) {
         try {
             start(ctx, Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
                 .putExtra(MediaStore.EXTRA_MEDIA_FOCUS, "vnd.android.cursor.item/*")
@@ -319,6 +348,14 @@ object QuickAsks {
         val r = raw.trim()
         ReminderAsk.match(r)?.let { return it }
         LocalAsks.match(r)?.let { return it }
+        // "play X on Anghami / Spotify / Deezer / YouTube Music", "شغل X على انغامي"
+        MusicApps.parse(r)?.let { return L.t("On it. ", "ابشر. ") + MusicApps.tag(it) }
+        // "is this a scam: <message>", "هل هذي رسالة نصب: ..." is checked on the phone, nothing is sent anywhere
+        ScamCheck.ask(r)?.let { text ->
+            return if (text.isBlank()) L.t("Paste or share the message to me, like: is this a scam: <the message>. Or share it from WhatsApp or SMS to Capri.",
+                "الصق لي الرسالة أو شاركها معي، مثل: هل هذي نصب: <الرسالة>. أو شاركها من واتساب أو الرسائل إلى كابري.")
+            else ScamCheck.say(ScamCheck.analyze(text), L.ar)
+        }
         enOpenType.find(r)?.let { return "On it. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         arOpenType.find(r)?.let { return "ابشر. [[hands:openType|${clean(it.groupValues[1])}|${clean(it.groupValues[2])}]]" }
         enType.find(r)?.let { return "Typing. [[hands:type|${clean(it.groupValues[1])}]]" }

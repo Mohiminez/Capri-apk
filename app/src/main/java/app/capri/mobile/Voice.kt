@@ -5,6 +5,7 @@ import android.media.AudioAttributes
 import android.media.AudioFormat
 import android.media.AudioTrack
 import android.media.MediaPlayer
+import android.media.audiofx.LoudnessEnhancer
 import android.util.Base64
 import org.json.JSONArray
 import org.json.JSONObject
@@ -331,6 +332,20 @@ object Voice {
         return out
     }
 
+    // Volume above 100% (up to 200%): Android's loudness enhancer adds the gain. Some phones refuse it; then she is simply at full volume.
+    private fun boost(session: Int, percent: Int): LoudnessEnhancer? {
+        val mb = VoiceGain.millibels(percent)
+        if (mb <= 0 || session <= 0) return null
+        var out: LoudnessEnhancer? = null
+        try {
+            val le = LoudnessEnhancer(session)
+            le.setTargetGain(mb)
+            le.setEnabled(true)
+            out = le
+        } catch (e: Throwable) { }
+        return out
+    }
+
     private fun playMp3(ctx: Context, bytes: ByteArray, my: Int, onStart: () -> Unit) {
         if (my != gen) return
         val f = File(ctx.cacheDir, "capri_voice.mp3")
@@ -341,7 +356,8 @@ object Voice {
         mp.setAudioAttributes(AudioAttributes.Builder()
             .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
         mp.setDataSource(f.path)
-        val vol = (prefsRef?.getI("ttsVolume", 100) ?: 100) / 100f
+        val pct = prefsRef?.getI("ttsVolume", 100) ?: 100
+        val vol = VoiceGain.player(pct)
         mp.setVolume(vol, vol)
         mp.setOnCompletionListener { done.countDown() }
         mp.setOnErrorListener { _, _, _ -> done.countDown(); true }
@@ -349,6 +365,7 @@ object Voice {
         if (my != gen) { mp.release(); return }
         onStart()
         startViz(mp.audioSessionId)
+        val booster = boost(mp.audioSessionId, pct)
         mp.start()
         // Her voice sliders (50 to 200 percent). Set after start(): some versions begin playing when params are set.
         try {
@@ -358,13 +375,15 @@ object Voice {
         } catch (e: Exception) { }
         done.await(90, TimeUnit.SECONDS)
         stopViz()
+        try { booster?.release() } catch (e: Throwable) { }
         try { mp.release() } catch (e: Exception) { }
         if (player === mp) player = null
     }
 
     private fun playPcm(pcm: ByteArray, rate: Int, my: Int, onStart: () -> Unit) {
         if (my != gen) return
-        val vol2 = (prefsRef?.getI("ttsVolume", 100) ?: 100) / 100f
+        val pct2 = prefsRef?.getI("ttsVolume", 100) ?: 100
+        val vol2 = VoiceGain.player(pct2)
         val t = AudioTrack.Builder()
             .setAudioAttributes(AudioAttributes.Builder()
                 .setUsage(AudioAttributes.USAGE_MEDIA).setContentType(AudioAttributes.CONTENT_TYPE_SPEECH).build())
@@ -378,11 +397,13 @@ object Voice {
         t.write(pcm, 0, pcm.size)
         onStart()
         startViz(t.audioSessionId)
+        val booster = boost(t.audioSessionId, pct2)
         t.play()
         val ms = pcm.size / 2L * 1000L / rate
         var waited = 0L
         while (waited < ms + 300 && my == gen) { Thread.sleep(50); waited += 50 }
         stopViz()
+        try { booster?.release() } catch (e: Throwable) { }
         try { t.release() } catch (e: Exception) { }
         if (track === t) track = null
     }

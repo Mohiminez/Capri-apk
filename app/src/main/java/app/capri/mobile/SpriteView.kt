@@ -188,14 +188,22 @@ class SpriteView(ctx: Context) : View(ctx) {
             if (!loop) post { onDone?.invoke() }
             return
         }
+        val now = SystemClock.uptimeMillis()
+        // perch <-> perch_talk and laydown <-> laydown_talk are the same art frame for frame, so she carries on from the same
+        // frame instead of jumping back to the start when she begins or stops talking (like the desktop)
+        val old = clip
+        val carry = if (old != null && loop && looping && current != name && family(current) == family(name) && old.frames == c.frames)
+            ((now - started) * old.fps / 1000).toInt() % old.frames else -1
         clip = c
         current = name
         looping = loop
         done = onDone
         finished = false
-        started = SystemClock.uptimeMillis()
+        started = if (carry >= 0) now - (carry * 1000.0 / c.fps).toLong() else now
         invalidate()
     }
+
+    private fun family(n: String) = n.removeSuffix("_talk")
 
     // Floating hearts, zzz, notes and so on above her.
     fun emote(name: String) {

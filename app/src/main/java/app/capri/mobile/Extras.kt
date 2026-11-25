@@ -34,7 +34,20 @@ class AskActivity : Activity() {
         @Suppress("DEPRECATION")
         val stream: Uri? = try { it0.getParcelableExtra(Intent.EXTRA_STREAM) } catch (e: Exception) { null }
         if (stream == null) {
-            if (!text.isNullOrBlank()) go(Intent(this, CapriService::class.java).setAction(CapriService.ACT_ASK).putExtra("text", text.take(3000)))
+            if (!text.isNullOrBlank()) {
+                var asked = text.take(3000)
+                // Messages shared from WhatsApp, SMS or Telegram get checked for scam signs on the phone first (nothing is sent for that).
+                try {
+                    L.init(Prefs(this))
+                    val v = ScamCheck.analyze(asked)
+                    if (v.level >= 1) {
+                        Toast.makeText(this, ScamCheck.say(v, L.ar), Toast.LENGTH_LONG).show()
+                        asked = "[Capri's on-phone scam check flagged this message: " + v.reasons.joinToString("; ") { it.en } +
+                            ". Warn the user plainly, in their language, and say what to do, before anything else.]\n" + asked
+                    }
+                } catch (e: Exception) { }
+                go(Intent(this, CapriService::class.java).setAction(CapriService.ACT_ASK).putExtra("text", asked))
+            }
             finish()
             return
         }

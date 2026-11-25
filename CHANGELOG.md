@@ -2,7 +2,16 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
-## Newest: Fortnite and survival games
+## Newest: music apps, scam check, louder voice, talking on the ledge
+
+- **Play in a named app:** "play Blinding Lights on Anghami / Spotify / Deezer / YouTube Music / Apple Music / SoundCloud / YouTube" and the Arabic forms ("شغل كاظم الساهر على انغامي"). Opens the app's own search, or its website if the app is not installed. New MUSIC setting picks the app used when you do not name one (from capri-desktop 0.9.7, plus Anghami).
+- **Scam check:** share a message from WhatsApp/SMS/Telegram to Capri, or ask "is this a scam: ..." / "هل هذي رسالة نصب: ...". Runs on the phone, Arabic and English: fake brand links, shortened/IP/punycode links, requests for codes or card details, prizes, threats, fees and recharge cards, "my new number", delivery tricks, APK links. Real OTP messages that say "never share" are left alone.
+- **Voice up to 200%** (CapriCore 1.2.2): the volume slider now goes to 200; above 100 uses Android's loudness enhancer.
+- **She talks while perched or lying down:** perch_talk and laydown_talk from the desktop art (she no longer stands up to speak), the glitchy blink when lying, and clips carry on from the same frame when she starts or stops talking.
+- **HOME:** she reacts differently to each poke (squash and hop with hearts, grin, glitch, bounce with notes) and blinks; new quick chips for scam check and music; tiles split into PLAY WITH HER and TOOLS AND FIXES.
+- 28 new unit tests (MusicAppsTest, ScamCheckTest, VoiceGainTest). Still not built with Gradle or run on a device here.
+
+## Before: Fortnite and survival games
 
 - **Fortnite skill pack** (lobby, bus, landing, looting, staying in the circle, leaving after elimination). It never aims at or shoots players: automated aiming is cheating and risks a ban.
 - **Control layout memory:** she finds your on-screen stick, camera area, jump and pickup buttons once and remembers them per game.

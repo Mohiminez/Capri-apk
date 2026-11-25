@@ -644,7 +644,24 @@ class MainActivity : Activity() {
         val sp = SpriteView(this)
         sp.glowColor = accent
         sp.play("idle")
-        sp.setOnClickListener { sp.play("grin", false) { sp.play("idle") } }
+        // like the desktop she answers every poke differently: a squash and hop with hearts, a grin, a glitch, a bounce with notes
+        var pokes = 0
+        sp.setOnClickListener {
+            pokes++
+            when (pokes % 4) {
+                1 -> { sp.squash(1f); sp.hop(); sp.emote("heart") }
+                2 -> { sp.play("grin", false) { sp.play("idle") }; sp.emote("star") }
+                3 -> { sp.play("glitch", false) { sp.play("idle") }; sp.emote("glitch") }
+                else -> { sp.hop(); sp.emote("note") }
+            }
+        }
+        // and she blinks now and then, so she is never a still picture
+        val blinker = object : Runnable { override fun run() {
+            if (!sp.isAttachedToWindow) return
+            if (sp.current == "idle") sp.play("idle_blink", false) { sp.play("idle") }
+            sp.postDelayed(this, 3500L + (Math.random() * 4500).toLong())
+        } }
+        sp.postDelayed(blinker, 2500L)
         heroSprite = sp
         row.addView(sp, LinearLayout.LayoutParams(dp(92), dp(147)))
         val col = LinearLayout(this)
@@ -717,6 +734,8 @@ class MainActivity : Activity() {
             t("[ CHESS ] play for me", "[ شطرنج ] العب مكاني") to t("play chess for me", "العبي شطرنج بدالي"),
             t("[ MODE ] study", "[ وضع ] دراسة") to t("study mode", "وضع الدراسة"),
             t("[ EYES ] read my screen", "[ عيون ] اقري شاشتي") to t("what is on my screen?", "وش على شاشتي؟"),
+            t("[ SCAM ] is this a scam?", "[ نصب ] هل هذي رسالة نصب؟") to t("is this a scam?", "هل هذي رسالة نصب؟"),
+            t("[ MUSIC ] play a song", "[ موسيقى ] شغلي أغنية") to t("play something on Anghami", "شغلي لي اغنية على انغامي"),
             t("[ INFO ] what can you do", "[ معلومات ] وش تقدرين تسوين") to t("what can you do?", "وش تقدرين تسوين؟"))) {
             val c = TextView(this); c.text = label; c.textSize = 13f; c.setTextColor(accent); c.typeface = tfMono
             c.setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -726,24 +745,28 @@ class MainActivity : Activity() {
         }
         live.addView(chipScroll, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(10) })
 
-        val play = section(t("PLAY AND TRY", "العب وجرّب"))
+        val play = section(t("PLAY WITH HER", "العب معها"))
         tiles(play, listOf(
             Triple("\u265E", t("CHESS", "شطرنج")) { startActivity(Intent(this, ChessActivity::class.java)) },
             Triple("\u25A6", t("GAMES", "ألعاب")) { startActivity(Intent(this, GamesActivity::class.java).putExtra("game", "c4")) },
+            Triple("\u265F", t("CHESS: PLAY FOR ME", "شطرنج: العبي مكاني")) {
+                if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
+                else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(5) }
+                else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
+            },
+            Triple("\u25CE", t("HER BROWSER", "متصفحها")) { startActivity(Intent(this, BrowserActivity::class.java)) },
+            Triple("\u2302", t("HER ROOM", "غرفتها")) { startActivity(Intent(this, RoomActivity::class.java)) }
+        ))
+        val tools = section(t("TOOLS AND FIXES", "أدوات وإصلاحات"))
+        tiles(tools, listOf(
             Triple("\u266B", t("TEST VOICE", "جرّب الصوت")) { testVoice() },
             Triple("\u270B", t("TEST HANDS", "جرّب اليدين")) {
                 if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(5) }
                 else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
             },
-            Triple("\u265F", t("CHESS: PLAY FOR ME", "شطرنج: العبي مكاني")) {
-                if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
-                else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(5) }
-                else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
-            },
             Triple("\u265B", t("STRONG ENGINE (Stockfish 16)", "المحرك القوي (Stockfish 16)")) { strongEngine() },
             Triple("\u267B", t("FIX ACCESSIBILITY", "إصلاح صلاحية الوصول")) { fixAccess() },
-            Triple("\u25CE", t("HER BROWSER", "متصفحها")) { startActivity(Intent(this, BrowserActivity::class.java)) },
             Triple("\uD83D\uDD27", t("CHESS CHECK", "فحص الشطرنج")) {
                 if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else {
@@ -757,7 +780,6 @@ class MainActivity : Activity() {
                     poll(8)
                 }
             },
-            Triple("\u2302", t("HER ROOM", "غرفتها")) { startActivity(Intent(this, RoomActivity::class.java)) },
             Triple("\u2753", t("GUIDE", "الدليل")) { startActivity(Intent(this, GuideActivity::class.java)) },
             Triple("\u26E8", t("SECURITY", "الأمان")) { startActivity(Intent(this, SecurityActivity::class.java)) }
         ))
@@ -1092,12 +1114,20 @@ class MainActivity : Activity() {
 
         // ---- 5. effects (same sliders as the desktop) ----
         val fx = section(t("EFFECTS", "المؤثرات"))
-        slider(fx, t("Volume %", "مستوى الصوت %"), "ttsVolume", 20, 100, 100)
+        slider(fx, t("Volume % (above 100 boosts her up to 200%)", "مستوى الصوت % (فوق 100 يرفعها لين 200%)"), "ttsVolume", VoiceGain.MIN, VoiceGain.MAX, 100)
         slider(fx, t("Speed %", "السرعة %"), "ttsSpeed", 60, 160, 100)
         slider(fx, t("Pitch %", "حدّة الصوت %"), "ttsPitch", 60, 160, 100)
         slider(fx, t("Voice layers % (a higher and a lower copy of her voice, like the desktop)", "طبقات الصوت % (نسخة أعلى ونسخة أوطى من صوتها، مثل الديسكتوب)"), "voiceLayers", 0, 100, 0)
         slider(fx, t("Robot %", "روبوت %"), "voiceRobot", 0, 100, 0)
         slider(fx, t("Glitch %", "قلتش %"), "voiceGlitch", 0, 100, 0)
+
+        // ---- music: where songs play when you don't name an app ----
+        val mu = section(t("MUSIC", "الموسيقى"), false)
+        val musicApps = MusicApps.all
+        body(mu, t("Where she plays songs when you don't say an app", "وين تشغل الأغاني إذا ما ذكرت تطبيق"), 14f, muted)
+        spin(mu, listOf(t("The phone's choice", "اختيار الجوال")) + musicApps.map { it.name },
+            musicApps.indexOfFirst { it.key == prefs.getS("musicApp", "") } + 1) { prefs.putS("musicApp", if (it == 0) "" else musicApps[it - 1].key) }
+        note(mu, t("Or say it each time: play Blinding Lights on Anghami / Spotify / Deezer / YouTube Music.", "أو قلها كل مرة: شغل كاظم الساهر على انغامي / سبوتيفاي / ديزر / يوتيوب ميوزك."))
 
         // ---- 6. cloud voices ----
         val c = section(t("CLOUD VOICES (OPTIONAL, NEED A KEY)", "أصوات سحابية (اختياري، تحتاج مفتاح)"), false)

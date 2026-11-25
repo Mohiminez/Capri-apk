@@ -467,7 +467,8 @@ class CapriService : Service(), Actions.Hooks {
     private fun settle() {
         val s = sprite ?: return
         if (scripted || perchLeaving) return
-        if (lying && (talking || busy || dragging || mode != 0 || asleep)) lying = false
+        // with her talking lie-down art she keeps lying while she speaks, like on the desktop; without it she sits up first
+        if (lying && ((talking && !has("laydown_talk")) || busy || dragging || mode != 0 || asleep)) lying = false
         s.glow = talking && !s.lowPower
         s.sparkles = (Charm.level(prefs.getI("charm", 0)) - 1).coerceIn(0, 4)
         s.glitchFx = busy || mode == 1
@@ -492,8 +493,9 @@ class CapriService : Service(), Actions.Hooks {
                 }
                 when {
                     intro -> "perch_arrive"
-                    lying -> "laydown"
+                    lying -> if (talking && has("laydown_talk")) "laydown_talk" else "laydown"
                     (dancing || danceAsked) && has("perch_music") -> "perch_music"
+                    talking && has("perch_talk") -> "perch_talk"
                     else -> "perch"
                 }
             }
@@ -504,7 +506,7 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     // "Classic movement" in Settings turns the desktop-style extras off (arrive/leave, lying down, glitch blinks, hanging, window perch, shake) if one ever misbehaves.
-    private val pcClips = setOf("perch_arrive", "perch_leave", "perch_glitch", "perch_blink_glitch", "perch_music", "idle_blink_glitch", "laydown", "laydown_blink", "laydown_glitch", "laydown_leave")
+    private val pcClips = setOf("perch_arrive", "perch_leave", "perch_glitch", "perch_blink_glitch", "perch_music", "idle_blink_glitch", "laydown", "laydown_blink", "laydown_blink_glitch", "laydown_glitch", "laydown_leave", "perch_talk", "laydown_talk")
     private fun pcMoves() = prefs.getB("pcMoves", true)
     private fun has(name: String) = (name !in pcClips || pcMoves()) && SpriteBank.info(this, name) != null
 
@@ -594,7 +596,7 @@ class CapriService : Service(), Actions.Hooks {
                 val rare = Random.nextInt(100) < 8
                 val pick = when (s.current) {
                     "perch" -> if (rare && has("perch_glitch")) "perch_glitch" else if (glitchy && has("perch_blink_glitch")) "perch_blink_glitch" else "perch_blink"
-                    "laydown" -> if (rare && has("laydown_glitch")) "laydown_glitch" else "laydown_blink"
+                    "laydown" -> if (rare && has("laydown_glitch")) "laydown_glitch" else if (glitchy && has("laydown_blink_glitch")) "laydown_blink_glitch" else "laydown_blink"
                     else -> if (glitchy && has("idle_blink_glitch")) "idle_blink_glitch" else "idle_blink"
                 }
                 if (has(pick)) clip(pick, false) { settle() }
@@ -1486,7 +1488,7 @@ class CapriService : Service(), Actions.Hooks {
         settle()
         if (ttsReady) {
             val params = Bundle()
-            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, prefs.getI("ttsVolume", 100) / 100f)
+            params.putFloat(TextToSpeech.Engine.KEY_PARAM_VOLUME, VoiceGain.player(prefs.getI("ttsVolume", 100)))
             tts?.speak(text, TextToSpeech.QUEUE_FLUSH, params, "capri")
             // if the engine never reports "done" (interrupted, crashed, muted) she must not stay frozen mid-sentence
             val mine = speakId
@@ -1806,7 +1808,7 @@ class CapriService : Service(), Actions.Hooks {
             "focus" -> startFocus(v.toIntOrNull()?.coerceIn(1, 180) ?: 25)
             "speed" -> { val n = (prefs.getI("ttsSpeed", 100) + (if (v == "faster" || v == "up") 15 else -15)).coerceIn(60, 160); prefs.putI("ttsSpeed", n); said = L.t("Like this?", "كذا مناسب؟") }
             "pitch" -> { val n = (prefs.getI("ttsPitch", 100) + (if (v == "higher" || v == "up") 15 else -15)).coerceIn(60, 160); prefs.putI("ttsPitch", n); said = L.t("Like this?", "كذا مناسب؟") }
-            "volume" -> { val n = (prefs.getI("ttsVolume", 100) + (if (v == "up" || v == "louder") 20 else -20)).coerceIn(20, 100); prefs.putI("ttsVolume", n); said = L.t("Like this?", "كذا مناسب؟") }
+            "volume" -> { val n = (prefs.getI("ttsVolume", 100) + (if (v == "up" || v == "louder") 20 else -20)).coerceIn(VoiceGain.MIN, VoiceGain.MAX); prefs.putI("ttsVolume", n); said = L.t("Like this?", "كذا مناسب؟") }
             "theme" -> {
                 val i = Themes.names.indexOfFirst { it.lowercase() == v || it.lowercase().contains(v) }
                 if (i >= 0) { prefs.putI("theme", i); prefs.putS("modAccent", ""); sprite?.glowColor = Themes.accent(prefs); said = L.t("New theme. Restart me to see it everywhere.", "ثيم جديد. أعد تشغيلي عشان يطلع بكل مكان.") }
