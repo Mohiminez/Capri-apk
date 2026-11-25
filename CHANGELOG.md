@@ -2,7 +2,19 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
-## Newest: fast eyes for games
+## Newest: Fortnite and survival games
+
+- **Fortnite skill pack** (lobby, bus, landing, looting, staying in the circle, leaving after elimination). It never aims at or shoots players: automated aiming is cheating and risks a ban.
+- **Control layout memory:** she finds your on-screen stick, camera area, jump and pickup buttons once and remembers them per game.
+- **Roam mode:** in survival games, while nothing needs a decision she walks, sweeps the camera, jumps and picks up loot by herself for ~6 s at a time without waiting for the model, then looks again.
+
+## Before: tidier settings and a new look
+
+- **Tabs reorganised (7):** HOME, BRAIN, VOICE, **HER** (character, mods, look, colours, tone, life), **GAMES** (new: playing for you, fast eyes, game minutes, clip recording, Claude Code link), HANDS, MORE. The old "BEHAVIOR" tab was split because it mixed everything.
+- "Looking after you" (water, stretch, late-night, doomscroll guard, battery) is its own folded section.
+- **New look:** rounded cards instead of the red edge bar, rounded buttons and tiles, cyan section titles with a fold marker, a pill highlight on the active tab, a cleaner header.
+
+## Before: fast eyes for games
 
 - When she starts a game she asks Android's screen-capture permission once and then **watches the game live (20-60 frames a second)** instead of one screenshot a second. Her local rules react to what is happening now. Frames stay in memory, never saved or sent; the capture stops when she stops playing. Switch off with pref `fastEyes`.
 

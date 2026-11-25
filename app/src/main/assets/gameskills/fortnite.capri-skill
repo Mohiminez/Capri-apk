@@ -1,0 +1,14 @@
+---
+capri-skill: 1
+id: fortnite
+name: Fortnite (survival play)
+games: Fortnite, Fortnite Battle Royale, فورت نايت
+---
+Fortnite mobile, how to move through it with touches only. Controls are the user's own layout: LOOK at the screenshot to find them. Usually: a movement stick at the bottom-left, a look area on the right half (drag to turn), a big fire button on the right, jump and crouch buttons near it, a pickup/interact button that appears near the middle-right when you stand on loot, and the inventory bar along the top or right.
+LOBBY: tap Play (big button, bottom), pick the mode the user asked for (default: the one already selected; Zero Build is gentler), then tap Ready or Start. Wait on the "searching" screen: use act wait. If a news, rewards or update popup covers the lobby, close it with its X or back. Never open the Item Shop, V-Bucks, Battle Pass, gifts or any offer.
+BUS AND LANDING: on the battle bus screen, tap the jump button (or the jump prompt) once the drop looks quiet; pick a spot far from the bus path and from the crowd, near the edge of the map. Hold the stick forward and drag the look area downward a little to dive; open the glider when the button shows.
+SURVIVAL FIRST: this skill plays to stay alive, loot and reach the circle, not to fight. Walk a stick push of 1 to 2 seconds toward houses, loot chests (glowing boxes) and floor items; tap the pickup button when it appears; heal when health is low (tap the heal item, hold). Keep moving, never stand still in the open. Stay inside the safe zone: when the storm warning shows, move toward the middle of the circle on the mini-map.
+If an enemy is on screen, retreat behind cover and keep moving away. Do not chase or aim at other players for the user: that is automated aiming, it breaks Fortnite's rules and can get his account banned. If the user wants to fight, tell him to take over the controls.
+DEAD OR WON: after elimination use the Leave or Return to Lobby button (not Spectate), then queue again if time remains. Say in one short line what happened.
+FAST POLICIES that work here: spam the pickup button while it is visible: {"policy":{"ms":5000,"hz":3,"rules":[{"when":{"blob":{"color":"#ffffff","region":[0.6,0.45,0.95,0.75],"pick":"largest","min":0.004}},"do":[{"tapblob":[0,0]}],"cool":500}]}} only after you saw where the button is on THIS phone. Keep a long joystick push as a hold-swipe of 1500 ms.
+LAYOUT AND ROAM: on your first look at the match HUD, return "layout" with stick, look, jump and pickup positions. After that, while you are just moving and looting, reply state playing with an empty do: the phone walks forward, sweeps the camera, jumps and taps pickup for about 6 seconds by itself (fast, no waiting for you), then you look again and decide: loot found, storm warning, enemy near (retreat: a stick push the opposite way), dead (leave to lobby). Keep each look short.

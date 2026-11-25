@@ -63,7 +63,7 @@ object Guide {
             "• Watching: \"tell me when the download finishes\". She checks the screen and alerts you. Say \"stop watching\" to cancel.\n" +
                 "• Pointing: \"circle the send button\" draws a glowing ring on it.\n" +
                 "• Scroll for me: she scrolls short videos for you, only when YOU ask. Each video she waits, looks at the actual screen, and comments on what she really sees. She stops when you touch the screen, and never flips a video within 20 seconds of your own swipe. It needs an online brain that can see pictures.\n" +
-                "• Doomscroll guard: a nudge when you scroll for too long (BEHAVIOR tab).",
+                "• Doomscroll guard: a nudge when you scroll for too long (HER tab > LOOKING AFTER YOU).",
             "• المراقبة: «كوليلي لما ينتهي التحميل». تراقب الشاشة وتنبّهك. كول «وقفي المراقبة» تلغيها.\n" +
                 "• الإشارة: «دوّري على زر الإرسال» ترسم حلقة مضيئة عليه.\n" +
                 "• سكرول عني: تسوي سكرول للفيديوهات القصيرة بس لما انت تطلب. كل فيديو تنتظر، وتشوف الشاشة الفعلية، وتعلّق على اللي تشوفه فعلاً. توقف إذا لمست الشاشة، وما تقلب فيديو خلال 20 ثانية من سحبتك. تحتاج عقل أونلاين يشوف الصور.\n" +
@@ -115,7 +115,7 @@ object Guide {
             listOf("remember that my sister's birthday is in May"), listOf("تذكري إن عيد ميلاد اختي بمايو")),
 
         GuideTopic("mods", "✦", "Looks and mods", "الأشكال والمودات",
-            "BEHAVIOR tab > MODS. A gallery of mod cards (Bubblegum, Cyber Cyan, Royal, Toxic, Robo Capri, Gulf Gremlin, Study Buddy, Business Mode) and your own .json mods change colours, tone and personality lines. A .capri look made in the desktop editor changes her shape. One tap turns it on; one tap returns your old settings. Mods are data only, never code.",
+            "HER tab > MODS. A gallery of mod cards (Bubblegum, Cyber Cyan, Royal, Toxic, Robo Capri, Gulf Gremlin, Study Buddy, Business Mode) and your own .json mods change colours, tone and personality lines. A .capri look made in the desktop editor changes her shape. One tap turns it on; one tap returns your old settings. Mods are data only, never code.",
             "تبويب السلوك > المودات. معرض بطاقات (Bubblegum، Cyber Cyan، Royal، Toxic، Robo Capri، Gulf Gremlin، Study Buddy، Business Mode) وملفات .json حقتك تغيّر الألوان والأسلوب وجمل الشخصية. ملف .capri من محرر الديسكتوب يغيّر شكلها. ضغطة تشغّله وضغطة ترجّع إعداداتك. المودات بيانات فقط، مو كود."),
 
         GuideTopic("privacy", "⛨", "Privacy and security", "الخصوصية والأمان",

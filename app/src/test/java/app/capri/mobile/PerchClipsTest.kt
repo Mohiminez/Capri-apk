@@ -125,4 +125,19 @@ class PerchClipsTest {
         assertEquals(Pair(2, 4), GamePilot.parseCell("C5", 8, 14)); assertEquals(Pair(0, 0), GamePilot.parseCell(" a1 ", 8, 14))
         assertTrue(GamePilot.parseCell("Z9", 8, 14) == null); assertTrue(GamePilot.parseCell("A15", 8, 14) == null); assertTrue(GamePilot.parseCell("", 8, 14) == null)
     }
+    @Test fun fortniteSkillShips() {
+        val f = File(assets(), "gameskills/fortnite.capri-skill")
+        assertTrue(f.exists())
+        val t = f.readText()
+        assertTrue(t.contains("games: Fortnite")); assertTrue(t.contains("banned"))
+    }
+    @Test fun roamPolicyUsesLayoutAndNeverAimsOrFires() {
+        val r = GamePilot.roamPolicy(mapOf("stick" to doubleArrayOf(0.15, 0.78), "look" to doubleArrayOf(0.7, 0.5), "jump" to doubleArrayOf(0.9, 0.8), "pickup" to doubleArrayOf(0.8, 0.55), "fire" to doubleArrayOf(0.88, 0.6)), 0)
+        val a = r.step(frame(60, 60, WHITE), null, 10_000)
+        assertTrue(a.isNotEmpty())
+        // the first act is the stick push forward from the stick's position
+        assertTrue(Math.abs(a[0].x1 - 0.15f) < 0.01f && a[0].y2 < a[0].y1)
+        // nothing touches the fire button
+        assertTrue(a.none { Math.abs(it.x1 - 0.88f) < 0.02f && Math.abs(it.y1 - 0.6f) < 0.02f })
+    }
 }

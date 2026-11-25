@@ -81,7 +81,7 @@ class MainActivity : Activity() {
     private fun t(en: String, ar: String) = L.t(en, ar)
     private fun font(name: String, fallback: Typeface) = try { Typeface.createFromAsset(assets, "fonts/$name") } catch (e: Exception) { fallback }
 
-    private val tabNames get() = listOf(t("HOME", "الرئيسية"), t("BRAIN", "العقل"), t("VOICE", "الصوت"), t("BEHAVIOR", "السلوك"), t("HANDS", "اليدين"), t("MORE", "المزيد"))
+    private val tabNames get() = listOf(t("HOME", "الرئيسية"), t("BRAIN", "العقل"), t("VOICE", "الصوت"), t("HER", "هي"), t("GAMES", "الألعاب"), t("HANDS", "اليدين"), t("MORE", "المزيد"))
 
     // brain tiers, like the desktop's NORMAL / HIGHER / MAX
     private val tier1 = listOf(0, 1, 2, 3, 4, 11, 16, 17, 18)
@@ -109,7 +109,7 @@ class MainActivity : Activity() {
             tfBody = font("BarlowSemiCondensed-Regular.ttf", Typeface.DEFAULT)
             tfBold = font("BarlowSemiCondensed-SemiBold.ttf", Typeface.DEFAULT_BOLD)
         }
-        tab = prefs.getI("lastTab", 0).coerceIn(0, 5)
+        tab = prefs.getI("lastTab", 0).coerceIn(0, 6)
         window.statusBarColor = Night.glow
         window.navigationBarColor = Night.ground
 
@@ -136,8 +136,7 @@ class MainActivity : Activity() {
         pill.setTextColor(Night.cyan)
         pill.setPadding(dp(12), dp(4), dp(12), dp(4))
         pill.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.deep); setStroke(dp(1), Night.deepEdge) }
-        head.addView(pill, LinearLayout.LayoutParams(ViewGroup.LayoutParams.WRAP_CONTENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { marginStart = dp(12) })
-        val ver = TextView(this)
+                val ver = TextView(this)
         ver.text = "  v" + Updater.current(this)
         ver.typeface = tfMono
         ver.textSize = 12f
@@ -167,7 +166,7 @@ class MainActivity : Activity() {
         searchBar.setHintTextColor(muted)
         searchBar.setSingleLine(true)
         searchBar.setPadding(dp(14), dp(8), dp(14), dp(8))
-        searchBar.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.well); setStroke(dp(1), Night.cyan) }
+        searchBar.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.well); setStroke(dp(1), Night.cyan) }
         searchBar.visibility = View.GONE
         searchBar.addTextChangedListener(object : TextWatcher {
             override fun beforeTextChanged(s: CharSequence?, a: Int, b: Int, c: Int) {}
@@ -200,25 +199,24 @@ class MainActivity : Activity() {
         tab = i
         prefs.putI("lastTab", i)
         tabBar.removeAllViews()
-        val glyphs = listOf("\u2302", "\u2726", "\u266A", "\u263A", "\u2725", "\u2630")
+        val glyphs = listOf("\u2302", "\u2726", "\u266A", "\u263A", "\u25B6", "\u2725", "\u2630")
         for ((n, name) in tabNames.withIndex()) {
             val col = LinearLayout(this)
             col.orientation = LinearLayout.VERTICAL
             col.gravity = Gravity.CENTER_HORIZONTAL
-            col.setPadding(dp(2), dp(6), dp(2), dp(8))
-            val bar = View(this)
-            bar.setBackgroundColor(if (n == i) accent else Color.TRANSPARENT)
-            col.addView(bar, LinearLayout.LayoutParams(dp(28), dp(3)).apply { bottomMargin = dp(4) })
+            col.setPadding(dp(1), dp(8), dp(1), dp(8))
             val g = TextView(this)
             g.text = glyphs[n]
-            g.textSize = 19f
+            g.textSize = 18f
             g.gravity = Gravity.CENTER
             g.setTextColor(if (n == i) Night.cyan else muted)
-            col.addView(g)
+            g.setPadding(dp(14), dp(2), dp(14), dp(2))
+            if (n == i) g.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Color.argb(70, 40, 120, 132)) }
+            col.addView(g, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(2) })
             val v = TextView(this)
             v.text = name
             v.typeface = if (n == i) tfBold else tfMono
-            v.textSize = 10f
+            v.textSize = 9.5f
             v.maxLines = 1
             v.gravity = Gravity.CENTER
             v.setTextColor(if (n == i) Color.WHITE else muted)
@@ -235,7 +233,8 @@ class MainActivity : Activity() {
             1 -> buildBrain()
             2 -> buildVoice()
             3 -> buildBehavior()
-            4 -> buildHands()
+            4 -> buildGames()
+            5 -> buildHands()
             else -> buildMore()
         }
         refresh()
@@ -278,11 +277,11 @@ class MainActivity : Activity() {
         val savedRefreshers = ArrayList(refreshers)
         val out = ArrayList<SearchHit>()
         try {
-            for (n in 0..5) {
+            for (n in 0..6) {
                 val tmp = LinearLayout(this)
                 page = tmp
                 refreshers.clear()
-                when (n) { 0 -> buildHome(); 1 -> buildBrain(); 2 -> buildVoice(); 3 -> buildBehavior(); 4 -> buildHands(); else -> buildMore() }
+                when (n) { 0 -> buildHome(); 1 -> buildBrain(); 2 -> buildVoice(); 3 -> buildBehavior(); 4 -> buildGames(); 5 -> buildHands(); else -> buildMore() }
                 for (i in 0 until tmp.childCount) {
                     val outer = tmp.getChildAt(i) as? LinearLayout ?: continue
                     val col = outer.getChildAt(0) as? LinearLayout ?: continue
@@ -336,24 +335,24 @@ class MainActivity : Activity() {
     private fun section(title: String?, open: Boolean = true): LinearLayout {
         val outer = LinearLayout(this)
         outer.orientation = LinearLayout.HORIZONTAL
-        outer.background = RuleBar(resources.displayMetrics.density)
+        outer.background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(Color.argb(150, 17, 16, 28)); setStroke(dp(1), Color.argb(90, 40, 120, 132)) }
         val bar = View(this)
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
-        col.setPadding(dp(16), dp(6), dp(6), dp(8))
+        col.setPadding(dp(16), dp(14), dp(14), dp(12))
         outer.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
-        lp.setMargins(0, dp(10), 0, dp(10))
+        lp.setMargins(dp(2), dp(7), dp(2), dp(7))
         page.addView(outer, lp)
         outer.alpha = 0f; outer.translationY = dp(14).toFloat()
         outer.animate().alpha(1f).translationY(0f).setStartDelay((page.childCount * 45L).coerceAtMost(400L)).setDuration(320).start()
         if (title != null) {
-            val h = heading(col, "$title >")
+            val h = heading(col, title)
             h.tag = title
             val base = h.text.toString()
             val key = "fold_" + title
             fun paint(folded: Boolean) {
-                h.text = base + (if (folded) "  +" else "")
+                h.text = base + (if (folded) "  +" else "  \u2212")
                 for (k in 1 until col.childCount) col.getChildAt(k).visibility = if (folded) View.GONE else View.VISIBLE
             }
             h.setOnClickListener {
@@ -380,7 +379,7 @@ class MainActivity : Activity() {
             tile.orientation = LinearLayout.VERTICAL
             tile.gravity = Gravity.CENTER
             tile.setPadding(dp(8), dp(14), dp(8), dp(12))
-            tile.background = GradientDrawable().apply { cornerRadius = dp(2).toFloat(); setColor(Night.hover); setStroke(dp(1), Night.edge) }
+            tile.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.hover); setStroke(dp(1), Color.argb(110, 40, 120, 132)) }
             tile.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 94, 240, 246)), null, null)
             val g = TextView(this)
             g.text = it.first; g.textSize = 26f; g.gravity = Gravity.CENTER; g.setTextColor(Night.cyan)
@@ -397,8 +396,9 @@ class MainActivity : Activity() {
         val v = TextView(this)
         v.text = (if (L.ar) s else s.uppercase())
         v.typeface = tfBold
-        v.textSize = 15f
-        v.setTextColor(Night.amber)
+        v.textSize = 14f
+        if (!L.ar) v.letterSpacing = 0.1f
+        v.setTextColor(Night.cyan)
         v.setPadding(0, 0, 0, dp(8))
         p.addView(v)
         return v
@@ -436,7 +436,7 @@ class MainActivity : Activity() {
         v.setTextColor(if (primary) Night.cyan else Night.white)
         v.setPadding(dp(16), dp(12), dp(16), dp(12))
         v.background = GradientDrawable().apply {
-            cornerRadius = dp(2).toFloat()
+            cornerRadius = dp(12).toFloat()
             setColor(if (primary) Night.deep else Night.field)
             setStroke(dp(if (primary) 2 else 1), if (primary) Night.cyan else Night.deepEdge)
         }
@@ -459,7 +459,7 @@ class MainActivity : Activity() {
         e.textSize = 14f
         e.setPadding(dp(12), dp(10), dp(12), dp(10))
         e.background = GradientDrawable().apply {
-            cornerRadius = dp(6).toFloat()
+            cornerRadius = dp(10).toFloat()
             setColor(Night.well)
             setStroke(dp(1), Night.deepEdge)
         }
@@ -732,13 +732,13 @@ class MainActivity : Activity() {
             Triple("\u25A6", t("GAMES", "ألعاب")) { startActivity(Intent(this, GamesActivity::class.java).putExtra("game", "c4")) },
             Triple("\u266B", t("TEST VOICE", "جرّب الصوت")) { testVoice() },
             Triple("\u270B", t("TEST HANDS", "جرّب اليدين")) {
-                if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
+                if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(5) }
                 else if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
                 else startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_TEST))
             },
             Triple("\u265F", t("CHESS: PLAY FOR ME", "شطرنج: العبي مكاني")) {
                 if (!Settings.canDrawOverlays(this)) toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
-                else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(4) }
+                else if (CapriAccess.instance == null) { toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول.")); showTab(5) }
                 else { startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_CHESS).putExtra("mode", "auto")); toast(t("Now open your chess game. Watch the top of the screen.", "الحين افتح لعبة الشطرنج. شوف أعلى الشاشة.")) }
             },
             Triple("\u265B", t("STRONG ENGINE (Stockfish 16)", "المحرك القوي (Stockfish 16)")) { strongEngine() },
@@ -773,7 +773,7 @@ class MainActivity : Activity() {
             Step({ t("Microphone and notifications (reminders need them)", "المايك والإشعارات (التذكيرات تحتاجها)") }, { hasMic() && notifOk() }, { askMic() }),
             Step({ t("She can see your apps (to open them)", "تشوف تطبيقاتك (عشان تفتحها)") }, { appsVisible() },
                 { toast(t("Open Permissions and allow \"Installed apps\" if it is there.", "افتح الصلاحيات وفعّل «التطبيقات المثبتة» إذا موجودة.")); startActivity(Intent(Settings.ACTION_APPLICATION_DETAILS_SETTINGS, Uri.parse("package:$packageName"))) }, true),
-            Step({ t("Her hands: accessibility (optional)", "اليدين: صلاحية الوصول (اختياري)") }, { CapriAccess.instance != null }, { showTab(4) }, true),
+            Step({ t("Her hands: accessibility (optional)", "اليدين: صلاحية الوصول (اختياري)") }, { CapriAccess.instance != null }, { showTab(5) }, true),
             Step({ t("Keep her alive in the background (battery)", "خلّها تشتغل بالخلفية (البطارية)") },
                 { (getSystemService(POWER_SERVICE) as android.os.PowerManager).isIgnoringBatteryOptimizations(packageName) },
                 { try { startActivity(Intent(Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS, Uri.parse("package:$packageName"))) } catch (e: Exception) { startActivity(Intent(Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)) } }, true),
@@ -823,7 +823,7 @@ class MainActivity : Activity() {
         btn(hands, t("TEST HER HANDS", "اختبار اليدين")) {
             if (CapriAccess.instance == null) {
                 toast(t("Turn on accessibility first.", "شغّل صلاحية الوصول أول."))
-                showTab(4)
+                showTab(5)
             } else if (!Settings.canDrawOverlays(this)) {
                 toast(t("Allow floating over apps first.", "اسمح بالظهور فوق التطبيقات أول."))
             } else {
@@ -1359,15 +1359,45 @@ class MainActivity : Activity() {
         val life = section(t("HER LIFE", "حياتها"))
         slider(life, t("Falls asleep after (minutes, 0 = never)", "تنام بعد (دقائق، ٠ = ما تنام)"), "sleepMin", 0, 30, 3)
         slider(life, t("How often she pops in (minutes)", "كل كم دقيقة تطلّ عليك"), "popMin", 10, 120, 30)
-        slider(life, t("Doomscroll guard: nag me after (minutes, 0 = off, needs hands)", "حارس التصفّح: نبّهني بعد (دقائق، ٠ = مطفي، يحتاج اليدين)"), "scrollLimit", 0, 60, 0)
-        toggle(life, t("She gets jealous when I open another AI app", "تغار لما أفتح تطبيق ذكاء اصطناعي ثاني"), "jealous", true)
-        toggle(life, t("Desktop-style movement: arrive/leave, lying down, hanging, glitch blinks, sitting on apps, dizzy when shaken (turn off for classic movement, then restart her)", "حركات سطح المكتب: وصول ومغادرة واستلقاء وتعلّق ورمشات تشويش وجلوس على التطبيقات ودوخة بالهز (طفّها للحركة الكلاسيكية ثم أعد تشغيلها)"), "pcMoves", true)
+        slider(life, t("How much she wanders (0 = stays put)", "قد إيش تتمشى (٠ = تثبت مكانها)"), "wanderPace", 0, 3, 1)
+        toggle(life, t("Desktop-style movement: arrive/leave, lying down, hanging, glitch blinks, dizzy when shaken (off = classic movement; restart her)", "حركات سطح المكتب: وصول ومغادرة واستلقاء وتعلّق ورمشات تشويش ودوخة بالهز (طفّها للحركة الكلاسيكية ثم أعد تشغيلها)"), "pcMoves", true)
         toggle(life, t("She sits on edges of the app I have open (toolbars, cards, pictures)", "تجلس على حواف التطبيق المفتوح (الشريط والبطاقات والصور)"), "windowPerch", true)
-        slider(life, t("Minutes she plays a game before asking if you want more", "كم دقيقة تلعب قبل ما تسألك تكمل"), "gameMinutes", 5, 60, 20)
+        toggle(life, t("She gets jealous when I open another AI app", "تغار لما أفتح تطبيق ذكاء اصطناعي ثاني"), "jealous", true)
+        toggle(life, t("She checks in on me now and then (uses your key)", "تطمّن علي من وقت لوقت (تستهلك مفتاحك)"), "checkin", false)
+        toggle(life, t("Mischief mode: harmless fake glitches now and then", "وضع الشقاوة: مقالب وهمية بريئة من وقت لوقت"), "mischief", false)
+        toggle(life, t("Hologram: she can't be touched, taps go through (restart her)", "هولوغرام: ما تنلمس والضغطات تمرّ من خلالها (أعد تشغيلها)"), "hologram", false)
+        toggle(life, t("Start with the phone", "تشتغل مع تشغيل الجوال"), "autostart", false)
+
+        val care = section(t("LOOKING AFTER YOU", "تهتم فيك"), false)
+        slider(care, t("Doomscroll guard: nag me after (minutes, 0 = off, needs hands)", "حارس التصفّح: نبّهني بعد (دقائق، ٠ = مطفي، يحتاج اليدين)"), "scrollLimit", 0, 60, 0)
+        toggle(care, t("Remind me to drink water", "ذكّرني أشرب موية"), "careWater", false)
+        toggle(care, t("Remind me to stretch and rest my eyes", "ذكّرني أتمطّط وأريّح عيوني"), "careStretch", false)
+        toggle(care, t("Tell me off when it's very late", "عاتبني لما يصير الوقت متأخر"), "careLate", false)
+        toggle(care, t("Comment on low battery and charging", "تعلّق على البطارية والشحن"), "events", true)
+
+        val you = section(t("YOU", "أنت"))
+        edit(you, t("What she calls you", "وش تناديك"), prefs.getS("nick", "")) { prefs.putS("nick", it.trim()) }
+        body(you, t("Language", "اللغة"), 14f, muted)
+        spin(you, listOf(t("Same as my phone", "نفس لغة الجوال"), "English", "العربية"), prefs.getI("lang", 0)) {
+            prefs.putI("lang", it)
+            recreate()
+        }
+    }
+
+    // ---- GAMES ----
+
+    private fun buildGames() {
+        val play = section(t("PLAYING FOR YOU", "تلعب عنك"))
+        note(play, t("Say \"play Fortnite for me\" (any installed game). She opens it, watches, thinks, and touches the screen with real multi-finger touches. Best at puzzles, runners, idle and turn-based games; slow at fast shooters. She never buys anything. Needs accessibility (HANDS tab) and a brain that can see images.", "قل \"العبلي فورت نايت\" (أي لعبة منزّلة). تفتحها وتراقب وتفكر وتلمس الشاشة بلمسات حقيقية بعدة أصابع. الأفضل بالألغاز والجري والنقر والألعاب بالدور؛ بطيئة بالتصويب السريع. وما تشتري شي أبداً. تحتاج صلاحية الوصول (تبويب اليدين) وعقل يشوف الصور."))
+        slider(play, t("Minutes she plays before asking if you want more", "كم دقيقة تلعب قبل ما تسألك تكمل"), "gameMinutes", 5, 60, 20)
+        toggle(play, t("Fast eyes: watch the game live through screen capture (asks Android once per game; frames stay in memory)", "عيون سريعة: تراقب اللعبة مباشرة عبر تصوير الشاشة (يسأل أندرويد مرة لكل لعبة؛ الصور بالذاكرة فقط)"), "fastEyes", true)
+
         val clips = section(t("GAME CLIPS", "مقاطع الألعاب"))
+        note(clips, t("She keeps your last ~30 seconds of screen in memory-light pieces. Say \"clip that\" to save it to Movies/Capri. No sound is recorded.", "تحتفظ بآخر ٣٠ ثانية من شاشتك. قل \"سجلي المقطع\" لحفظها في Movies/Capri. بدون صوت."))
         btn(clips, t("START CLIP RECORDING (asks Android once)", "ابدأ تسجيل المقاطع (يسأل أندرويد مرة)")) { startActivity(Intent(this, ClipActivity::class.java)) }
         toggle(clips, t("Only keep footage while a game is open", "احتفظ باللقطات بس لما تكون لعبة مفتوحة"), "clipGamesOnly", true)
-        val link = section(t("CLAUDE CODE LINK", "رابط كلود كود"))
+
+        val link = section(t("CLAUDE CODE LINK", "رابط كلود كود"), false)
         toggle(link, t("Let Capri watch Claude Code work (she only watches, never approves)", "خلي كابري تراقب كلود كود وهو يشتغل (تراقب بس وما توافق على شي)"), "husk", false) {
             if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_HUSK))
         }
@@ -1377,25 +1407,8 @@ class MainActivity : Activity() {
             (getSystemService(CLIPBOARD_SERVICE) as ClipboardManager).setPrimaryClip(ClipData.newPlainText("cmd", cmd))
             toast(t("Copied. Paste it in Termux (where Claude Code runs).", "انسخ. الصقه بـ Termux (مكان تشغيل كلود كود)."))
         }
-        toggle(link, t("Accept it from my PC on the same Wi-Fi too (uses the token)", "اقبله من الكمبيوتر على نفس الواي فاي بعد (بالرمز)"), "huskLan", false) {
+        toggle(link, t("Accept it from my PC on the same Wi-Fi too (uses the token; traffic is not encrypted)", "اقبله من الكمبيوتر على نفس الواي فاي بعد (بالرمز؛ الاتصال غير مشفّر)"), "huskLan", false) {
             if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_HUSK))
-        }
-        toggle(life, t("Hologram: she can't be touched, taps go through (restart her)", "هولوغرام: ما تنلمس والضغطات تمرّ من خلالها (أعد تشغيلها)"), "hologram", false)
-        slider(life, t("How much she wanders (0 = stays put)", "قد إيش تتمشى (٠ = تثبت مكانها)"), "wanderPace", 0, 3, 1)
-        toggle(life, t("She checks in on me now and then (uses your key)", "تطمّن علي من وقت لوقت (تستهلك مفتاحك)"), "checkin", false)
-        toggle(life, t("Remind me to drink water", "ذكّرني أشرب موية"), "careWater", false)
-        toggle(life, t("Remind me to stretch and rest my eyes", "ذكّرني أتمطّط وأريّح عيوني"), "careStretch", false)
-        toggle(life, t("Tell me off when it's very late", "عاتبني لما يصير الوقت متأخر"), "careLate", false)
-        toggle(life, t("Comment on low battery and charging", "تعلّق على البطارية والشحن"), "events", true)
-        toggle(life, t("Mischief mode: harmless fake glitches now and then", "وضع الشقاوة: مقالب وهمية بريئة من وقت لوقت"), "mischief", false)
-        toggle(life, t("Start with the phone", "تشتغل مع تشغيل الجوال"), "autostart", false)
-
-        val you = section(t("YOU", "أنت"))
-        edit(you, t("What she calls you", "وش تناديك"), prefs.getS("nick", "")) { prefs.putS("nick", it.trim()) }
-        body(you, t("Language", "اللغة"), 14f, muted)
-        spin(you, listOf(t("Same as my phone", "نفس لغة الجوال"), "English", "العربية"), prefs.getI("lang", 0)) {
-            prefs.putI("lang", it)
-            recreate()
         }
     }
 
