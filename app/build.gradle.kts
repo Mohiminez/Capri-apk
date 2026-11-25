@@ -77,6 +77,9 @@ dependencies {
     implementation("com.google.ai.edge.litertlm:litertlm-android:0.19.0")
     // Runs Kokoro (the Windows version's voice) on the phone
     implementation("com.microsoft.onnxruntime:onnxruntime-android:1.20.0")
+    // Reads the words on a game's screen on the phone (menus: PLAY, CONTINUE, READY...). The Latin model ships inside the app.
+    implementation("com.google.mlkit:text-recognition:16.0.1")
+    implementation("com.google.android.gms:play-services-tasks:18.2.0")
     // The runtime's bytecode needs a newer coroutines than its POM says
     implementation("org.jetbrains.kotlinx:kotlinx-coroutines-android:1.11.0")
 }

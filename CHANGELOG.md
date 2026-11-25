@@ -2,7 +2,16 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
-## Newest: music apps, scam check, louder voice, talking on the ledge
+## Newest: she reads the game screen, stronger Fortnite, README updates itself
+
+- **Fix:** the CI test run failed on one test (PerchClipsTest) because the sprite list file had been rewritten in a different layout; restored, and the new clips are now checked by that test too.
+- **Reads the words on a game's screen** on the phone (Google ML Kit, English letters; the model ships in the app, nothing is sent). The game player now (1) presses obvious safe buttons itself before asking the model: Continue, Play again, Skip, Ready, Start, Play, Claim, Collect, Close... never on a screen or line that looks like a store, a price, an ad, a login or an install; a label pressed 3 times in a row without the model being asked is dropped; (2) gives the model the list of words with their pixel positions, and lets it press a button by name: {"t":"text","text":"READY"}; (3) warns the model when much of the screen is storm purple. Two switches in GAMES: read words, press safe buttons herself.
+- **Roaming no longer pushes into walls:** when the screen does not change, she sidesteps, jumps and turns (alternating sides).
+- **Fortnite skill rewritten:** lobby and popups, where to land, loot priority, the storm and the circle, getting unstuck, what to say after elimination. The skill budget in the prompt was raised from 2600 to 6000 characters (a longer skill would have been dropped entirely).
+- She still does not aim at or shoot other players: that is automated aiming, against Epic's rules and a ban risk for the account.
+- **README updates itself:** tools/update_readme.py rewrites the version/counts/skill-pack block and the list of new source files on every push to main (committed back as "[skip ci]"), and the GitHub Release text is the newest CHANGELOG section. Nobody has to edit the README for an update.
+
+## Before: music apps, scam check, louder voice, talking on the ledge
 
 - **Play in a named app:** "play Blinding Lights on Anghami / Spotify / Deezer / YouTube Music / Apple Music / SoundCloud / YouTube" and the Arabic forms ("شغل كاظم الساهر على انغامي"). Opens the app's own search, or its website if the app is not installed. New MUSIC setting picks the app used when you do not name one (from capri-desktop 0.9.7, plus Anghami).
 - **Scam check:** share a message from WhatsApp/SMS/Telegram to Capri, or ask "is this a scam: ..." / "هل هذي رسالة نصب: ...". Runs on the phone, Arabic and English: fake brand links, shortened/IP/punycode links, requests for codes or card details, prizes, threats, fees and recharge cards, "my new number", delivery tricks, APK links. Real OTP messages that say "never share" are left alone.

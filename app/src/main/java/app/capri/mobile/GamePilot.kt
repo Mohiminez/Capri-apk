@@ -1,6 +1,7 @@
 package app.capri.mobile
 
 import android.content.Context
+import android.os.Build
 import org.json.JSONArray
 import org.json.JSONObject
 
@@ -32,6 +33,7 @@ class GamePilot(
         "Other acts, instead of do: {\"act\":\"back\"}, {\"act\":\"wait\"}, {\"act\":\"done\",\"say\":\"...\"} when the user's goal is met, {\"act\":\"fail\",\"say\":\"why\"} when you cannot continue. " +
         "The screenshot has a yellow grid with cell names (A1, B1 ...; letter = column, number = row). Instead of guessing pixels you may point with a cell: {\"t\":\"tap\",\"cell\":\"C5\",\"dx\":0.5,\"dy\":0.5} where dx,dy (0..1) place the touch inside the cell (default centre); swipe takes \"cell\" and \"cell2\". " +
         "You are also given a list of real buttons the system reports with their pixel centres: prefer them for menus. " +
+        "You are also given the words read on the screen with their pixel centres (OCR, English letters only). To press a button you can read, use {\"t\":\"text\",\"text\":\"PLAY\"}: it taps the real position of that word, which is more exact than a grid cell. Obvious safe buttons (Continue, Play again, Skip, Ready...) are already pressed by the phone before you are asked. " +
         "FAST MODE: for something that needs quick reactions (tapping tiles, spamming a button, dodging, following a target) do not play move by move. Instead reply {\"state\":\"playing\",\"say\":\"...\",\"policy\":{\"ms\":8000,\"hz\":4,\"rules\":[{\"when\":{...},\"do\":[...],\"cool\":300}]}} and this phone will run your rules many times a second WITHOUT asking you, then show you the result. " +
         "Coordinates in a policy are fractions 0..1 of the screen (x right, y down). \"when\" is one of {\"blob\":{\"color\":\"dark|light|red|green|blue|yellow|orange|purple|cyan|#rrggbb\",\"region\":[x1,y1,x2,y2],\"pick\":\"lowest|highest|largest|leftmost|rightmost|nearest_center\"}} (finds the best patch of that colour), {\"pixel\":{\"x\":0.5,\"y\":0.9,\"color\":\"red\"}}, {\"notpixel\":{...}}, {\"changed\":{\"region\":[..]}} or no \"when\" (always). " +
         "\"do\" items: {\"tap\":[x,y]}, {\"tapblob\":[dx,dy]} (tap the found patch), {\"hold\":[x,y],\"ms\":500}, {\"swipe\":[x1,y1,x2,y2],\"ms\":200}, {\"joy\":[cx,cy,dx,dy],\"ms\":600} (push a stick), {\"follow\":[cx,cy]} (push the stick at cx,cy toward the found patch). \"cool\" is ms between uses of a rule. " +
@@ -72,12 +74,15 @@ class GamePilot(
         val trail = ArrayList<String>()
         var turns = 0; var bad = 0; var away = 0; var deadLine = 0
         var lastFrame: Reflex.Frame? = null; var still = 0; var reflexNote = ""
+        val ocrOn = prefs.getB("gameOcr", true) && Build.VERSION.SDK_INT >= 30
+        val autoMenus = ocrOn && prefs.getB("autoMenus", true)
+        val menuTaps = ArrayList<String>()   // buttons pressed by the phone since the model was last asked
         while (!cancelled && System.currentTimeMillis() < end) {
             val ai = CapriAccess.instance ?: return L.t("Lost my hands.", "فقدت السيطرة.")
             if (CapriAccess.foreground != found.second && CapriAccess.foreground.isNotEmpty()) {
                 if (++away >= 3) { if (away > 6) return L.t("You left the game, so I stopped.", "طلعت من اللعبة، فوقفت."); Actions.openApp(ctx, game); ai.waitFor(found.second, 6000) }
             } else away = 0
-            val seen = ai.shotSee(true)
+            val seen = ai.shotSee(true, ocrOn)
             val img = seen?.b64
             if (seen == null || img == null) { try { Thread.sleep(1200) } catch (e: InterruptedException) { }; if (++bad >= 6) return L.t("I can't see the screen.", "ما أقدر أشوف الشاشة."); continue }
             // stuck check: did the last action change anything on screen?
@@ -85,10 +90,33 @@ class GamePilot(
             lastFrame = seen.frame
             if (!moved) still++ else still = 0
             val sc0 = seen.scale
+            // the words on the screen, read on the phone
+            var words: List<Word> = emptyList()
+            seen.clean?.let { cb -> words = ScreenText.read(cb); try { cb.recycle() } catch (e: Exception) { } }
+            val shotW = seen.cellW * seen.cols; val shotH = seen.cellH * seen.rows
+            if (autoMenus) {
+                val hit = TextTargets.autoTap(words, menuTaps.takeLast(8))
+                if (hit != null) {
+                    val hx = (hit.cx * shotW * sc0).toInt(); val hy = (hit.cy * shotH * sc0).toInt()
+                    if (!risky.containsMatchIn(ai.labelAt(hx, hy))) {
+                        val ok = ai.fingers(listOf(CapriAccess.Finger(hx, hy, hx, hy, 0, 60)))
+                        menuTaps.add(hit.text)
+                        trail.add((if (ok) "pressed " else "could not press ") + "\"" + hit.text + "\" (read on the screen)")
+                        status("[GAME] " + hit.text.uppercase())
+                        ActionLog.add(prefs, "game", "auto " + hit.text)
+                        try { Thread.sleep(900) } catch (e: InterruptedException) { }
+                        continue
+                    }
+                }
+            }
+            menuTaps.clear()
+            val storm = TextTargets.purpleShare(seen.frame)
             val controls = ai.controlsList(sc0)
             val user = (if (still >= 2) "WARNING: the screen did not change after your last $still actions. Try something different (another spot, a button from the list, back, or wait if it is loading).\n" else "") +
                 (if (reflexNote.isNotBlank()) "Result of your last policy: $reflexNote\n" else "") +
                 (if (FastCaptureService.active()) "Fast eyes are ON: a policy sees the screen live (up to 15 Hz), so policies for quick games work well.\n" else "Fast eyes are off: policies see the screen only about once a second.\n") + "Screenshot size: ${(seen.frame.w * 5)}x${(seen.frame.h * 5)} approx, grid ${seen.cols} columns x ${seen.rows} rows.\nReal buttons: " + (if (controls.isEmpty()) "(none reported: probably a game surface)" else controls.joinToString("; ")) + "\n" +
+                "Words read on the screen: " + TextTargets.describe(words, shotW.toInt(), shotH.toInt()) + "\n" +
+                (if (storm > 0.22f) "WARNING: about ${(storm * 100).toInt()}% of the screen is storm purple: you are probably in the storm. Run toward the safe zone (the white circle on the map) and do not stop to loot.\n" else "") +
                 "Saved control layout: " + layoutText().ifBlank { "(not known yet)" } + "\nGame: $game\nWhat I learned about it: " + notes().ifBlank { "(nothing yet)" } + "\nTips for this kind of game: " + tips.ifBlank { "(none)" } + "\nLast moves:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(6).joinToString("\n")) +
                 "\nThe user's language: " + (if (L.ar) "Arabic" else "English")
             val out = brain.completeBlocking(system, user, img)
@@ -107,7 +135,8 @@ class GamePilot(
             j.optJSONObject("layout")?.let { lo -> saveLayout(lo) }
             val roamable = state == "playing" && act.isEmpty() && (j.optJSONArray("do")?.length() ?: 0) == 0 && j.optJSONObject("policy") == null && layout().containsKey("stick") && survivalGame()
             if (roamable) {
-                reflexNote = runPolicy(ai, roamPolicy(layout(), System.currentTimeMillis()), seen)
+                // stuck against a wall or a fence: sidestep, jump and turn instead of pushing into it again
+                reflexNote = runPolicy(ai, if (still >= 2) unstickPolicy(layout(), System.currentTimeMillis()) else roamPolicy(layout(), System.currentTimeMillis()), seen)
                 trail.add("roam: " + reflexNote)
                 ActionLog.add(prefs, "game", "roam")
                 try { Thread.sleep(200) } catch (e: InterruptedException) { }
@@ -144,6 +173,11 @@ class GamePilot(
                         fun cx(p: Pair<Float, Float>?, fallback: String) = if (p != null) (p.first * sc).toInt() else px(fallback)
                         fun cy(p: Pair<Float, Float>?, fallback: String) = if (p != null) (p.second * sc).toInt() else px(fallback)
                         when (m.optString("t")) {
+                            "text" -> {
+                                val wd = TextTargets.find(words, m.optString("text"))
+                                if (wd != null) { val tx = (wd.cx * shotW * sc).toInt(); val ty = (wd.cy * shotH * sc).toInt(); list.add(CapriAccess.Finger(tx, ty, tx, ty, at, 60)) }
+                                else trail.add("could not read \"" + m.optString("text") + "\" on the screen")
+                            }
                             "tap" -> list.add(CapriAccess.Finger(cx(c1, "x"), cy(c1, "y"), cx(c1, "x"), cy(c1, "y"), at, 60))
                             "hold" -> list.add(CapriAccess.Finger(cx(c1, "x"), cy(c1, "y"), cx(c1, "x"), cy(c1, "y"), at, m.optLong("ms", 700).coerceIn(100, 3000)))
                             "swipe" -> list.add(CapriAccess.Finger(cx(c1, "x1"), cy(c1, "y1"), cx(c2, "x2"), cy(c2, "y2"), at, m.optLong("ms", 300).coerceIn(80, 3000)))
@@ -262,6 +296,19 @@ class GamePilot(
             l["jump"]?.let { rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("tap", doubleArrayOf(it[0], it[1]))), 4300)) }
             l["pickup"]?.let { rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("tap", doubleArrayOf(it[0], it[1]))), 1500)) }
             return Reflex(rules, now + 6000, 3)
+        }
+
+        /** When she is stuck while roaming: sidestep, jump and turn. */
+        fun unstickPolicy(l: Map<String, DoubleArray>, now: Long): Reflex {
+            val st = l["stick"] ?: doubleArrayOf(0.15, 0.75)
+            val lk = l["look"] ?: doubleArrayOf(0.7, 0.45)
+            val side = if ((now / 1000) % 2 == 0L) -0.10 else 0.10
+            val rules = ArrayList<Reflex.Rule>()
+            rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("joy", doubleArrayOf(st[0], st[1], side, 0.0), 900)), 2500))
+            rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("swipe", doubleArrayOf(lk[0], lk[1], (lk[0] + side * 3).coerceIn(0.02, 0.98), lk[1]), 400)), 2000))
+            l["jump"]?.let { rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("tap", doubleArrayOf(it[0], it[1]))), 700)) }
+            rules.add(Reflex.Rule(Reflex.Cond("none"), listOf(Reflex.Do("joy", doubleArrayOf(st[0], st[1], 0.0, -0.10), 1200)), 2600))
+            return Reflex(rules, now + 4000, 3)
         }
 
         /** "C5" -> (col 2, row 4), zero-based; null when out of the grid. */

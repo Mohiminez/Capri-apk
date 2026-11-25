@@ -14,7 +14,7 @@ class PerchClipsTest {
         val dir = assets()
         val m = File(dir, "sprites.json").readText()
         for (n in listOf("perch_arrive", "perch_leave", "perch_glitch", "perch_blink_glitch", "perch_music", "idle_blink_glitch",
-            "laydown", "laydown_blink", "laydown_glitch", "laydown_leave")) {
+            "laydown", "laydown_blink", "laydown_glitch", "laydown_leave", "perch_talk", "laydown_talk", "laydown_blink_glitch")) {
             assertTrue("$n in manifest", m.contains("\"$n\": {"))
             assertTrue("$n sheet", File(dir, "sprites/$n.webp").length() > 1000)
         }

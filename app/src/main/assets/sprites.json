@@ -1,1 +1,242 @@
-{"idle":{"frames":60,"fps":24,"w":116,"h":384,"cols":35,"sx":12.2},"idle_blink":{"frames":8,"fps":24,"w":116,"h":384,"cols":35,"sx":12.2},"idle_mouth":{"frames":5,"fps":12,"w":116,"h":384,"cols":35,"sx":12.2},"mouth":{"frames":5,"fps":12,"w":240,"h":384,"cols":17,"sx":0},"glitch":{"frames":10,"fps":15,"w":240,"h":384,"cols":17,"sx":0},"grin":{"frames":16,"fps":8,"w":240,"h":384,"cols":17,"sx":0},"sleep":{"frames":16,"fps":6,"w":240,"h":384,"cols":17,"sx":0},"wake":{"frames":13,"fps":15,"w":240,"h":384,"cols":17,"sx":0},"arrive":{"frames":14,"fps":15,"w":240,"h":384,"cols":17,"sx":0},"leave":{"frames":12,"fps":15,"w":240,"h":384,"cols":17,"sx":0},"dangle":{"frames":24,"fps":10,"w":240,"h":384,"cols":17,"sx":0},"walk":{"frames":12,"fps":12,"w":240,"h":384,"cols":17,"sx":0},"dance":{"frames":16,"fps":10,"w":240,"h":384,"cols":17,"sx":0},"click":{"frames":8,"fps":20,"w":360,"h":144,"cols":11,"sx":0},"laydown_sleep":{"frames":30,"fps":15,"w":372,"h":250,"cols":11,"sx":0},"perch":{"frames":30,"fps":15,"w":196,"h":384,"cols":20,"sx":12.0},"perch_blink":{"frames":8,"fps":30,"w":196,"h":384,"cols":20,"sx":12.0},"perch_arrive":{"frames":14,"fps":15,"w":288,"h":384,"cols":14,"sx":12.0},"perch_leave":{"frames":12,"fps":15,"w":288,"h":384,"cols":14,"sx":12.0},"perch_glitch":{"frames":10,"fps":15,"w":288,"h":384,"cols":14,"sx":12.0},"perch_blink_glitch":{"frames":8,"fps":30,"w":196,"h":384,"cols":20,"sx":12.0},"perch_music":{"frames":30,"fps":15,"w":196,"h":384,"cols":20,"sx":12.0},"idle_blink_glitch":{"frames":8,"fps":24,"w":116,"h":384,"cols":35,"sx":12.2},"laydown":{"frames":30,"fps":15,"w":372,"h":250,"cols":11,"sx":0},"laydown_blink":{"frames":8,"fps":30,"w":372,"h":250,"cols":11,"sx":0},"laydown_glitch":{"frames":10,"fps":15,"w":440,"h":250,"cols":9,"sx":0},"laydown_leave":{"frames":12,"fps":15,"w":440,"h":250,"cols":9,"sx":0},"perch_talk":{"frames":30,"fps":15,"w":196,"h":384,"cols":20,"sx":12.0},"laydown_talk":{"frames":30,"fps":15,"w":372,"h":250,"cols":11,"sx":0},"laydown_blink_glitch":{"frames":8,"fps":30,"w":372,"h":250,"cols":11,"sx":0}}
+{
+ "idle": {
+  "frames": 60,
+  "fps": 24,
+  "w": 116,
+  "h": 384,
+  "cols": 35,
+  "sx": 12.2
+ },
+ "idle_blink": {
+  "frames": 8,
+  "fps": 24,
+  "w": 116,
+  "h": 384,
+  "cols": 35,
+  "sx": 12.2
+ },
+ "idle_mouth": {
+  "frames": 5,
+  "fps": 12,
+  "w": 116,
+  "h": 384,
+  "cols": 35,
+  "sx": 12.2
+ },
+ "mouth": {
+  "frames": 5,
+  "fps": 12,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "glitch": {
+  "frames": 10,
+  "fps": 15,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "grin": {
+  "frames": 16,
+  "fps": 8,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "sleep": {
+  "frames": 16,
+  "fps": 6,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "wake": {
+  "frames": 13,
+  "fps": 15,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "arrive": {
+  "frames": 14,
+  "fps": 15,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "leave": {
+  "frames": 12,
+  "fps": 15,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "dangle": {
+  "frames": 24,
+  "fps": 10,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "walk": {
+  "frames": 12,
+  "fps": 12,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "dance": {
+  "frames": 16,
+  "fps": 10,
+  "w": 240,
+  "h": 384,
+  "cols": 17,
+  "sx": 0
+ },
+ "click": {
+  "frames": 8,
+  "fps": 20,
+  "w": 360,
+  "h": 144,
+  "cols": 11,
+  "sx": 0
+ },
+ "laydown_sleep": {
+  "frames": 30,
+  "fps": 15,
+  "w": 372,
+  "h": 250,
+  "cols": 11,
+  "sx": 0
+ },
+ "perch": {
+  "frames": 30,
+  "fps": 15,
+  "w": 196,
+  "h": 384,
+  "cols": 20,
+  "sx": 12.0
+ },
+ "perch_blink": {
+  "frames": 8,
+  "fps": 30,
+  "w": 196,
+  "h": 384,
+  "cols": 20,
+  "sx": 12.0
+ },
+ "perch_arrive": {
+  "frames": 14,
+  "fps": 15,
+  "w": 288,
+  "h": 384,
+  "cols": 14,
+  "sx": 12.0
+ },
+ "perch_leave": {
+  "frames": 12,
+  "fps": 15,
+  "w": 288,
+  "h": 384,
+  "cols": 14,
+  "sx": 12.0
+ },
+ "perch_glitch": {
+  "frames": 10,
+  "fps": 15,
+  "w": 288,
+  "h": 384,
+  "cols": 14,
+  "sx": 12.0
+ },
+ "perch_blink_glitch": {
+  "frames": 8,
+  "fps": 30,
+  "w": 196,
+  "h": 384,
+  "cols": 20,
+  "sx": 12.0
+ },
+ "perch_music": {
+  "frames": 30,
+  "fps": 15,
+  "w": 196,
+  "h": 384,
+  "cols": 20,
+  "sx": 12.0
+ },
+ "idle_blink_glitch": {
+  "frames": 8,
+  "fps": 24,
+  "w": 116,
+  "h": 384,
+  "cols": 35,
+  "sx": 12.2
+ },
+ "laydown": {
+  "frames": 30,
+  "fps": 15,
+  "w": 372,
+  "h": 250,
+  "cols": 11,
+  "sx": 0
+ },
+ "laydown_blink": {
+  "frames": 8,
+  "fps": 30,
+  "w": 372,
+  "h": 250,
+  "cols": 11,
+  "sx": 0
+ },
+ "laydown_glitch": {
+  "frames": 10,
+  "fps": 15,
+  "w": 440,
+  "h": 250,
+  "cols": 9,
+  "sx": 0
+ },
+ "laydown_leave": {
+  "frames": 12,
+  "fps": 15,
+  "w": 440,
+  "h": 250,
+  "cols": 9,
+  "sx": 0
+ },
+ "perch_talk": {
+  "frames": 30,
+  "fps": 15,
+  "w": 196,
+  "h": 384,
+  "cols": 20,
+  "sx": 12.0
+ },
+ "laydown_talk": {
+  "frames": 30,
+  "fps": 15,
+  "w": 372,
+  "h": 250,
+  "cols": 11,
+  "sx": 0
+ },
+ "laydown_blink_glitch": {
+  "frames": 8,
+  "fps": 30,
+  "w": 372,
+  "h": 250,
+  "cols": 11,
+  "sx": 0
+ }
+}

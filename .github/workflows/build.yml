@@ -34,6 +34,13 @@ jobs:
       - name: Unit tests (a failing test stops the release)
         run: gradle testDebugUnitTest --no-daemon
 
+      # The README's generated blocks (version, clip and test counts, skill packs, new files) and the Release text
+      # (the newest CHANGELOG section) are rewritten here, so neither has to be edited by hand for an update.
+      - name: Refresh README and release notes
+        env:
+          GITHUB_RUN_NUMBER: ${{ github.run_number }}
+        run: python3 tools/update_readme.py --notes
+
       - name: Use my own signing key (only if the secrets exist)
         env:
           KS_B64: ${{ secrets.CAPRI_KEYSTORE_B64 }}
@@ -73,6 +80,16 @@ jobs:
         run: |
           gh release create "v${{ steps.apk.outputs.version }}" dist/*.apk \
             --title "Capri ${{ steps.apk.outputs.version }}" \
-            --generate-notes \
+            --notes-file dist/release-notes.md \
             --target "${{ github.sha }}" \
             --latest
+
+      # Commit the refreshed README back. Pushes made with the built-in token do not start another run, and *.md changes are ignored anyway.
+      - name: Commit the refreshed README
+        continue-on-error: true
+        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'master')
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add README.md
+          git diff --cached --quiet || (git commit -m "README: refresh generated blocks [skip ci]" && git push)

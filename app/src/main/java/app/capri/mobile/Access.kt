@@ -229,9 +229,9 @@ class CapriAccess : AccessibilityService() {
 
     /** One look at the screen for the game player: the JPEG (optionally with a labelled grid, Set-of-Mark style: cells A1, B1 ...),
      *  a small pixel copy for local colour tests, and the scale back to real screen pixels. */
-    class Seen(val b64: String, val frame: Reflex.Frame, val scale: Float, val cols: Int, val rows: Int, val cellW: Float, val cellH: Float)
+    class Seen(val b64: String, val frame: Reflex.Frame, val scale: Float, val cols: Int, val rows: Int, val cellW: Float, val cellH: Float, val clean: Bitmap? = null)
 
-    fun shotSee(grid: Boolean): Seen? {
+    fun shotSee(grid: Boolean, keepClean: Boolean = false): Seen? {
         if (Build.VERSION.SDK_INT < 30) return null
         var result: Seen? = null
         val latch = CountDownLatch(1)
@@ -247,6 +247,8 @@ class CapriAccess : AccessibilityService() {
                         val px = IntArray(tiny.width * tiny.height); tiny.getPixels(px, 0, tiny.width, 0, 0, tiny.width, tiny.height)
                         val frame = Reflex.Frame(px, tiny.width, tiny.height)
                         val cols = 8; val cellW = big.width / cols.toFloat(); val rows = (big.height / cellW).toInt().coerceAtLeast(1); val cellH = big.height / rows.toFloat()
+                        // a copy without the yellow grid, for reading the words on the screen
+                        val clean = if (keepClean) big.copy(Bitmap.Config.ARGB_8888, false) else null
                         val canvasBmp = if (big.isMutable) big else big.copy(Bitmap.Config.ARGB_8888, true)
                         if (grid) {
                             val c = android.graphics.Canvas(canvasBmp)
@@ -258,7 +260,7 @@ class CapriAccess : AccessibilityService() {
                         }
                         val bos = ByteArrayOutputStream()
                         canvasBmp.compress(Bitmap.CompressFormat.JPEG, 70, bos)
-                        result = Seen(Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP), frame, 1f / sc, cols, rows, cellW, cellH)
+                        result = Seen(Base64.encodeToString(bos.toByteArray(), Base64.NO_WRAP), frame, 1f / sc, cols, rows, cellW, cellH, clean)
                         lastShotScale = 1f / sc
                     }
                     screenshot.hardwareBuffer.close()

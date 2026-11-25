@@ -43,7 +43,7 @@ object GameSkills {
     fun remove(ctx: Context, id: String) { File(dir(ctx), "$id.capri-skill").delete() }
 
     /** The tips that fit this game (matched by name, either way round), for the prompt. */
-    fun forGame(all: List<Skill>, game: String, max: Int = 2600): String {
+    fun forGame(all: List<Skill>, game: String, max: Int = 6000): String {
         val g = game.lowercase().trim()
         if (g.isEmpty()) return ""
         val hits = all.filter { s -> s.games.any { it == g || it.contains(g) || g.contains(it) } }

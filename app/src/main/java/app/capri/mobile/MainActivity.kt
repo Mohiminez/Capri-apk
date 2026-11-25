@@ -1421,6 +1421,8 @@ class MainActivity : Activity() {
         note(play, t("Say \"play Fortnite for me\" (any installed game). She opens it, watches, thinks, and touches the screen with real multi-finger touches. Best at puzzles, runners, idle and turn-based games; slow at fast shooters. She never buys anything. Needs accessibility (HANDS tab) and a brain that can see images.", "قل \"العبلي فورت نايت\" (أي لعبة منزّلة). تفتحها وتراقب وتفكر وتلمس الشاشة بلمسات حقيقية بعدة أصابع. الأفضل بالألغاز والجري والنقر والألعاب بالدور؛ بطيئة بالتصويب السريع. وما تشتري شي أبداً. تحتاج صلاحية الوصول (تبويب اليدين) وعقل يشوف الصور."))
         slider(play, t("Minutes she plays before asking if you want more", "كم دقيقة تلعب قبل ما تسألك تكمل"), "gameMinutes", 5, 60, 20)
         toggle(play, t("Fast eyes: watch the game live through screen capture (asks Android once per game; frames stay in memory)", "عيون سريعة: تراقب اللعبة مباشرة عبر تصوير الشاشة (يسأل أندرويد مرة لكل لعبة؛ الصور بالذاكرة فقط)"), "fastEyes", true)
+        toggle(play, t("Read the words on the game screen on the phone (needs Android 11 or newer; English menus)", "تقرأ الكلمات على شاشة اللعبة داخل الجوال (أندرويد 11 وفوق؛ قوائم إنجليزية)"), "gameOcr", true)
+        toggle(play, t("Press obvious safe buttons herself (Continue, Play again, Skip, Ready...) without asking the model", "تضغط الأزرار الواضحة الآمنة بنفسها (Continue وPlay again وSkip وReady...) بدون ما تسأل النموذج"), "autoMenus", true)
 
         val clips = section(t("GAME CLIPS", "مقاطع الألعاب"))
         note(clips, t("She keeps your last ~30 seconds of screen in memory-light pieces. Say \"clip that\" to save it to Movies/Capri. No sound is recorded.", "تحتفظ بآخر ٣٠ ثانية من شاشتك. قل \"سجلي المقطع\" لحفظها في Movies/Capri. بدون صوت."))
