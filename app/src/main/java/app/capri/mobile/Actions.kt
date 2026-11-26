@@ -39,7 +39,6 @@ object Actions {
     const val TRUSTED = 2
     const val ASK_ALWAYS = 3
 
-    private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
     private val readOnly = setOf("weather", "health", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
     // In Guarded these ask first, by showing a bubble you tap to allow.
@@ -47,15 +46,15 @@ object Actions {
     // In "ask every time" mode even your own direct orders ask first.
     private val controls = setOf("hands", "do", "look", "url", "open", "dictate", "scrollforme", "chaos", "watch", "point", "playgame", "browse")
 
-    fun strip(s: String): String = tag.replace(s, "").replace(Regex("\\s+"), " ").trim()
+    fun strip(s: String): String = Tags.strip(s)
 
     // userInitiated = the words came straight from the user (a quick ask), so Guarded mode doesn't ask again.
     fun run(ctx: Context, prefs: Prefs, reply: String, hooks: Hooks?, userInitiated: Boolean = false): String {
         var extra = ""
         val level = prefs.getI("security", GUARDED)
-        for (m in tag.findAll(reply)) {
-            val name = m.groupValues[1].lowercase()
-            val arg = m.groupValues[2].trim()
+        for (m in Tags.actable(reply)) {
+            val name = m.name
+            val arg = m.arg
             // she never starts flipping your videos because a reply said so: only your own words can
             if (name == "scrollforme" && !arg.lowercase().startsWith("off") && !userInitiated) continue
             if (level == LOCKDOWN && name !in readOnly) {
@@ -63,7 +62,7 @@ object Actions {
                 continue
             }
             if (hooks != null && ((level == ASK_ALWAYS && name in controls) ||
-                    (level == GUARDED && (name in asksFirst || (!userInitiated && name in setOf("playgame", "browse", "open", "remember")) || ((name == "hands" || name == "point") && !userInitiated))))) {
+                    (level == GUARDED && (name in asksFirst || (!userInitiated && name in setOf("playgame", "browse", "open", "remember", "wol")) || ((name == "hands" || name == "point") && !userInitiated))))) {
                 hooks.confirm(describe(name, arg)) { execute(ctx, prefs, name, arg, hooks) }
                 continue
             }

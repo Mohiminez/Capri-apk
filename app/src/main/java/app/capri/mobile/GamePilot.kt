@@ -54,7 +54,7 @@ class GamePilot(
         running = true; cancelled = false
         Thread {
             var last = L.t("Done playing.", "خلصت لعب.")
-            try { last = loop(minutes) } catch (e: Throwable) { last = L.t("I lost the game: ", "ضاعت مني اللعبة: ") + (e.message ?: "") }
+            try { last = loop(minutes) } catch (e: Throwable) { last = L.t("I lost the game: ", "ضاعت مني اللعبة: ") + ApiErrors.clean(e, L.ar) }
             running = false
             finish(last)
         }.start()
@@ -72,6 +72,9 @@ class GamePilot(
         val tips = GameSkills.forGame(GameSkills.all(ctx), game) + (GameSkills.forGame(GameSkills.all(ctx), found.first).takeIf { it.isNotBlank() && !GameSkills.forGame(GameSkills.all(ctx), game).contains(it.take(30)) } ?: "")
         val end = System.currentTimeMillis() + minutes * 60_000L
         val trail = ArrayList<String>()
+        var modelFails = 0
+        var lastRoam = false
+        var localBeats = 0
         var turns = 0; var bad = 0; var away = 0; var deadLine = 0
         var lastFrame: Reflex.Frame? = null; var still = 0; var reflexNote = ""
         val ocrOn = prefs.getB("gameOcr", true) && Build.VERSION.SDK_INT >= 30
@@ -132,6 +135,14 @@ class GamePilot(
                 }
             }
             if (screen == GameScreen.MATCH || screen == GameScreen.BUS) leaveTaps = 0
+            // in a match and just roaming: let the phone roam twice on its own between model looks (fewer calls, fewer "busy" errors, faster play)
+            if (screen == GameScreen.MATCH && lastRoam && localBeats < 2 && TextTargets.purpleShare(seen.frame) < 0.22f && survivalGame() && layout().containsKey("stick")) {
+                localBeats++
+                reflexNote = runPolicy(ai, if (still >= 2) unstickPolicy(layout(), System.currentTimeMillis()) else roamPolicy(layout(), System.currentTimeMillis()), seen)
+                trail.add("roam (local): " + reflexNote)
+                continue
+            }
+            localBeats = 0
             menuTaps.clear()
             val storm = TextTargets.purpleShare(seen.frame)
             val controls = ai.controlsList(sc0)
@@ -143,7 +154,15 @@ class GamePilot(
                 (if (storm > 0.22f) "WARNING: about ${(storm * 100).toInt()}% of the screen is storm purple: you are probably in the storm. Run toward the safe zone (the white circle on the map) and do not stop to loot.\n" else "") +
                 "Saved control layout: " + layoutText().ifBlank { "(not known yet)" } + "\nGame: $game\nWhat I learned about it: " + notes().ifBlank { "(nothing yet)" } + "\nTips for this kind of game: " + tips.ifBlank { "(none)" } + "\nLast moves:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(6).joinToString("\n")) +
                 "\nThe user's language: " + (if (L.ar) "Arabic" else "English")
-            val out = brain.completeBlocking(system, user, img)
+            val out = try { brain.completeBlocking(system, user, img).also { modelFails = 0 } } catch (e: Throwable) {
+                // a busy or unreachable model must not end the game: keep moving on our own, wait a little, try again
+                modelFails++
+                if (modelFails > 8) return L.t("The model keeps failing: ", "الموديل يفشل كل شوي: ") + ApiErrors.clean(e, L.ar)
+                status(L.t("[GAME] the model is busy, playing on my own", "[لعبة] الموديل مشغول، ألعب لحالي"))
+                if (survivalGame() && layout().containsKey("stick")) reflexNote = runPolicy(ai, roamPolicy(layout(), System.currentTimeMillis()), seen)
+                try { Thread.sleep(minOf(1500L * modelFails, 8000L)) } catch (ie: InterruptedException) { return L.t("Stopped.", "وقفت.") }
+                continue
+            }
             val a = out.indexOf('{'); val b = out.lastIndexOf('}')
             val j = try { if (a >= 0 && b > a) JSONObject(out.substring(a, b + 1)) else null } catch (e: Exception) { null }
             if (j == null) { if (++bad >= 5) return L.t("I got confused, sorry.", "تلخبطت، آسفة."); continue }
@@ -158,6 +177,7 @@ class GamePilot(
             if (CapriAccess.foreground.contains("vending") || CapriAccess.foreground.contains("billing")) { ai.back(); return L.t("A payment screen opened, so I stopped.", "انفتحت شاشة دفع، فوقفت.") }
             j.optJSONObject("layout")?.let { lo -> saveLayout(lo) }
             val roamable = state == "playing" && act.isEmpty() && (j.optJSONArray("do")?.length() ?: 0) == 0 && j.optJSONObject("policy") == null && layout().containsKey("stick") && survivalGame()
+            lastRoam = roamable
             if (roamable) {
                 // stuck against a wall or a fence: sidestep, jump and turn instead of pushing into it again
                 reflexNote = runPolicy(ai, if (still >= 2) unstickPolicy(layout(), System.currentTimeMillis()) else roamPolicy(layout(), System.currentTimeMillis()), seen)

@@ -45,3 +45,23 @@ class AutoModesTest {
         assertEquals(Modes.all.map { it.id }.size, Modes.all.map { it.id }.toSet().size)
     }
 }
+
+class IntroPlanTest {
+    private val H = 3600_000L
+    @Test fun offAndGlitch() {
+        assertNull(IntroPlan.pick("off", 0, 100 * H, 0))
+        assertEquals("glitch", IntroPlan.pick("glitch", 99 * H, 100 * H, 0))
+    }
+    @Test fun cinematicsHaveACooldown() {
+        assertEquals("peek", IntroPlan.pick("peek", 0, 100 * H, 5))
+        assertEquals("glitch", IntroPlan.pick("peek", 98 * H, 100 * H, 5))
+        assertEquals("close", IntroPlan.pick("close", 90 * H, 100 * H, 5))
+        assertEquals("peek", IntroPlan.pick("peek", 200 * H, 100 * H, 5)) // clock went backwards: allowed
+    }
+    @Test fun randomPicksAllThree() {
+        val got = (0..5).map { IntroPlan.pick("random", 0, 100 * H, it) }.toSet()
+        assertEquals(setOf("peek", "close", "glitch"), got)
+        assertEquals("glitch", IntroPlan.pick("random", 99 * H, 100 * H, 0))
+        assertEquals("peek", IntroPlan.pick("random", 0, 100 * H, -3))
+    }
+}

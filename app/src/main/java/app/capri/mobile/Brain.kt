@@ -117,7 +117,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
 
     // done(reply, error): exactly one of them is non-null, always called on the main thread.
     // hidden = an instruction from the app, not something the user said, so it isn't kept in the chat.
-    fun ask(text: String, hidden: Boolean, image: String? = null, remember: Boolean = true, done: (String?, String?) -> Unit) {
+    fun ask(text: String, hidden: Boolean, image: String? = null, remember: Boolean = true, onPartial: ((String) -> Unit)? = null, done: (String?, String?) -> Unit) {
         if (prefs.getB("noAI", false)) {
             // No AI mode: she answers from a handful of lines, so nothing leaves the phone and nothing costs anything.
             if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
@@ -129,7 +129,9 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = complete(system(text) + (if (hidden) "" else Knowledge.context(ctx, text) + Guide.context(text) + Specialists.context(text, image != null, prefs.getB("agents", true))), past, text, image, route(text, image != null))
+                val stamp = longArrayOf(0L)
+                val onDelta: ((String) -> Unit)? = onPartial?.let { cb -> { full: String -> val n = System.currentTimeMillis(); if (n - stamp[0] > 120) { stamp[0] = n; main.post { cb(full) } } } }
+                val reply = complete(system(text) + (if (hidden) "" else Knowledge.context(ctx, text) + Guide.context(text) + Specialists.context(text, image != null, prefs.getB("agents", true))), past, text, image, route(text, image != null), onDelta)
                 main.post {
                     if (remember && !reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))
@@ -140,7 +142,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             } catch (e: Throwable) {
                 main.post {
                     if (!hidden && history.isNotEmpty() && history.last().role == "user") history.removeAt(history.size - 1)
-                    done(null, e.message ?: "network error")
+                    done(null, ApiErrors.clean(e, L.ar))
                 }
             }
         }.start()
@@ -176,6 +178,9 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
     }
 
     @Volatile var lastUsed = ""
+    private val toolsRefused = java.util.Collections.synchronizedSet(HashSet<Int>())
+    private val health get() = Health.shared
+    object Health { val shared = ProviderHealth() }
 
     // Your fast brain wins for short chat when you set one; otherwise, with auto on, the best ready provider for the topic.
     private fun route(text: String, hasImage: Boolean): Int {
@@ -186,16 +191,18 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         return AutoRoute.pick(text, hasImage, prefs.cur, Providers.all.map { it.name }, { ready(it) }, Providers.LOCAL)
     }
 
-    private fun complete(sys: String, past: List<Msg>, user: String, image: String?, first: Int = prefs.cur): String {
+    private fun complete(sys: String, past: List<Msg>, user: String, image: String?, first: Int = prefs.cur, onDelta: ((String) -> Unit)? = null): String {
         var firstErr: Throwable? = null
-        for (i in chain(first)) {
+        for (i in health.order(chain(first), System.currentTimeMillis())) {
             try {
-                val raw = if (i == Providers.LOCAL) local(sys, past, user) else remote(i, sys, past, user, image)
+                val raw = if (i == Providers.LOCAL) local(sys, past, user) else remote(i, sys, past, user, image, onDelta)
                 val out = raw.replace(Regex("(?s)<think>.*?</think>"), "").trim()
                 if (out.isEmpty()) throw Exception("the model sent an empty answer")
                 lastUsed = Providers.all[i].name
+                health.ok(i)
                 return out
             } catch (e: Throwable) {
+                health.fail(i, (e as? HttpErr)?.code ?: 0, System.currentTimeMillis())
                 if (firstErr == null) firstErr = e
             }
         }
@@ -220,20 +227,46 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         return LocalLlm.chat(ctx, f.path, prefs.getB("gpu", false), short, turns, user)
     }
 
-    private fun remote(i: Int, sys: String, past: List<Msg>, user: String, image: String?): String {
+    private fun remote(i: Int, sys: String, past: List<Msg>, user: String, image: String?, onDelta: ((String) -> Unit)? = null): String {
         val base = prefs.url(i).trim().trimEnd('/')
         val key = prefs.key(i)
         var model = prefs.model(i)
         if (model.isEmpty()) model = fixModel(i, base, key, "")
         try {
-            return callRemote(base, key, model, sys, past, user, image)
+            // experimental: native tool calls, only for your own chat, and only until a provider refuses them once
+            val tools = onDelta != null && prefs.getB("nativeTools", false) && i !in toolsRefused
+            try {
+                return callWithRetry(base, key, model, sys, past, user, image, if (health.cooling(i, System.currentTimeMillis())) 0 else 2, onDelta, tools)
+            } catch (te: HttpErr) {
+                if (!tools || te.code != 400) throw te
+                toolsRefused.add(i)
+                return callWithRetry(base, key, model, sys, past, user, image, 0, onDelta, false)
+            }
         } catch (e: HttpErr) {
             // A wrong or retired model name: look up what the provider really has and try once more.
-            if (e.code == 400 || e.code == 404 || (e.message ?: "").contains("model", true)) {
+            if (!ApiErrors.retryable(e.code) && (e.code == 400 || e.code == 404 || (e.message ?: "").contains("model", true))) {
                 val fixed = fixModel(i, base, key, model)
                 if (fixed.isNotEmpty() && fixed != model) return callRemote(base, key, fixed, sys, past, user, image)
             }
+            // still busy after the retries: a lighter model of the same provider (Gemini Pro -> Flash -> Flash-Lite) often answers when the big one can't
+            if (ApiErrors.retryable(e.code)) {
+                val lighter = ApiErrors.fallbackModel(base, model)
+                if (lighter != null) try { return callRemote(base, key, lighter, sys, past, user, image) } catch (e2: HttpErr) { }
+            }
             throw e
+        }
+    }
+
+    // A busy server (503 "high demand", 429, 5xx) usually answers a few seconds later: wait and retry twice before giving up on this provider.
+    private fun callWithRetry(base: String, key: String, model: String, sys: String, past: List<Msg>, user: String, image: String?, retries: Int = 2, onDelta: ((String) -> Unit)? = null, tools: Boolean = false): String {
+        var attempt = 0
+        while (true) {
+            try { return callRemote(base, key, model, sys, past, user, image, onDelta, tools) }
+            catch (e: HttpErr) {
+                if (!ApiErrors.retryable(e.code) || attempt >= retries) throw e
+                try { Thread.sleep(ApiErrors.backoffMs(attempt)) } catch (ie: InterruptedException) { throw e }
+                attempt++
+            }
         }
     }
 
@@ -247,7 +280,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         }
     }
 
-    private fun callRemote(base: String, key: String, model: String, sys: String, past: List<Msg>, user: String, image: String?): String {
+    private fun callRemote(base: String, key: String, model: String, sys: String, past: List<Msg>, user: String, image: String?, onDelta: ((String) -> Unit)? = null, tools: Boolean = false): String {
         val msgs = JSONArray().put(JSONObject().put("role", "system").put("content", sys))
         for (m in past) msgs.put(JSONObject().put("role", m.role).put("content", m.text))
         if (image != null) {
@@ -259,6 +292,8 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             msgs.put(JSONObject().put("role", "user").put("content", user))
         }
         val body = JSONObject().put("model", model).put("messages", msgs)
+        if (tools) body.put("tools", JSONArray(ToolCalls.schema()))
+        if (onDelta != null && !tools) body.put("stream", true)
         Net.checkKey(base, key)
         val c = URL("$base/chat/completions").openConnection() as HttpURLConnection
         c.requestMethod = "POST"
@@ -269,17 +304,39 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         if (key.isNotEmpty()) c.setRequestProperty("Authorization", "Bearer $key")
         c.outputStream.use { it.write(body.toString().toByteArray(Charsets.UTF_8)) }
         val code = c.responseCode
+        // The answer arrives piece by piece: the bubble shows it while it is written. A server that ignores "stream" just answers in one piece (handled below).
+        if (onDelta != null && !tools && code in 200..299 && (c.contentType ?: "").contains("event-stream", true)) {
+            val sb = StringBuilder()
+            c.inputStream.bufferedReader().use { r ->
+                while (true) {
+                    val line = r.readLine() ?: break
+                    val d = Sse.delta(line)
+                    if (d == null) { if (Sse.done(line)) break else continue }
+                    if (d.isEmpty()) continue
+                    sb.append(d); onDelta(sb.toString())
+                }
+            }
+            return sb.toString()
+        }
         val stream = if (code in 200..299) c.inputStream else c.errorStream
         val txt = stream?.bufferedReader()?.use { it.readText() } ?: ""
         if (code !in 200..299) throw HttpErr(code, describe(code, txt))
         val msg = JSONObject(txt).getJSONArray("choices").getJSONObject(0).getJSONObject("message")
-        return if (msg.isNull("content")) "" else msg.getString("content")
+        var content = if (msg.isNull("content")) "" else msg.getString("content")
+        // native tool calls come back as structured data: turn each one into the same [[name:arg]] tag the rest of the app already handles
+        val calls = msg.optJSONArray("tool_calls")
+        if (tools && calls != null) for (k in 0 until calls.length()) {
+            val args = calls.optJSONObject(k)?.optJSONObject("function")?.optString("arguments", "") ?: ""
+            ToolCalls.toTag(args)?.let { content += " $it" }
+        }
+        return content
     }
 
     private fun describe(code: Int, txt: String): String {
         if (code == 401 || code == 403) return "HTTP $code, the key was refused"
         if (code == 429) return "HTTP 429, rate limited: wait a bit or add another provider"
         if (code == 402) return "HTTP 402, this provider says you're out of credits"
+        if (ApiErrors.retryable(code)) return "HTTP $code, the server is busy"
         var detail = txt.take(140)
         try { detail = JSONObject(txt).getJSONObject("error").getString("message").take(140) } catch (e: Exception) { }
         return "HTTP $code: $detail"

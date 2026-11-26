@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **218**
+- Animation clips: **30**; unit tests: **241**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -201,12 +201,15 @@ Other source files (generated):
 | File | What it starts with |
 |---|---|
 | `Agent.kt` | Does a multi-step job on the phone: look at the screen, pick one action, do it, repeat. Tapping Capri stops... |
+| `ApiErrors.kt` | What to do with a failed model call, and how to say it: busy servers (503 "high demand") are waited out and... |
 | `ArabicTts.kt` | An Arabic voice that runs on the phone with no key and no internet once downloaded: Meta's MMS-TTS Arabic (... |
 | `AutoModes.kt` | Automatic modes: she changes mode by herself when your day changes (you open Maps, a meeting app, the batte... |
 | `BoardOverlay.kt` | A see-through layer over the other app's board: a neon arrow for the best move and, if wanted, an outline a... |
 | `BrowserActivity.kt` | Her own browser. Open a site or a search (she can do it too: [[browse:...]]), then "ASK CAPRI" sends the wo... |
+| `BubbleText.kt` | Text rules of the speech bubble, moved out of CapriService so they can be unit tested. |
 | `ChairEmote.kt` | Her secret chair emote from the desktop (drawings by Qewiw): she sweeps into a chair, turns to you, and fad... |
 | `Chaos.kt` | A harmless fake glitch over the whole screen for a moment: scanlines, colour bars and a "hacked" note. It n... |
+| `CinemaIntro.kt` | Which start-up intro to play. Pure and unit tested. The two cinematic ones ("peek" and "close") are the ful... |
 | `ClipRecorder.kt` | "Clip my games", from the desktop: she keeps recording the last half minute of your screen, and "clip that"... |
 | `CrashLog.kt` | - |
 | `CustomLook.kt` | A ".capri" look: a zip made by the desktop app's look editor, with one PNG sheet per animation (sprites/idl... |
@@ -227,12 +230,16 @@ Other source files (generated):
 | `Overlays.kt` | "Circle the send button": a glowing frame that pulses around something on the screen for a few seconds. It... |
 | `PhoneHealth.kt` | "Why is my phone slow?": a plain verdict from numbers the phone already has. Pure (no Android), unit tested... |
 | `Prefs.kt` | - |
+| `ProviderHealth.kt` | Remembers which brains failed lately, so one busy or broken provider doesn't cost every message a long wait... |
 | `Recolor.kt` | "Her colors": remaps her hair, accents, eyes, edges and body to colours you pick. Ported from the desktop's... |
 | `Reflex.kt` | The fast half of her game playing. A model is too slow to steer a game (seconds per look), so, like the new... |
 | `Reminders.kt` | - |
 | `ScamCheck.kt` | A local scam / phishing check for text you share to Capri or paste ("هل هذي رسالة نصب؟", "is this a scam?"). |
 | `Skills.kt` | Custom commands you write yourself, one per line:   phrase => what she does or says |
+| `Sse.kt` | Server-sent events of an OpenAI-compatible chat stream ("data: {...}" lines). Pure parsing, unit tested. |
+| `Tags.kt` | The actions inside a reply: [[name:argument]]. Models are sloppy, so this reads what they really write: spa... |
 | `TextTargets.kt` | What to do with the words a game's screen shows. The game surface has no accessibility buttons, so a model... |
+| `ToolCalls.kt` | Native tool calls (experimental, off by default): instead of asking the model to write [[open:spotify]] ins... |
 | `Tools.kt` | Things she can look up or do without a brain: free public APIs (no keys) and small phone controls. |
 | `Updater.kt` | Asks GitHub whether a newer release exists. Only reads public data; nothing about you is sent. |
 | `Util.kt` | coerceIn() throws when the range is empty (a tiny screen, a view that isn't measured yet). These two never... |

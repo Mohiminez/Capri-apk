@@ -417,7 +417,12 @@ class CapriService : Service(), Actions.Hooks {
 
         clip("arrive", false) { settle() }
         if (prefs.getB("intro", true) && !prefs.getB("lowPower", false) && Settings.canDrawOverlays(this)) {
-            try { IntroView(this, Themes.accent(prefs)).play(wm, h) } catch (e: Throwable) { }
+            val now = System.currentTimeMillis()
+            val plan = IntroPlan.pick(prefs.getS("introStyle", "random"), prefs.getL("introLast", 0L), now, (now / 1000).toInt())
+            try {
+                if (plan == "peek" || plan == "close") { prefs.putL("introLast", now); CinemaIntro(this, plan).play(wm, h) }
+                else if (plan == "glitch") IntroView(this, Themes.accent(prefs)).play(wm, h)
+            } catch (e: Throwable) { }
         }
         poke()
         h.postDelayed(blinkTask, 4000)
@@ -1352,13 +1357,24 @@ class CapriService : Service(), Actions.Hooks {
         return sb
     }
 
+    // The answer as it arrives (streaming): shown in place of the blinking cursor, then kept on screen when the full text lands.
+    private var liveText = ""
+    private var previewShown = false
+    private fun livePreview(full: String) {
+        if (!busy || !thinking || hidden) return
+        val p = Sse.preview(full)
+        if (p.isEmpty()) return
+        liveText = p.takeLast(420); previewShown = true
+        renderBubble(); placeBubble()
+    }
+
     private fun renderBubble() {
         val bt = bubbleText ?: return
         val hv = heardView ?: return
         if (heard.isNotEmpty()) { hv.visibility = View.VISIBLE; hv.text = "> " + heard.take(70) } else hv.visibility = View.GONE
-        val page = if (thinking) "" else typingFull
+        val page = if (thinking) liveText else typingFull
         val typing = !thinking && typingPos < page.length
-        bt.text = bubbleSpan(page, if (thinking) 0 else typingPos, typing || cursorOn, typing)
+        bt.text = bubbleSpan(page, if (thinking) liveText.length else typingPos, typing || cursorOn, typing)
     }
 
     private fun bubbleTapped() {
@@ -1377,7 +1393,8 @@ class CapriService : Service(), Actions.Hooks {
 
     private fun startPage() {
         typingFull = pages[pageIdx] + (if (pageIdx + 1 < pages.size) " \u25B8" else "")
-        typingPos = if (sprite?.lowPower == true) typingFull.length else 0
+        typingPos = if (sprite?.lowPower == true || previewShown) typingFull.length else 0
+        previewShown = false; liveText = ""
         thinking = false
         renderBubble()
         placeBubble()
@@ -1387,17 +1404,7 @@ class CapriService : Service(), Actions.Hooks {
         h.postDelayed(hideBubbleTask, (typingFull.length * 90L).coerceIn(7000L, 22000L))
     }
 
-    private fun splitPages(text: String): List<String> {
-        if (text.length <= 170) return listOf(text)
-        val out = ArrayList<String>()
-        var cur = StringBuilder()
-        for (part in text.split(Regex("(?<=[.!?\u061F])\\s+"))) {
-            if (cur.length + part.length > 170 && cur.isNotEmpty()) { out.add(cur.toString().trim()); cur = StringBuilder() }
-            cur.append(part).append(' ')
-        }
-        if (cur.isNotBlank()) out.add(cur.toString().trim())
-        return out
-    }
+    private fun splitPages(text: String): List<String> = BubbleText.pages(text)
 
     // The ... of thinking is shown as the speaker label with a blinking cursor.
     private fun showBubble(text: String, ms: Long, typed: Boolean = true) {
@@ -1406,6 +1413,7 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacks(typeTask)
         val first = !bubbleShown
         if (text == "...") {
+            liveText = ""; previewShown = false
             thinking = true
             pages = listOf("")
             typingFull = ""
@@ -1570,7 +1578,7 @@ class CapriService : Service(), Actions.Hooks {
         settle()
         if (!hiddenPrompt) { heard = text; chime("sent") }
         if (!skipNothing) showBubble("...", 90_000L, false)
-        brain.ask(text, hiddenPrompt, image) { reply, err ->
+        brain.ask(text, hiddenPrompt, image, true, if (!hiddenPrompt && !skipNothing) { full -> livePreview(full) } else null) { reply, err ->
             busy = false
             when {
                 reply != null && skipNothing && reply.trim().uppercase().startsWith("NOTHING") -> settle()
@@ -1671,7 +1679,7 @@ class CapriService : Service(), Actions.Hooks {
                     else -> Tools.nowPlaying(this)
                 }
             } catch (e: Throwable) {
-                "The lookup failed: " + (e.message ?: "no connection")
+                "The lookup failed: " + ApiErrors.clean(e, false)
             }
             h.post {
                 busy = false
@@ -1711,7 +1719,7 @@ class CapriService : Service(), Actions.Hooks {
         busy = true
         settle()
         bg("job", this@CapriService) {
-            val result = try { Hands.run(this, spec) } catch (e: Throwable) { L.t("That failed: ", "فشلت: ") + (e.message ?: "") }
+            val result = try { Hands.run(this, spec) } catch (e: Throwable) { L.t("That failed: ", "فشلت: ") + ApiErrors.clean(e, L.ar) }
             h.post { busy = false; say(result) }
         }
     }
@@ -2037,7 +2045,7 @@ class CapriService : Service(), Actions.Hooks {
             else try {
                 reply = brain.completeBlocking("You read chess boards from screenshots and answer with exactly one line.",
                     "Read the chess board in this screenshot. Answer ONLY with its FEN (all six fields). The side to move is the side whose pieces are at the bottom of the screen unless the screen clearly says otherwise. Use '-' for castling if unsure. If there is no chess board, answer NONE.", img)
-            } catch (e: Throwable) { err = L.t("The brain couldn't read it: ", "العقل ما قدر يقرأها: ") + (e.message ?: "") }
+            } catch (e: Throwable) { err = L.t("The brain couldn't read it: ", "العقل ما قدر يقرأها: ") + ApiErrors.clean(e, L.ar) }
             val fen = Regex("[1-8pnbrqkPNBRQK/]{15,}\\s+[wb](?:\\s+\\S+){0,4}").find(reply)?.value
             val p = fen?.let { Fen.parse(it) }
             val a = if (p != null) Engine.analyse(p, 3500, 12) else null

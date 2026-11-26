@@ -332,6 +332,51 @@ class MainActivity : Activity() {
     // ---- building blocks ----
 
     // A panel with the red edge and a yellow "TITLE >" label, like the desktop.
+    // "Simple settings" hides the sections most people never need (they are one switch away). Matched by title, English or Arabic.
+    private val advancedSections = setOf(
+        "CHECK",
+        "CLAUDE CODE LINK",
+        "CLOUD VOICES (OPTIONAL, NEED A KEY)",
+        "CREDITS",
+        "DATA",
+        "EFFECTS",
+        "ENGLISH: THE WINDOWS VOICE (KOKORO)",
+        "EXTRAS",
+        "GAME CLIPS",
+        "HER EARS",
+        "HER LIBRARY",
+        "HER PERSONALITY",
+        "HER TONE",
+        "MODS",
+        "NEVER GO SILENT",
+        "NO AI MODE",
+        "TOOLS SHE MAY USE",
+        "WAKE MY PC",
+        "WATCHING",
+        "WHAT SHE DID",
+        "YOUR OWN COMMANDS",
+        "أذنها",
+        "أسلوبها",
+        "أصوات سحابية (اختياري، تحتاج مفتاح)",
+        "أوامرك الخاصة",
+        "إضافات",
+        "إيقاظ الكمبيوتر",
+        "الأدوات المسموحة لها",
+        "الإنجليزي: صوت الويندوز (Kokoro)",
+        "البيانات",
+        "الشكر",
+        "المؤثرات",
+        "المراقبة",
+        "المودات",
+        "رابط كلود كود",
+        "شخصيتها",
+        "فحص",
+        "ما تسكت أبداً",
+        "مقاطع الألعاب",
+        "مكتبتها",
+        "وش سوّت على جوالك",
+        "وضع بدون ذكاء اصطناعي")
+
     private fun section(title: String?, open: Boolean = true): LinearLayout {
         val outer = LinearLayout(this)
         outer.orientation = LinearLayout.HORIZONTAL
@@ -345,6 +390,7 @@ class MainActivity : Activity() {
         lp.setMargins(dp(2), dp(7), dp(2), dp(7))
         page.addView(outer, lp)
         outer.alpha = 0f; outer.translationY = dp(14).toFloat()
+        if (title != null && title in advancedSections && prefs.getB("simpleUi", false)) outer.visibility = View.GONE
         outer.animate().alpha(1f).translationY(0f).setStartDelay((page.childCount * 45L).coerceAtMost(400L)).setDuration(320).start()
         if (title != null) {
             val h = heading(col, title)
@@ -833,6 +879,8 @@ class MainActivity : Activity() {
             if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_MODE).putExtra("mode", md.id))
         }
 
+        toggle(modes, t("Native tool calls (experimental): the provider returns her actions as structured data instead of text tags. Turns itself off for a provider that refuses it. Needs a provider that supports tools; the answer then appears at once instead of streaming.", "نداء الأدوات الرسمي (تجريبي): المزود يرجّع أوامرها كبيانات منظمة بدل علامات نصية. يوقف نفسه مع المزود اللي يرفضه. يحتاج مزود يدعم الأدوات، والرد يطلع مرة وحدة بدل البث."), "nativeTools", false)
+        toggle(modes, t("Simple settings: hide the advanced sections (voice engines, mods, library, tools, data...)", "إعدادات مبسّطة: تخفي الأقسام المتقدمة (محركات الصوت، المودات، المكتبة، الأدوات، البيانات...)"), "simpleUi", false) { recreate() }
         toggle(modes, t("Switch modes by herself: Driving when Maps opens, Meeting in Zoom/Meet/Teams, Battery saver when low, Night late at night, and back to yours after", "تبدّل الوضع لحالها: سواقة لمن تفتح الخرائط، اجتماع بزوم/ميت/تيمز، توفير بطارية لمن توطي، وليل بالليل، وترجع وضعك بعدها"), "autoModes", false)
 
         val sec = section(t("SECURITY", "الأمان"))
@@ -1361,6 +1409,11 @@ class MainActivity : Activity() {
         toggle(look, t("She dances when music is playing", "ترقص لما تشتغل موسيقى"), "dance", true)
         toggle(look, t("Mini music player (needs notification access)", "مشغّل موسيقى صغير (يحتاج صلاحية الإشعارات)"), "miniPlayer", true)
         toggle(look, t("Glitch-in intro when she wakes up", "مقدمة قلتش لما تصحى"), "intro", true)
+        body(look, t("Intro style (the cinematic ones play at most once every 6 hours)", "شكل المقدمة (السينمائية تشتغل مرة كل 6 ساعات كحد أقصى)"), 13f, muted)
+        run {
+            val names = listOf(t("Random", "عشوائي"), t("Peek (from capri-desktop)", "تطل (من capri-desktop)"), t("Up close (from capri-desktop)", "قريبة (من capri-desktop)"), t("Glitch-in", "قلتش"), t("None", "بدون"))
+            spin(look, names, IntroPlan.styles.indexOf(prefs.getS("introStyle", "random")).coerceAtLeast(0)) { prefs.putS("introStyle", IntroPlan.styles[it]) }
+        }
         toggle(look, t("A small blip sound when she speaks", "صوت تنبيه صغير لما تتكلم"), "chimes", false)
         toggle(look, t("Low-power mode: fewer frames, no floating, no glow", "وضع توفير الطاقة: إطارات أقل وبدون طفو وبدون هالة"), "lowPower", false)
 

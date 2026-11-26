@@ -263,7 +263,7 @@ object Voice {
     private fun geminiTtsModel(key: String): String {
         val c = URL("https://generativelanguage.googleapis.com/v1beta/models?pageSize=200").openConnection() as HttpURLConnection
         c.setRequestProperty("x-goog-api-key", key)
-        c.connectTimeout = 15000
+        c.connectTimeout = 15000; c.readTimeout = 20000
         val txt = c.inputStream.bufferedReader().use { it.readText() }
         val arr = JSONObject(txt).getJSONArray("models")
         val names = ArrayList<String>()
@@ -321,7 +321,7 @@ object Voice {
     fun elevenVoices(key: String): List<VoiceOpt> {
         val c = URL("https://api.elevenlabs.io/v1/voices").openConnection() as HttpURLConnection
         c.setRequestProperty("xi-api-key", key.trim())
-        c.connectTimeout = 15000
+        c.connectTimeout = 15000; c.readTimeout = 20000
         if (c.responseCode !in 200..299) throw Exception("ElevenLabs refused the key")
         val arr = JSONObject(c.inputStream.bufferedReader().use { it.readText() }).getJSONArray("voices")
         val out = ArrayList<VoiceOpt>()

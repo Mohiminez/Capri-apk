@@ -2,6 +2,44 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest: native tool calls (experimental) and a first slice out of CapriService
+
+- **Native tool calls**, off by default (HOME > MODE): the request carries one function, act(name, arg), and the provider returns her actions as structured data instead of her writing [[open:spotify]] in the middle of a sentence. Each call is converted back into the same tag, so permissions, confirmations and the 6-per-reply cap are the same code as before. Settings and system names (security, set, chaos, dictate) are never offered to a model, and an argument can't break out of its tag. If a provider answers 400 to tools, that provider falls back to the normal way by itself for the rest of the session. Only your own chat uses it (the game player and background lookups do not), and the answer then appears at once instead of streaming. ToolCalls.kt.
+- **CapriService, first slice:** the bubble's page splitting moved to BubbleText.kt (unit tested). The rest of the 2900 lines is left alone on purpose: it shares state, and moving it without building on a device risks breaking her.
+
+## Newest: sturdier action tags (Tags.kt)
+
+- The actions inside her replies ([[open:spotify]] and the rest) were read with a strict pattern that broke when a model wrote a space around the colon, a full-width colon, or a "]" inside the argument (a link with [1] in it). All of those now work.
+- **Safety cap:** at most 6 different tags are acted on in one reply, and the same tag with the same argument only once. A web page, a message or a screenshot that tricks her into printing fifty actions now does almost nothing. The existing Guarded and Lockdown rules apply on top, as before.
+
+## Newest: her answer appears while it is being written (streaming)
+
+- **Before:** she waited for the whole answer, up to two minutes on a slow server, showing only a blinking cursor, and then typed it out.
+- **Now:** chat answers are requested as a stream (Sse.kt). The bubble shows the words as they arrive (tags like [[open:...]] and thinking blocks are hidden while they arrive), and when the full answer lands the text stays on screen instead of being typed again. The actions and the voice still start when the answer is complete, so nothing changes about what she does, only how soon you see it. A server that ignores streaming answers in one piece as before. Only your own chat messages stream; jobs, the game player and background lookups do not.
+
+## Newest: sturdier brains (ProviderHealth)
+
+- She now remembers which brain failed lately. A provider that just failed (busy 503, network, rate limit) is tried last for 30 s, then 2 min, then 5 min while it keeps failing (a refused key or no credits: 10 min), and goes back to the front the moment it answers once. A brain that is already known to be struggling is not retried with waits, so a dead provider no longer costs every message 5 seconds. Nothing is dropped: if every brain is cooling, the order stays as you set it. Works for chat and for the game player (both go through Brain.complete).
+
+## Newest: more of capri-desktop: cinematic intros and Simple settings
+
+- **Cinematic start-up intros** from capri-desktop's `assets/intros`: "Peek" (20 frames) and "Up close" (22 frames), full screen, touches pass through. Picked in HER LOOK > Intro style (Random, Peek, Up close, Glitch-in, None). The cinematic ones play at most once every 6 hours, so restarting her is never annoying; otherwise the old glitch-in plays (IntroPlan, unit tested). About 1.3 MB of frames, downsized to 768x432.
+- **Simple settings** (HOME > MODE): hides the advanced sections (voice engines, cloud voices, ears, mods, tone, library, commands, tools, watching, extras, personality, data, credits...) like desktop's Simple and Advanced settings. One switch brings them back.
+- Checked her clips against desktop's sprite folder: every clip desktop has is already here (the flipped ones are mirrors).
+
+## Newest: audit pass
+
+- Checked network timeouts, notification and alarm flags, receivers, cleanup on shutdown, foreground service types, chess draw rules, the update check and the browser. Nearly everything was already sound.
+- Fixed: the Gemini voice list and the ElevenLabs voice list had no read timeout (a stalled server could hang that screen forever); "wake my PC" now asks first when it comes from a model reply instead of your own words.
+
+## Newest: busy servers (HTTP 503) no longer break her or the game
+
+- **Seen on a phone:** while playing, Gemini answered HTTP 503 "This model is currently experiencing high demand", she showed the whole JSON in her bubble and the game stopped ("ضاعت مني اللعبة").
+- **Retry:** a busy answer (408, 429, 500, 502, 503, 504, 529) is retried twice after 1.5 s and 4 s. If it is still busy and the provider is Gemini, a lighter sibling is tried once (Pro, then Flash, then Flash-Lite) without changing your saved model. Her old "fix the model name" step is no longer triggered by a busy server (it could have swapped your model for nothing).
+- **Short messages:** every error she shows or says is now one short line in your language (ApiErrors.kt), never JSON: busy, no internet, too slow, key refused, out of credits, rate limited.
+- **The game keeps going:** if the model fails during a game she keeps roaming on her own, waits a little, and asks again; she only stops after 8 failures in a row.
+- **Fewer model calls in matches:** while just roaming in a match she now roams twice by herself between each look at the model (about a third of the calls, so fewer busy errors and quicker movement). Storm, elimination and a stuck player still bring the model back at once.
+
 ## Newest: fix for the build that stopped at checkDebugAarMetadata
 
 - **Fix:** the build failed because ML Kit (added for reading game screens) brings AndroidX libraries, and gradle.properties had android.useAndroidX=false. It is now true. The app itself uses no support-library code, so nothing else changes.

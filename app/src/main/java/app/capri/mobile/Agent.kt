@@ -46,7 +46,7 @@ class Agent(
         cancelled = false
         Thread {
             var last = L.t("Done.", "تمّت.")
-            try { last = loop(goal) } catch (e: Throwable) { last = L.t("Something broke: ", "صار خلل: ") + (e.message ?: "") }
+            try { last = loop(goal) } catch (e: Throwable) { last = L.t("Something broke: ", "صار خلل: ") + ApiErrors.clean(e, L.ar) }
             running = false
             finish(last)
         }.start()
