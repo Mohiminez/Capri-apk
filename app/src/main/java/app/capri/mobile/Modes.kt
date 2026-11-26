@@ -38,7 +38,11 @@ object Modes {
         mode("chill", "~", "LEDGE", "جلسة", "She sits on the bottom edge, lies back, naps and sways to your music", "تجلس على حافة الشاشة وتستلقي وتنام وتتمايل مع موسيقاك",
             "Ledge mode. I'll sit this one out.", "وضع الجلسة. بجلس وأريّح.", "perchBias" to 1, "wanderPace" to 1, "popMin" to 60, "sleepMin" to 6, "dance" to true),
         mode("night", "☾", "NIGHT", "ليل", "Dim and quiet: she sits on the ledge, naps early, no chimes, no pop-ins", "هادية وخفيفة: تجلس على الحافة وتنام بدري وبدون أصوات وإطلالات",
-            "Night mode. Sleep soon, choom.", "وضع الليل. نام بدري يا چوم.", "quiet" to true, "perchBias" to 1, "wanderPace" to 1, "popMin" to 120, "sleepMin" to 1, "chimes" to false, "intro" to false, "dance" to false, "events" to false, "lowPower" to true)
+            "Night mode. Sleep soon, choom.", "وضع الليل. نام بدري يا چوم.", "quiet" to true, "perchBias" to 1, "wanderPace" to 1, "popMin" to 120, "sleepMin" to 1, "chimes" to false, "intro" to false, "dance" to false, "events" to false, "lowPower" to true),
+        mode("drive", "➤", "DRIVING", "سواقة", "Hands-free and out of the way: she talks aloud, wake word on, no wandering, no pop-ins", "بدون يدين وبعيدة عن الطريق: تحچي بصوت، كلمة النداء شغالة، بدون تمشي وبدون إطلالات",
+            "Driving mode. Keep your eyes on the road, just talk to me.", "وضع السواقة. عيونك على الطريق، بس حچي وياي.", "convo" to true, "wakeWord" to true, "wanderPace" to 0, "popMin" to 240, "dance" to false, "events" to false, "intro" to false, "miniPlayer" to false, "perchBias" to 1),
+        mode("meeting", "▤", "MEETING", "اجتماع", "Completely silent and still: no voice, no sounds, no wandering, no pop-ins", "ساكتة تماماً وثابتة: بدون صوت وبدون أصوات وبدون تمشي وبدون إطلالات",
+            "Meeting mode. Silent until you're done.", "وضع الاجتماع. ساكتة لين تخلص.", "quiet" to true, "voice" to false, "wanderPace" to 0, "popMin" to 240, "dance" to false, "events" to false, "intro" to false, "miniPlayer" to false, "perchBias" to 1)
     )
 
     fun find(id: String): Mode? = all.firstOrNull { it.id == id.lowercase().trim() }
@@ -65,7 +69,9 @@ object Modes {
         "game" to listOf("game", "gaming", "لعب", "العاب", "قيم"), "study" to listOf("study", "focus", "دراسه", "دراسة", "مذاكره", "مذاكرة", "تركيز"),
         "battery" to listOf("battery", "battery saver", "power saver", "بطاريه", "بطارية", "توفير"), "companion" to listOf("companion", "رفيقه", "رفيقة", "صديقه", "صديقة"),
         "party" to listOf("party", "حفله", "حفلة", "بارتي"),
-        "chill" to listOf("ledge", "chill", "perch", "جلسه", "جلسة", "حافه", "حافة", "استرخاء"), "night" to listOf("night", "bedtime", "ليل", "الليل", "نوم")
+        "chill" to listOf("ledge", "chill", "perch", "جلسه", "جلسة", "حافه", "حافة", "استرخاء"), "night" to listOf("night", "bedtime", "ليل", "الليل", "نوم"),
+        "drive" to listOf("driving", "drive", "car", "سواقه", "سواقة", "قياده", "قيادة", "سياره", "سيارة"),
+        "meeting" to listOf("meeting", "class", "اجتماع", "محاضره", "محاضرة", "دوام")
     )
 
     fun fromPhrase(raw: String): String? {

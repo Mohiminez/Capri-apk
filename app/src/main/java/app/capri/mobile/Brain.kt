@@ -85,7 +85,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
 
     fun forget() { history.clear(); save() }
 
-    private fun system(): String {
+    private fun system(query: String = ""): String {
         val custom = prefs.getS("personality", "")
         val addon = prefs.getS("modPersona", "")
         val sb = StringBuilder(
@@ -108,7 +108,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
         sb.append("\nHow well you know them: ").append(listOf("barely at all", "a little", "as friends", "closely", "like ride-or-die family")[Charm.level(prefs.getI("charm", 0))])
             .append(". Let it show a little in how warm and teasing you are. Never mention this line or any number.")
-        val notes = Memory.parse(prefs.getS("notes", "")).joinToString("\n") { (if (it.pinned) "- (important) " else "- ") + it.text }
+        val notes = Memory.recall(prefs.getS("notes", ""), query).joinToString("\n") { (if (it.pinned) "- (important) " else "- ") + it.text }
         if (notes.isNotBlank()) sb.append("\nWhat you remember about them:\n").append(notes)
         sb.append("\nFor them it is ").append(SimpleDateFormat("EEEE d MMMM yyyy, HH:mm", Locale.ENGLISH).format(Date()))
             .append(". Only bring up the time if they ask.")
@@ -129,7 +129,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
         val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
         Thread {
             try {
-                val reply = complete(system() + (if (hidden) "" else Knowledge.context(ctx, text) + Guide.context(text) + Specialists.context(text, image != null, prefs.getB("agents", true))), past, text, image, route(text, image != null))
+                val reply = complete(system(text) + (if (hidden) "" else Knowledge.context(ctx, text) + Guide.context(text) + Specialists.context(text, image != null, prefs.getB("agents", true))), past, text, image, route(text, image != null))
                 main.post {
                     if (remember && !reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))

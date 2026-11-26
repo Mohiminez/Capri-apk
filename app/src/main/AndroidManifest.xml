@@ -153,6 +153,11 @@
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
         </service>
 
+        <service android:name=".ModeTile" android:exported="true" android:icon="@drawable/ic_stat" android:label="Capri: mode"
+            android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
+            <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>
+        </service>
+
         <service android:name=".ChessTile" android:exported="true" android:icon="@drawable/ic_stat" android:label="Capri: chess"
             android:permission="android.permission.BIND_QUICK_SETTINGS_TILE">
             <intent-filter><action android:name="android.service.quicksettings.action.QS_TILE" /></intent-filter>

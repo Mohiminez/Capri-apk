@@ -2,6 +2,24 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest: compared with capri-desktop and CapriCore again
+
+- **"Why is my phone slow?"** (also "ليش جوالي بطيء"): she reads free memory, free storage, battery, temperature, battery saver and thermal state on the phone and says what is wrong and what to do (PhoneHealth.kt). Nothing is sent anywhere. (Desktop got "why slow?" and a CPU/RAM panel.)
+- **Wake my PC** ("wake my PC", "شغل الكمبيوتر"): sends a Wake-on-LAN magic packet over the Wi-Fi. Paste the PC's MAC in MORE > Wake my PC (WakeOnLan.kt). The PC needs Wake-on-LAN on in its BIOS and network card. (Desktop's Capri Remote does the same.)
+- **Budgeted memory recall** (idea from CapriCore's tagged memory): when her notes grow past about 1500 characters, the prompt gets all pinned notes plus the ones that share words with what you just said, instead of everything (Memory.recall). Small lists are unchanged.
+- Already in the app and left as is: rate-limit vs no-credits messages, custom OpenAI-compatible provider, "open my browser", Deezer and YouTube Music.
+
+## Newest: Fortnite reads which screen it is, mode tile, mode line on HOME
+
+- **Fortnite / shooters:** the phone now tells which screen it is on from the words it reads (lobby, searching or loading, battle bus, in the match, eliminated, victory) (GameScreens.kt). It waits out loading and searching by itself (no model call, up to about a minute), presses "Return to lobby" / "Leave match" after elimination or a win (never Spectate, never a line with a price), and gives the model the screen name. The Fortnite skill now mentions it and suggests Zero Build for a first match. Still no aiming or shooting at players.
+- **Quick Settings tile "Capri: mode":** shows the current mode and moves to the next one on every tap.
+- **HOME** shows the current mode (and "automatic" when she switched it herself).
+
+## Newest: automatic modes, driving and meeting modes
+
+- **Two new modes:** DRIVING (hands-free: she talks aloud, wake word and conversation on, no wandering, no pop-ins) and MEETING (completely silent and still). Say "driving mode" or "وضع الاجتماع".
+- **Automatic modes** (switch on HOME > MODE, off by default): once a minute she checks the app in front, the battery and the clock. Maps/Waze/Careem open gives Driving; Zoom/Meet/Teams/Classroom gives Meeting; battery 15% or lower and not charging gives Battery saver; 23:00 to 06:00 gives Night. When that ends she puts back the mode you were in. A mode you pick by hand is never overridden, and Game/Meeting/Driving are not replaced by Night or Battery saver. Decision logic is AutoModes.kt (unit tested).
+
 ## Newest: she reads the game screen, stronger Fortnite, README updates itself
 
 - **Fix:** the CI test run failed on one test (PerchClipsTest) because the sprite list file had been rewritten in a different layout; restored, and the new clips are now checked by that test too.

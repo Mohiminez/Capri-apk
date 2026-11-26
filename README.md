@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **206**
+- Animation clips: **30**; unit tests: **218**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -202,6 +202,7 @@ Other source files (generated):
 |---|---|
 | `Agent.kt` | Does a multi-step job on the phone: look at the screen, pick one action, do it, repeat. Tapping Capri stops... |
 | `ArabicTts.kt` | An Arabic voice that runs on the phone with no key and no internet once downloaded: Meta's MMS-TTS Arabic (... |
+| `AutoModes.kt` | Automatic modes: she changes mode by herself when your day changes (you open Maps, a meeting app, the batte... |
 | `BoardOverlay.kt` | A see-through layer over the other app's board: a neon arrow for the best move and, if wanted, an outline a... |
 | `BrowserActivity.kt` | Her own browser. Open a site or a search (she can do it too: [[browse:...]]), then "ASK CAPRI" sends the wo... |
 | `ChairEmote.kt` | Her secret chair emote from the desktop (drawings by Qewiw): she sweeps into a chair, turns to you, and fad... |
@@ -224,6 +225,7 @@ Other source files (generated):
 | `Mods.kt` | A mod is a small .json file of look-and-feel settings: colours, a few extra personality lines, a nickname,... |
 | `MusicApps.kt` | "play Blinding Lights on Spotify", "شغل لي اغنية على انغامي": the song AND the app it should play in. |
 | `Overlays.kt` | "Circle the send button": a glowing frame that pulses around something on the screen for a few seconds. It... |
+| `PhoneHealth.kt` | "Why is my phone slow?": a plain verdict from numbers the phone already has. Pure (no Android), unit tested... |
 | `Prefs.kt` | - |
 | `Recolor.kt` | "Her colors": remaps her hair, accents, eyes, edges and body to colours you pick. Ported from the desktop's... |
 | `Reflex.kt` | The fast half of her game playing. A model is too slow to steer a game (seconds per look), so, like the new... |
@@ -235,6 +237,7 @@ Other source files (generated):
 | `Updater.kt` | Asks GitHub whether a newer release exists. Only reads public data; nothing about you is sent. |
 | `Util.kt` | coerceIn() throws when the range is empty (a tiny screen, a view that isn't measured yet). These two never... |
 | `VoiceGain.kt` | Her voice volume goes from 20 to 200 percent (CapriCore 1.2.2 added a boost up to 200%). Up to 100 it is th... |
+| `WakeOnLan.kt` | Wake-on-LAN: "wake my PC" sends the magic packet (6 x FF, then the MAC 16 times) to the whole network, so a... |
 <!-- /AUTO:files -->
 
 ## Credits and licences / الشكر والتراخيص

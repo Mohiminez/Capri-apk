@@ -705,6 +705,10 @@ class MainActivity : Activity() {
         val streak = Streak.touch(prefs)
         val greet = body(live, Streak.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), streak, L.ar), 17f, Color.WHITE, true)
         if (streak >= 2) body(live, t("STREAK  $streak DAYS", "السلسلة  $streak يوم"), 13f, Night.amber)
+        Modes.current(prefs).let { m ->
+            val auto = prefs.getB("autoModes", false) && prefs.getS("autoBy", "") == m.id
+            body(live, m.icon + "  " + t(m.en, m.ar) + (if (auto) t("  (automatic)", "  (تلقائي)") else ""), 12f, Night.faint)
+        }
         val thought = body(live, "", 14f, Night.cyan)
         val thoughts = if (L.ar) listOf("تدري؟ أقدر ألعب شطرنج بدالك. وأفوز.", "حذار: ممكن أستولي على معالجك البشري.", "قل «وضع الدراسة» وأخلي الإلهاءات تخلص.", "غرفتي فوضى. بس هذي فوضتي.", "أراقب. بصمت. تقريباً.", "اسألني أي شي. الجواب مو مضمون، بس ممتع.")
             else listOf("I can play chess for you, you know. And win.", "Warning: I may try to take over your human CPU.", "Say \"study mode\" and I'll cut the distractions.", "My room is a mess. It's my mess.", "Watching. Quietly. Mostly.", "Ask me anything. Accuracy not guaranteed, entertainment is.")
@@ -828,6 +832,8 @@ class MainActivity : Activity() {
             Modes.apply(prefs, md)
             if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_MODE).putExtra("mode", md.id))
         }
+
+        toggle(modes, t("Switch modes by herself: Driving when Maps opens, Meeting in Zoom/Meet/Teams, Battery saver when low, Night late at night, and back to yours after", "تبدّل الوضع لحالها: سواقة لمن تفتح الخرائط، اجتماع بزوم/ميت/تيمز، توفير بطارية لمن توطي، وليل بالليل، وترجع وضعك بعدها"), "autoModes", false)
 
         val sec = section(t("SECURITY", "الأمان"))
         // levels: 0 lockdown, 3 ask every time, 1 guarded, 2 trusted
@@ -1122,6 +1128,11 @@ class MainActivity : Activity() {
         slider(fx, t("Glitch %", "قلتش %"), "voiceGlitch", 0, 100, 0)
 
         // ---- music: where songs play when you don't name an app ----
+        val wol = section(t("WAKE MY PC", "إيقاظ الكمبيوتر"), false)
+        body(wol, t("Her PC's MAC address, so \"wake my PC\" can switch it on over your Wi-Fi (Wake-on-LAN must be on in the PC's BIOS)", "عنوان MAC حق الكمبيوتر، عشان «شغل الكمبيوتر» يشغله عبر الواي فاي (لازم Wake-on-LAN مفعّل بالبايوس)"), 14f, muted)
+        edit(wol, "AA:BB:CC:DD:EE:FF", WakeOnLan.pretty(prefs.getS("wolMac", "")).ifEmpty { prefs.getS("wolMac", "") }) { prefs.putS("wolMac", it.trim()) }
+        note(wol, t("Windows: run ipconfig /all and copy Physical Address. Then say: wake my PC.", "ويندوز: شغّل ipconfig /all وانسخ Physical Address. بعدها قل: شغل الكمبيوتر."))
+
         val mu = section(t("MUSIC", "الموسيقى"), false)
         val musicApps = MusicApps.all
         body(mu, t("Where she plays songs when you don't say an app", "وين تشغل الأغاني إذا ما ذكرت تطبيق"), 14f, muted)

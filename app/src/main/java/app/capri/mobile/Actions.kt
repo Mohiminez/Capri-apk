@@ -41,7 +41,7 @@ object Actions {
 
     private val tag = Regex("\\[\\[(\\w+):([^\\]]*)\\]\\]")
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
+    private val readOnly = setOf("weather", "health", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
@@ -88,7 +88,7 @@ object Actions {
     private val groups = mapOf(
         "open" to "apps", "url" to "apps", "look" to "screen",
         "hands" to "control", "do" to "control", "playgame" to "control", "watch" to "screen", "point" to "screen", "scrollforme" to "control", "dictate" to "control",
-        "music" to "media", "media" to "media", "volume" to "media",
+        "music" to "media", "media" to "media", "volume" to "media", "health" to "device", "wol" to "device",
         "timer" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
         "flash" to "device", "nav" to "device", "search" to "device", "copy" to "device",
         "weather" to "lookup", "wiki" to "lookup", "web" to "lookup", "read" to "lookup", "brief" to "lookup", "browse" to "apps", "playing" to "lookup")
@@ -103,6 +103,8 @@ object Actions {
                 "open" -> if (!openApp(ctx, arg)) return L.t(" Couldn't find that app. If it is installed, your phone may be hiding apps from me: Settings > Apps > Capri > Permissions > Installed apps > Allow.", " ما لقيت هذا التطبيق. إذا هو منزّل، جوالك يمكن يخفي التطبيقات عني: الإعدادات > التطبيقات > Capri > الصلاحيات > التطبيقات المثبتة > سماح.")
                 "url" -> if (arg.startsWith("http://") || arg.startsWith("https://")) start(ctx, Intent(Intent.ACTION_VIEW, Uri.parse(arg)))
                 "music" -> playMusic(ctx, arg)
+                "health" -> return "\n" + phoneHealth(ctx)
+                "wol" -> return wake(ctx, prefs)
                 "media" -> media(ctx, arg)
                 "timer" -> {
                     // our own alarm (always rings), instead of asking the clock app, which many phones ignore
@@ -274,6 +276,41 @@ object Actions {
         playMusicAnywhere(ctx, query)
     }
 
+    // "why is my phone slow?": the numbers come from the phone itself, the verdict from PhoneHealth.
+    private fun phoneHealth(ctx: Context): String {
+        return try {
+            val am = ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager
+            val mi = android.app.ActivityManager.MemoryInfo(); am.getMemoryInfo(mi)
+            val st = android.os.StatFs(android.os.Environment.getDataDirectory().path)
+            val b = ctx.registerReceiver(null, android.content.IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+            val lvl = b?.getIntExtra(android.os.BatteryManager.EXTRA_LEVEL, -1) ?: -1
+            val scale = b?.getIntExtra(android.os.BatteryManager.EXTRA_SCALE, 100) ?: 100
+            val status = b?.getIntExtra(android.os.BatteryManager.EXTRA_STATUS, -1) ?: -1
+            val temp = (b?.getIntExtra(android.os.BatteryManager.EXTRA_TEMPERATURE, 0) ?: 0) / 10f
+            val pm = ctx.getSystemService(Context.POWER_SERVICE) as android.os.PowerManager
+            val thermal = if (android.os.Build.VERSION.SDK_INT >= 29) pm.currentThermalStatus else 0
+            PhoneHealth.say(PhoneHealth.Stats(mi.availMem / 1048576, mi.totalMem / 1048576, st.availableBytes / 1048576, st.totalBytes / 1048576,
+                if (lvl >= 0 && scale > 0) lvl * 100 / scale else -1,
+                status == android.os.BatteryManager.BATTERY_STATUS_CHARGING || status == android.os.BatteryManager.BATTERY_STATUS_FULL, temp, pm.isPowerSaveMode, thermal), L.ar)
+        } catch (e: Throwable) { L.t("I couldn't read the phone's numbers.", "ما قدرت أقرا أرقام الجوال.") }
+    }
+
+    // Wake-on-LAN: needs the PC's MAC address in Settings (MORE). Sent from a worker thread.
+    private fun wake(ctx: Context, prefs: Prefs): String {
+        val mac = WakeOnLan.mac(prefs.getS("wolMac", ""))
+            ?: return L.t(" I need your PC's MAC address first: open Capri > MORE > Wake my PC and paste it (Windows: ipconfig /all, Physical Address).", " أحتاج عنوان MAC حق الكمبيوتر أول: افتح كابري > المزيد > إيقاظ الكمبيوتر والصقه (ويندوز: ipconfig /all ثم Physical Address).")
+        Thread {
+            try {
+                val data = WakeOnLan.packet(mac)
+                java.net.DatagramSocket().use { sock ->
+                    sock.broadcast = true
+                    for (port in intArrayOf(9, 7)) sock.send(java.net.DatagramPacket(data, data.size, java.net.InetAddress.getByName("255.255.255.255"), port))
+                }
+            } catch (e: Throwable) { }
+        }.start()
+        return L.t(" Magic packet sent. Your PC must be on the same Wi-Fi with Wake-on-LAN enabled in its BIOS and network card.", " انرسلت إشارة الإيقاظ. لازم الكمبيوتر على نفس الواي فاي وWake-on-LAN مفعّل في البايوس وكرت الشبكة.")
+    }
+
     private fun playMusicAnywhere(ctx: Context, query: String) {
         try {
             start(ctx, Intent(MediaStore.INTENT_ACTION_MEDIA_PLAY_FROM_SEARCH)
@@ -350,6 +387,8 @@ object QuickAsks {
         LocalAsks.match(r)?.let { return it }
         // "play X on Anghami / Spotify / Deezer / YouTube Music", "شغل X على انغامي"
         MusicApps.parse(r)?.let { return L.t("On it. ", "ابشر. ") + MusicApps.tag(it) }
+        if (PhoneHealth.isAsk(r)) return L.t("Checking. [[health:go]]", "أفحص. [[health:go]]")
+        if (WakeOnLan.isAsk(r)) return L.t("On it. [[wol:go]]", "ابشر. [[wol:go]]")
         // "is this a scam: <message>", "هل هذي رسالة نصب: ..." is checked on the phone, nothing is sent anywhere
         ScamCheck.ask(r)?.let { text ->
             return if (text.isBlank()) L.t("Paste or share the message to me, like: is this a scam: <the message>. Or share it from WhatsApp or SMS to Capri.",

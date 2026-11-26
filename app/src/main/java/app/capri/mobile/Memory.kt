@@ -59,4 +59,21 @@ object Memory {
         val words = q.lowercase().split(Regex("\\s+")).filter { it.isNotEmpty() }
         return parse(raw).mapIndexedNotNull { i, f -> if (words.all { f.text.lowercase().contains(it) }) i else null }
     }
+
+    /**
+     * Budgeted recall: the facts worth putting in the prompt for this message. Pinned facts always go in; the others are ranked by how many
+     * words they share with [query] (newest first on a tie) until [budget] characters are used. With a small list everything fits, so nothing changes.
+     */
+    fun recall(raw: String, query: String, budget: Int = 1500): List<Fact> {
+        val facts = parse(raw)
+        if (facts.sumOf { it.text.length + 4 } <= budget) return facts
+        val qw = query.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).filter { it.length >= 3 }.toSet()
+        fun score(f: Fact) = if (qw.isEmpty()) 0 else f.text.lowercase().split(Regex("[^\\p{L}\\p{N}]+")).count { it in qw }
+        val keep = HashSet<Int>()
+        var used = 0
+        facts.forEachIndexed { i, f -> if (f.pinned && used + f.text.length + 4 <= budget) { keep.add(i); used += f.text.length + 4 } }
+        val order = facts.indices.filter { !facts[it].pinned }.sortedWith(compareByDescending<Int> { score(facts[it]) }.thenByDescending { it })
+        for (i in order) { val c = facts[i].text.length + 4; if (used + c <= budget) { keep.add(i); used += c } }
+        return facts.filterIndexed { i, _ -> i in keep }
+    }
 }

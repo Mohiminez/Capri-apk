@@ -15,6 +15,7 @@ import android.graphics.drawable.GradientDrawable
 import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.IntentFilter
+import android.os.BatteryManager
 import android.text.SpannableString
 import android.text.Spanned
 import android.text.style.ForegroundColorSpan
@@ -420,6 +421,7 @@ class CapriService : Service(), Actions.Hooks {
         }
         poke()
         h.postDelayed(blinkTask, 4000)
+        h.postDelayed(autoModeTask, 30_000L)
         h.postDelayed(wanderTask, 8_000L)
         h.postDelayed(unstickTask, 2000)
         h.postDelayed(wakeTask, 3000)
@@ -602,6 +604,34 @@ class CapriService : Service(), Actions.Hooks {
                 if (has(pick)) clip(pick, false) { settle() }
             }
             h.postDelayed(this, Random.nextLong(3500, 8000))
+        }
+    }
+
+    // Automatic modes, once a minute, only when the switch is on (HOME > MODE).
+    private val autoModeTask = object : Runnable {
+        override fun run() {
+            try { if (prefs.getB("autoModes", false)) autoModeTick() } catch (e: Throwable) { }
+            h.postDelayed(this, 60_000L)
+        }
+    }
+
+    private fun autoModeTick() {
+        val b = registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        val lvl = b?.getIntExtra(BatteryManager.EXTRA_LEVEL, -1) ?: -1
+        val scale = b?.getIntExtra(BatteryManager.EXTRA_SCALE, 100) ?: 100
+        val st = b?.getIntExtra(BatteryManager.EXTRA_STATUS, -1) ?: -1
+        val charging = st == BatteryManager.BATTERY_STATUS_CHARGING || st == BatteryManager.BATTERY_STATUS_FULL
+        val pct = if (lvl >= 0 && scale > 0) lvl * 100 / scale else -1
+        val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
+        val want = AutoModes.wanted(AutoModes.Input(hour, pct, charging, CapriAccess.foreground))
+        val cur = Modes.current(prefs).id
+        val step = AutoModes.step(cur, prefs.getS("autoBy", ""), want)
+        if (step.forget) { prefs.putS("autoBy", ""); return }
+        if (step.apply != null) {
+            if (prefs.getS("autoBy", "").isEmpty()) prefs.putS("autoPrev", cur)
+            prefs.putS("autoBy", step.apply); mode(step.apply)
+        } else if (step.restore) {
+            val back = prefs.getS("autoPrev", "normal"); prefs.putS("autoBy", ""); mode(back)
         }
     }
 

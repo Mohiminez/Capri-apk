@@ -234,3 +234,24 @@ abstract class KeyTile(private val key: String, private val label: String) : Til
 class TalkTile : KeyTile("talk", "Capri: talk")
 class QuietTile : KeyTile("quiet", "Capri: quiet")
 class ChessTile : KeyTile("chess", "Capri: chess")
+
+// Quick Settings tile that shows the current mode and moves to the next one on every tap (Normal, Quiet, Game... Meeting).
+class ModeTile : TileService() {
+    private fun refresh() {
+        try {
+            val m = Modes.current(Prefs(this))
+            qsTile?.let { it.state = if (m.id == "normal") Tile.STATE_INACTIVE else Tile.STATE_ACTIVE; it.label = m.icon + " " + m.en.lowercase().replaceFirstChar { c -> c.uppercase() }; it.updateTile() }
+        } catch (e: Throwable) { }
+    }
+    override fun onStartListening() = refresh()
+    override fun onClick() {
+        try {
+            val p = Prefs(this)
+            val n = Modes.next(Modes.current(p))
+            Modes.apply(p, n)
+            p.putS("autoBy", "")
+            if (CapriService.running) startForegroundService(Intent(this, CapriService::class.java).setAction(CapriService.ACT_MODE).putExtra("mode", n.id))
+        } catch (e: Throwable) { }
+        refresh()
+    }
+}

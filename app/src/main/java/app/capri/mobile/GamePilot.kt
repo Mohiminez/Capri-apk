@@ -76,6 +76,8 @@ class GamePilot(
         var lastFrame: Reflex.Frame? = null; var still = 0; var reflexNote = ""
         val ocrOn = prefs.getB("gameOcr", true) && Build.VERSION.SDK_INT >= 30
         val autoMenus = ocrOn && prefs.getB("autoMenus", true)
+        var queueWaits = 0
+        var leaveTaps = 0
         val menuTaps = ArrayList<String>()   // buttons pressed by the phone since the model was last asked
         while (!cancelled && System.currentTimeMillis() < end) {
             val ai = CapriAccess.instance ?: return L.t("Lost my hands.", "فقدت السيطرة.")
@@ -109,6 +111,27 @@ class GamePilot(
                     }
                 }
             }
+            val screen = if (ocrOn) GameScreens.classify(words) else GameScreen.UNKNOWN
+            if (autoMenus && screen == GameScreen.QUEUE && queueWaits < 25) {
+                // loading or searching: nothing to decide, just wait (no model call)
+                queueWaits++; status("[GAME] waiting"); try { Thread.sleep(2500) } catch (e: InterruptedException) { }; continue
+            }
+            if (screen != GameScreen.QUEUE) queueWaits = 0
+            if (autoMenus && (screen == GameScreen.ELIMINATED || screen == GameScreen.VICTORY) && leaveTaps < 3) {
+                val lv = GameScreens.leaveButton(words)
+                if (lv != null) {
+                    val hx = (lv.cx * shotW * sc0).toInt(); val hy = (lv.cy * shotH * sc0).toInt()
+                    if (!risky.containsMatchIn(ai.labelAt(hx, hy))) {
+                        leaveTaps++
+                        ai.fingers(listOf(CapriAccess.Finger(hx, hy, hx, hy, 0, 60)))
+                        trail.add("match over (" + GameScreens.describe(screen, false) + "): pressed \"" + lv.text + "\"")
+                        ActionLog.add(prefs, "game", "left match: " + lv.text)
+                        try { Thread.sleep(1500) } catch (e: InterruptedException) { }
+                        continue
+                    }
+                }
+            }
+            if (screen == GameScreen.MATCH || screen == GameScreen.BUS) leaveTaps = 0
             menuTaps.clear()
             val storm = TextTargets.purpleShare(seen.frame)
             val controls = ai.controlsList(sc0)
@@ -116,6 +139,7 @@ class GamePilot(
                 (if (reflexNote.isNotBlank()) "Result of your last policy: $reflexNote\n" else "") +
                 (if (FastCaptureService.active()) "Fast eyes are ON: a policy sees the screen live (up to 15 Hz), so policies for quick games work well.\n" else "Fast eyes are off: policies see the screen only about once a second.\n") + "Screenshot size: ${(seen.frame.w * 5)}x${(seen.frame.h * 5)} approx, grid ${seen.cols} columns x ${seen.rows} rows.\nReal buttons: " + (if (controls.isEmpty()) "(none reported: probably a game surface)" else controls.joinToString("; ")) + "\n" +
                 "Words read on the screen: " + TextTargets.describe(words, shotW.toInt(), shotH.toInt()) + "\n" +
+                (if (screen != GameScreen.UNKNOWN) "Screen read by the phone: " + GameScreens.describe(screen, false) + ".\n" else "") +
                 (if (storm > 0.22f) "WARNING: about ${(storm * 100).toInt()}% of the screen is storm purple: you are probably in the storm. Run toward the safe zone (the white circle on the map) and do not stop to loot.\n" else "") +
                 "Saved control layout: " + layoutText().ifBlank { "(not known yet)" } + "\nGame: $game\nWhat I learned about it: " + notes().ifBlank { "(nothing yet)" } + "\nTips for this kind of game: " + tips.ifBlank { "(none)" } + "\nLast moves:\n" + (if (trail.isEmpty()) "(none)" else trail.takeLast(6).joinToString("\n")) +
                 "\nThe user's language: " + (if (L.ar) "Arabic" else "English")
