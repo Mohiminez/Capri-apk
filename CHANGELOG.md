@@ -2,6 +2,10 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest: fix for the build that stopped at checkDebugAarMetadata
+
+- **Fix:** the build failed because ML Kit (added for reading game screens) brings AndroidX libraries, and gradle.properties had android.useAndroidX=false. It is now true. The app itself uses no support-library code, so nothing else changes.
+
 ## Newest: compared with capri-desktop and CapriCore again
 
 - **"Why is my phone slow?"** (also "ليش جوالي بطيء"): she reads free memory, free storage, battery, temperature, battery saver and thermal state on the phone and says what is wrong and what to do (PhoneHealth.kt). Nothing is sent anywhere. (Desktop got "why slow?" and a CPU/RAM panel.)
