@@ -2,6 +2,25 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest: the pill and the startup glitch, like the desktop
+
+- **The tap pill is redrawn from capri-desktop's TalkPill (Talk.cs):** a black plate with cut corners, a soft glow, faint scan lines and a pink-to-cyan neon edge; left half a pencil with **TYPE**, right half the five-bar wave with **TALK**, a slanted seam between them, the pressed half washed cyan. It glitches in for four frames (slivers of the edge torn loose, the plate sliced sideways). Pencil opens the chat bar, wave starts listening.
+- A tap now also makes her glitch or grin, like the desktop's click.
+- **Startup glitch:** crimson tendrils tear out from behind her every time she starts, different each time (Tendrils.kt). Switch: HER > "Glitch in when she starts".
+- The token line (HOME) and the new check-ins are in the previous round; they only show once this update is on GitHub and built.
+
+## Newest: talk to her while she works
+
+- While she is on a phone job or playing a game, a plain "stop" / "وقف" / "كافي" stops it at once, and "how's it going" / "وين وصلتي" / "وش تسوين" is answered from the last step and how long it has run, with no model call (Asides.kt, ported from the desktop and trimmed). Anything else goes to the brain as before.
+
+## Newest: ported from capri-desktop (safety, check-ins, stopwatch, usage)
+
+- **Safety line (Crisis.kt).** If you say you want to hurt yourself (English or Arabic, including Gulf phrasing), she answers herself with one short, warm, fixed line instead of the model: a well-known free number where one exists (US/CA 988, UK/IE 116 123, AU 13 11 14, NZ 1737) and findahelpline.com everywhere else, nothing guessed. Games and jokes ("kill myself in minecraft", "ابي اموت من الضحك") are not taken for real. Repeats at most once every 10 minutes.
+- **Check-ins (Care.kt)** now match the desktop's: water, stretch, rest your eyes, bedtime (once per night), meals (noon windows), game break (a known game app in front for a long time) and bored (when you haven't talked to her). Timers start when you start using the phone and start over after 10 minutes away. Fixed canned lines in both languages, so they cost nothing. Switches and sliders under HER > LOOKING AFTER YOU.
+- **Stopwatch.** "start the stopwatch / stop / how long", Arabic "شغل ساعة التوقيت / وقف". Survives restarts.
+- **Usage line on HOME.** Her asks and approximate tokens for today and the last 7 days (an estimate of 4 characters per token, cloud brains only).
+- The compile scan now runs against a real android.jar (API 34): remaining errors are only the libraries and the Gradle-generated `R`, none in new code.
+
 ## Newest: stacking skins from capri-desktop
 
 - Import a `.capri-skin` (a zip with skin.json and PNG strips named like her animations) from MODS > "Import a mod, look or skin". Several skins **stack**: the bottom one is drawn whole, an accessory skin (`"accessory": true`, like cat ears or a hat) goes on top of whatever is under it. The list shows each skin's place in the stack ([1], [2]...). Tap a skin to turn it on or off (on puts it on top), hold it to remove it. Restart her to see changes.

@@ -40,7 +40,7 @@ object Actions {
     const val ASK_ALWAYS = 3
 
     // Lookups that only read public info: allowed even in Lockdown.
-    private val readOnly = setOf("weather", "health", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room")
+    private val readOnly = setOf("weather", "health", "wiki", "web", "read", "brief", "playing", "remember", "info", "game", "guide", "security", "mode", "room", "stopwatch")
     // In Guarded these ask first, by showing a bubble you tap to allow.
     private val asksFirst = setOf("do", "look", "url", "dictate", "scrollforme", "watch")
     // In "ask every time" mode even your own direct orders ask first.
@@ -88,7 +88,7 @@ object Actions {
         "open" to "apps", "url" to "apps", "look" to "screen",
         "hands" to "control", "do" to "control", "playgame" to "control", "watch" to "screen", "point" to "screen", "scrollforme" to "control", "dictate" to "control",
         "music" to "media", "media" to "media", "volume" to "media", "health" to "device", "wol" to "device",
-        "timer" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
+        "timer" to "alerts", "stopwatch" to "alerts", "alarm" to "alerts", "remind" to "alerts", "focus" to "alerts",
         "flash" to "device", "nav" to "device", "search" to "device", "copy" to "device",
         "weather" to "lookup", "wiki" to "lookup", "web" to "lookup", "read" to "lookup", "brief" to "lookup", "browse" to "apps", "playing" to "lookup")
 
@@ -104,6 +104,11 @@ object Actions {
                 "music" -> playMusic(ctx, arg)
                 "health" -> return "\n" + phoneHealth(ctx)
                 "wol" -> return wake(ctx, prefs)
+                "stopwatch" -> {
+                    val o = StopwatchTalk.run(arg.trim(), prefs.getL("swStart", 0L), System.currentTimeMillis(), L.ar)
+                    prefs.putL("swStart", o.startedAt)
+                    return "\n" + o.say
+                }
                 "media" -> media(ctx, arg)
                 "timer" -> {
                     // our own alarm (always rings), instead of asking the clock app, which many phones ignore
@@ -386,6 +391,7 @@ object QuickAsks {
         LocalAsks.match(r)?.let { return it }
         // "play X on Anghami / Spotify / Deezer / YouTube Music", "شغل X على انغامي"
         MusicApps.parse(r)?.let { return L.t("On it. ", "ابشر. ") + MusicApps.tag(it) }
+        StopwatchTalk.request(r, false)?.let { return "[[stopwatch:$it]]" }
         if (PhoneHealth.isAsk(r)) return L.t("Checking. [[health:go]]", "أفحص. [[health:go]]")
         if (WakeOnLan.isAsk(r)) return L.t("On it. [[wol:go]]", "ابشر. [[wol:go]]")
         // "is this a scam: <message>", "هل هذي رسالة نصب: ..." is checked on the phone, nothing is sent anywhere

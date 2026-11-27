@@ -132,6 +132,12 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
                 val stamp = longArrayOf(0L)
                 val onDelta: ((String) -> Unit)? = onPartial?.let { cb -> { full: String -> val n = System.currentTimeMillis(); if (n - stamp[0] > 120) { stamp[0] = n; main.post { cb(full) } } } }
                 val reply = complete(system(text) + (if (hidden) "" else Knowledge.context(ctx, text) + Guide.context(text) + Specialists.context(text, image != null, prefs.getB("agents", true))), past, text, image, route(text, image != null), onDelta)
+                try {
+                    if (!isLocal()) {
+                        val day = ((System.currentTimeMillis() + java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis())) / 86_400_000L).toInt()
+                        prefs.putS("spend", Spend.add(prefs.getS("spend", ""), day, Spend.estimate(past.sumOf { it.text.length } + text.length + 2500), Spend.estimate(reply.length)))
+                    }
+                } catch (e: Throwable) { }
                 main.post {
                     if (remember && !reply.trim().uppercase().startsWith("NOTHING")) {
                         history.add(Msg("assistant", Actions.strip(reply), System.currentTimeMillis()))

@@ -129,9 +129,6 @@ class CapriService : Service(), Actions.Hooks {
     private var lastReply = ""
     private var tone: android.media.ToneGenerator? = null
     private var menu: LinearLayout? = null
-    private var lastWater = System.currentTimeMillis()
-    private var lastStretch = System.currentTimeMillis()
-    private var lastLate = 0L
     private val quiet get() = prefs.getB("quiet", false)
 
     // movement: 0 resting, 1 thrown (gravity and bounces), 2 walking somewhere
@@ -376,8 +373,8 @@ class CapriService : Service(), Actions.Hooks {
         }
 
         agent = Agent(this, brain, prefs,
-            { line -> h.post { say(line, false) } },
-            { line -> h.post { busy = false; say(line); settle() } })
+            { line -> h.post { jobNote = line; if (jobSince == 0L) jobSince = System.currentTimeMillis(); say(line, false) } },
+            { line -> h.post { jobSince = 0L; jobNote = ""; busy = false; say(line); settle() } })
         ReminderReceiver.speaker = { t -> h.post { say(t) } }
         ChessBridge.speaker = { t -> h.post { say(t) } }
         ChessBridge.explainer = { prompt, cb -> h.post { brain.ask(prompt, true) { r, _ -> cb(r?.let { Actions.strip(it) }) } } }
@@ -416,6 +413,7 @@ class CapriService : Service(), Actions.Hooks {
         }
 
         clip("arrive", false) { settle() }
+        tendrils()
         if (prefs.getB("intro", true) && !prefs.getB("lowPower", false) && Settings.canDrawOverlays(this)) {
             val now = System.currentTimeMillis()
             val plan = IntroPlan.pick(prefs.getS("introStyle", "random"), prefs.getL("introLast", 0L), now, (now / 1000).toInt())
@@ -433,7 +431,7 @@ class CapriService : Service(), Actions.Hooks {
         h.postDelayed(musicTask, 5000)
         h.postDelayed(watchTask, 60_000L)
         h.postDelayed(checkInTask, 20 * 60_000L)
-        h.postDelayed(careTask, 5 * 60_000L)
+        h.postDelayed(careTask, 60_000L)
         h.postDelayed(mischiefTask, 30 * 60_000L)
         h.postDelayed(charmTask, 10 * 60_000L)
         h.postDelayed(queueTask, 45_000L)
@@ -776,26 +774,33 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
-    // Wellbeing nudges, with canned lines so they cost nothing.
+    // Wellbeing nudges, with canned lines so they cost nothing. The timing is Care.kt (ported from capri-desktop).
+    @Volatile private var jobNote = ""
+    @Volatile private var jobSince = 0L
+    private val care = Care()
+    private var screenOffAt = 0L
+    private val careCfg = Care.Cfg(
+        { k -> prefs.getB(careKey(k), false) },
+        { k -> prefs.getI("careMin_" + k.name, Care.defaultMins(k)).coerceAtLeast(if (k == CareKind.LATE) 0 else 5) })
+    private fun careKey(k: CareKind) = when (k) {
+        CareKind.WATER -> "careWater"; CareKind.STRETCH -> "careStretch"; CareKind.LATE -> "careLate"
+        CareKind.EYES -> "careEyes"; CareKind.MEAL -> "careMeal"; CareKind.GAME -> "careGame"; CareKind.BORED -> "careBored"
+    }
+
     private val careTask = object : Runnable {
         override fun run() {
-            val now = System.currentTimeMillis()
-            if (idleOk()) {
-                val hour = java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY)
-                if (prefs.getB("careWater", false) && now - lastWater > 90 * 60_000L) {
-                    lastWater = now
-                    say(listOf(L.t("Drink some water, choom. Your brain runs on it.", "اشرب شوية موية يا خوي، مخك يشتغل عليها."),
-                        L.t("Hydrate. I mean it.", "اشرب موية. جاد أقول.")).random())
-                } else if (prefs.getB("careStretch", false) && now - lastStretch > 60 * 60_000L) {
-                    lastStretch = now
-                    say(listOf(L.t("You've been staring for a while. Stretch, blink, breathe.", "صار لك مدة تطالع الشاشة. تمطّط وغمّض عيونك وخذ نفس."),
-                        L.t("Look at something far away for ten seconds.", "طالع شي بعيد لمدة عشر ثواني.")).random())
-                } else if (prefs.getB("careLate", false) && hour in 1..4 && now - lastLate > 2 * 3600_000L) {
-                    lastLate = now
-                    say(L.t("It's very late. Sleep exists, you know.", "الوقت متأخر مرة. النوم موجود تدري."))
-                }
-            }
-            h.postDelayed(this, 5 * 60_000L)
+            try {
+                val cal = java.util.Calendar.getInstance()
+                val now = System.currentTimeMillis()
+                val day = ((now + cal.timeZone.getOffset(now)) / 86_400_000L).toInt()
+                val away = if (screenOn) 0L else now - screenOffAt
+                val fg = CapriAccess.foreground
+                val playing = if (screenOn && GamePkgs.isGame(fg)) fg else null
+                val k = care.check(now, cal.get(java.util.Calendar.HOUR_OF_DAY), cal.get(java.util.Calendar.MINUTE), day, away,
+                    now - engagedAt, playing, careCfg, idleOk())
+                if (k != null) say(CareLines.pick(k, L.ar, Random.nextInt(1000)))
+            } catch (e: Throwable) { CrashLog.record(this@CapriService, e, "care") }
+            h.postDelayed(this, 60_000L)
         }
     }
 
@@ -846,7 +851,7 @@ class CapriService : Service(), Actions.Hooks {
 
         private fun handle(i: Intent) {
             when (i.action) {
-                Intent.ACTION_SCREEN_OFF -> { screenOn = false; Voice.stop(); tts?.stop(); stopShake() }
+                Intent.ACTION_SCREEN_OFF -> { screenOn = false; screenOffAt = System.currentTimeMillis(); Voice.stop(); tts?.stop(); stopShake() }
                 Intent.ACTION_SCREEN_ON -> { screenOn = true; if (!prefs.getB("lowPower", false)) startShake() }
                 Intent.ACTION_BATTERY_LOW -> if (prefs.getB("events", true) && idleOk())
                     say(L.t("You're nearly out of battery. Find a charger, gonk.", "البطارية على وشك تخلص. دوّر لك شاحن يا خوي."))
@@ -1190,7 +1195,7 @@ class CapriService : Service(), Actions.Hooks {
             s.animate().scaleX(1.07f).scaleY(0.93f).setDuration(70).withEndAction {
                 s.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
             }.start()
-            clip("grin", false) { settle() }
+            if (Random.nextInt(3) == 0) { sprite?.emote("glitch"); clip("glitch", false) { settle() } } else clip("grin", false) { settle() }
         }
         if (panelShown) hidePanel()
         else if (pill != null) hidePill()
@@ -1199,6 +1204,15 @@ class CapriService : Service(), Actions.Hooks {
     }
 
     // The pencil and wave pill under her (like capri-desktop). Pencil opens the type bar, wave starts listening.
+    // Crimson glitch tendrils behind her when she beams in (the desktop's startup glitch); Settings > "Glitch in" turns it off.
+    private fun tendrils() {
+        if (!prefs.getB("glitchTendrils", true) || prefs.getB("lowPower", false) || hidden || !Settings.canDrawOverlays(this)) return
+        try {
+            val size = (spriteLp.width * 2.4f).toInt()
+            Tendrils(this).play(wm, h, spriteLp.x + spriteLp.width / 2, spriteLp.y + spriteLp.height / 2, size)
+        } catch (e: Throwable) { }
+    }
+
     private var pill: View? = null
     private fun hidePill() {
         pill?.let { try { wm.removeView(it) } catch (e: Exception) { } }
@@ -1219,8 +1233,7 @@ class CapriService : Service(), Actions.Hooks {
         v.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_OUTSIDE) hidePill(); false }
         try { wm.addView(v, lp) } catch (e: Exception) { return }
         pill = v
-        v.scaleX = 0.7f; v.scaleY = 0.7f; v.alpha = 0f
-        v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140).start()
+        v.glitchIn()
         h.postDelayed({ if (pill === v) hidePill() }, 7000L)
     }
 
@@ -1592,6 +1605,28 @@ class CapriService : Service(), Actions.Hooks {
         poke()
         if (!hiddenPrompt) {
             Charm.add(prefs, 2)
+            if (Crisis.means(text)) {
+                val nowMs = System.currentTimeMillis()
+                if (Crisis.due(nowMs, prefs.getL("crisisAt", 0L))) {
+                    prefs.putL("crisisAt", nowMs)
+                    say(Crisis.line(java.util.Locale.getDefault().country, L.ar))
+                    return
+                }
+            }
+            // while her hands are busy, a plain "stop" or "how's it going" is answered at once, with no brain
+            if (agent.running || gameRunning() || pilot?.running == true) when (Asides.classify(text)) {
+                Asides.Kind.STOP -> {
+                    agent.cancel(); pilot?.stop(); gamePilot?.stop()
+                    say(L.t("Okay, stopping.", "تمام، وقفت."), false)
+                    return
+                }
+                Asides.Kind.PROGRESS -> {
+                    val since = if (jobSince > 0) System.currentTimeMillis() - jobSince else 0L
+                    say(Asides.status(jobNote, since, L.ar, Random.nextInt(1000)), false)
+                    return
+                }
+                null -> {}
+            }
             val quick = Skills.match(prefs.getS("skills", ""), text) ?: QuickAsks.match(text)
             if (quick != null) {
                 say(Actions.run(this, prefs, quick, this, true))
@@ -1658,7 +1693,7 @@ class CapriService : Service(), Actions.Hooks {
         busy = true
         settle()
         agent.plan = plan
-        agent.start(goal)
+        jobSince = System.currentTimeMillis(); jobNote = ""; agent.start(goal)
     }
 
     // Online models never see card numbers, emails, phone numbers or codes from the screen.
@@ -2205,10 +2240,11 @@ class CapriService : Service(), Actions.Hooks {
             prefs.putB("gameAutoOk", true)
             say(L.t("Heads up: I look, think for a few seconds, then touch. I'm fine at puzzles, runners and turn-based games, and slow at fast shooters. I never buy anything.", "تنبيه: أطالع وأفكر كم ثانية وبعدين ألمس. زينة بالألغاز والجري والألعاب بالدور، وبطيئة بالتصويب السريع. وما أشتري شي أبداً."), false)
         }
-        val gp = GamePilot(this, brain, prefs, name, { t -> h.post { say(t, false) } }, { t -> h.post { chessChip(t) } }, { msg ->
-            h.post { gamePilot = null; FastCaptureService.instance?.let { startService(Intent(this, FastCaptureService::class.java).setAction(FastCaptureService.ACT_STOP)) }; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
+        val gp = GamePilot(this, brain, prefs, name, { t -> h.post { say(t, false) } }, { t -> h.post { jobNote = t; chessChip(t) } }, { msg ->
+            h.post { jobSince = 0L; jobNote = ""; gamePilot = null; FastCaptureService.instance?.let { startService(Intent(this, FastCaptureService::class.java).setAction(FastCaptureService.ACT_STOP)) }; chessChip(null); sprite?.visibility = View.VISIBLE; say(msg, false) }
         })
         gamePilot = gp
+        jobSince = System.currentTimeMillis(); jobNote = ""
         sprite?.visibility = View.INVISIBLE
         chessChip(L.t("[GAME] Starting $name", "[لعبة] أبدأ $name"))
         val needEyes = prefs.getB("fastEyes", true) && !FastCaptureService.active() && Build.VERSION.SDK_INT >= 29

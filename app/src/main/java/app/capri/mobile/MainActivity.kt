@@ -715,6 +715,7 @@ class MainActivity : Activity() {
         col.setPadding(dp(12), 0, 0, 0)
         val status = body(col, "", 16f, Color.WHITE, true)
         val charmLabel = body(col, "", 14f, muted)
+        val spendLabel = body(col, "", 12f, muted)
         val pb = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
         pb.max = 100
         pb.progressTintList = ColorStateList.valueOf(accent)
@@ -729,6 +730,8 @@ class MainActivity : Activity() {
             val c = prefs.getI("charm", 0)
             charmLabel.text = t("Bond: ", "العلاقة: ") + Charm.label(c)
             pb.progress = Charm.progress(c)
+            val dayNow = ((System.currentTimeMillis() + java.util.TimeZone.getDefault().getOffset(System.currentTimeMillis())) / 86_400_000L).toInt()
+            spendLabel.text = "≈ " + Spend.line(prefs.getS("spend", ""), dayNow, L.ar)
         }
 
         // MAINFRAME: three bands, the way the desktop version lays out her control panel
@@ -1470,6 +1473,7 @@ class MainActivity : Activity() {
         toggle(life, t("Desktop-style movement: arrive/leave, lying down, hanging, glitch blinks, dizzy when shaken (off = classic movement; restart her)", "حركات سطح المكتب: وصول ومغادرة واستلقاء وتعلّق ورمشات تشويش ودوخة بالهز (طفّها للحركة الكلاسيكية ثم أعد تشغيلها)"), "pcMoves", true)
         toggle(life, t("She sits on edges of the app I have open (toolbars, cards, pictures)", "تجلس على حواف التطبيق المفتوح (الشريط والبطاقات والصور)"), "windowPerch", true)
         toggle(life, t("She gets jealous when I open another AI app", "تغار لما أفتح تطبيق ذكاء اصطناعي ثاني"), "jealous", true)
+        toggle(life, t("Glitch in when she starts: crimson tendrils tear out behind her", "تشويش عند التشغيل: خيوط حمراء تتمزق من وراها"), "glitchTendrils", true)
         toggle(life, t("She checks in on me now and then (uses your key)", "تطمّن علي من وقت لوقت (تستهلك مفتاحك)"), "checkin", false)
         toggle(life, t("Mischief mode: harmless fake glitches now and then", "وضع الشقاوة: مقالب وهمية بريئة من وقت لوقت"), "mischief", false)
         toggle(life, t("Hologram: she can't be touched, taps go through (restart her)", "هولوغرام: ما تنلمس والضغطات تمرّ من خلالها (أعد تشغيلها)"), "hologram", false)
@@ -1479,7 +1483,14 @@ class MainActivity : Activity() {
         slider(care, t("Doomscroll guard: nag me after (minutes, 0 = off, needs hands)", "حارس التصفّح: نبّهني بعد (دقائق، ٠ = مطفي، يحتاج اليدين)"), "scrollLimit", 0, 60, 0)
         toggle(care, t("Remind me to drink water", "ذكّرني أشرب موية"), "careWater", false)
         toggle(care, t("Remind me to stretch and rest my eyes", "ذكّرني أتمطّط وأريّح عيوني"), "careStretch", false)
+        toggle(care, t("Remind me to rest my eyes (look far away)", "ذكّرني أريّح عيوني (أطالع بعيد)"), "careEyes", false)
         toggle(care, t("Tell me off when it's very late", "عاتبني لما يصير الوقت متأخر"), "careLate", false)
+        toggle(care, t("Remind me to eat (around meal times)", "ذكّرني آكل (وقت الوجبات)"), "careMeal", false)
+        toggle(care, t("Game break: nudge me after a long game session", "استراحة اللعب: نبّهني بعد جلسة لعب طويلة"), "careGame", false)
+        toggle(care, t("She gets bored when I don't talk to her for a while", "تزهق لما ما أكلمها مدة"), "careBored", false)
+        slider(care, t("Water reminder every (minutes)", "تذكير الموية كل (دقيقة)"), "careMin_WATER", 15, 180, 90)
+        slider(care, t("Stretch reminder every (minutes)", "تذكير التمطّط كل (دقيقة)"), "careMin_STRETCH", 15, 180, 60)
+        slider(care, t("Bedtime starts at (hour, 0-11 means after midnight)", "وقت النوم يبدأ (ساعة، ٠-١١ يعني بعد منتصف الليل)"), "careMin_LATE", 0, 23, 1)
         toggle(care, t("Comment on low battery and charging", "تعلّق على البطارية والشحن"), "events", true)
 
         val you = section(t("YOU", "أنت"))
