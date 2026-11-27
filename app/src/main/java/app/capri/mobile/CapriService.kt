@@ -249,7 +249,7 @@ class CapriService : Service(), Actions.Hooks {
         notifier = null
         try { unregisterReceiver(events) } catch (e: Exception) { }
         Ears.cancel()
-        hideMenu()
+        hideMenu(); hidePill()
         clearClones()
         hideRing()
         stopWake()
@@ -1192,7 +1192,36 @@ class CapriService : Service(), Actions.Hooks {
             }.start()
             clip("grin", false) { settle() }
         }
-        if (panelShown) hidePanel() else showPanel()
+        if (panelShown) hidePanel()
+        else if (pill != null) hidePill()
+        else if (prefs.getB("tapPill", true)) showPill()
+        else showPanel()
+    }
+
+    // The pencil and wave pill under her (like capri-desktop). Pencil opens the type bar, wave starts listening.
+    private var pill: View? = null
+    private fun hidePill() {
+        pill?.let { try { wm.removeView(it) } catch (e: Exception) { } }
+        pill = null
+    }
+    private fun showPill() {
+        hidePill(); hideMenu()
+        val v = CapriPill(this, { hidePill(); showPanel() }, { hidePill(); convoActive = false; startListening() })
+        v.measure(View.MeasureSpec.makeMeasureSpec(screenW, View.MeasureSpec.AT_MOST), View.MeasureSpec.makeMeasureSpec(0, View.MeasureSpec.UNSPECIFIED))
+        val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.WRAP_CONTENT, WindowManager.LayoutParams.WRAP_CONTENT, OVERLAY,
+            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCH_MODAL or WindowManager.LayoutParams.FLAG_WATCH_OUTSIDE_TOUCH,
+            PixelFormat.TRANSLUCENT)
+        lp.gravity = Gravity.TOP or Gravity.START
+        lp.x = (spriteLp.x + spriteLp.width / 2 - v.measuredWidth / 2).clampTo(dp(8), (screenW - v.measuredWidth - dp(8)).coerceAtLeast(dp(8)))
+        var y = spriteLp.y + spriteLp.height - dp(4)
+        if (y + v.measuredHeight > screenH - dp(24)) y = spriteLp.y - v.measuredHeight - dp(4)
+        lp.y = y
+        v.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_OUTSIDE) hidePill(); false }
+        try { wm.addView(v, lp) } catch (e: Exception) { return }
+        pill = v
+        v.scaleX = 0.7f; v.scaleY = 0.7f; v.alpha = 0f
+        v.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(140).start()
+        h.postDelayed({ if (pill === v) hidePill() }, 7000L)
     }
 
     private fun moveTo(x: Int, y: Int) {

@@ -1389,10 +1389,22 @@ class MainActivity : Activity() {
         val act = Mods.active(prefs)
         if (act.isNotEmpty()) note(box, t("Mod on: ", "المود المفعّل: ") + (Mods.all(this).firstOrNull { it.id == act }?.title(L.ar) ?: act))
         for (m in Mods.all(this)) modCard(box, m, m.id == act)
-        btn(box, t("IMPORT A MOD OR LOOK (.json / .capri)", "استيراد مود أو شكل (.json / .capri)"), true) {
+        btn(box, t("IMPORT A MOD, LOOK OR SKIN (.json / .capri / .capri-skin)", "استيراد مود أو شكل أو سكن (.json / .capri / .capri-skin)"), true) {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 7)
         }
         btn(box, t("COPY A MOD TEMPLATE TO MAKE MY OWN", "انسخ قالب مود أسوي مودي")) { clip(Mods.template()); toast(t("Copied. Edit it, save it as a .json file, then import it.", "تم النسخ. عدّله واحفظه ملف .json وبعدين استورده.")) }
+        val skins = Skins.installed(this)
+        if (skins.isNotEmpty()) {
+            val onList = Skins.on(prefs)
+            note(box, t("Skins stack, newest on top. Turn one off and on again to move it to the top. Restart her to see changes.", "السكنات تتراكم، الأحدث فوق. طفّيه وشغّله عشان ينتقل فوق. أعد تشغيلها عشان تبان التغييرات."))
+            for (sk in skins) {
+                val pos = onList.indexOf(sk.id)
+                val label = (if (pos >= 0) "[" + (pos + 1) + "] " else "[ ] ") + sk.name + (if (sk.accessory) t("  (accessory)", "  (إكسسوار)") else "")
+                btn(box, label, pos >= 0) { Skins.toggle(this, prefs, sk.id); toast(t("Done. Restart her to see it.", "تم. أعد تشغيلها عشان تشوفه.")); showTab(tab) }
+                    .setOnLongClickListener { Skins.remove(this, prefs, sk.id); toast(t("Skin removed.", "انحذف السكن.")); showTab(tab); true }
+            }
+            note(box, t("Hold a skin's button to remove it.", "اضغط مطوّلاً على زر السكن لحذفه."))
+        }
         if (CustomLook.active(this)) {
             note(box, t("Custom look in use: ", "شكل مخصص مستخدم: ") + CustomLook.name(this))
             btn(box, t("REMOVE THE CUSTOM LOOK", "احذف الشكل المخصص")) { CustomLook.remove(this); toast(t("Look removed. Restart her.", "انحذف الشكل. أعد تشغيلها.")); showTab(tab) }
@@ -1409,6 +1421,7 @@ class MainActivity : Activity() {
         toggle(look, t("She dances when music is playing", "ترقص لما تشتغل موسيقى"), "dance", true)
         toggle(look, t("Mini music player (needs notification access)", "مشغّل موسيقى صغير (يحتاج صلاحية الإشعارات)"), "miniPlayer", true)
         toggle(look, t("Glitch-in intro when she wakes up", "مقدمة قلتش لما تصحى"), "intro", true)
+        toggle(look, t("Tap her to get the pencil and voice pill (like capri-desktop). Off = the type bar opens at once", "اضغط عليها تطلع كبسولة القلم والصوت (مثل capri-desktop). مطفية = تفتح خانة الكتابة على طول"), "tapPill", true)
         body(look, t("Intro style (the cinematic ones play at most once every 6 hours)", "شكل المقدمة (السينمائية تشتغل مرة كل 6 ساعات كحد أقصى)"), 13f, muted)
         run {
             val names = listOf(t("Random", "عشوائي"), t("Peek (from capri-desktop)", "تطل (من capri-desktop)"), t("Up close (from capri-desktop)", "قريبة (من capri-desktop)"), t("Glitch-in", "قلتش"), t("None", "بدون"))
@@ -1766,7 +1779,14 @@ class MainActivity : Activity() {
         try {
             val head = contentResolver.openInputStream(uri)?.use { val b = ByteArray(2); if (it.read(b) == 2) String(b, Charsets.ISO_8859_1) else "" } ?: ""
             if (head == "PK") {
-                // a .capri look made in the desktop editor
+                // a .capri-skin (skin.json + strips) goes on her as a layer; otherwise it is a .capri look made in the desktop editor
+                val skin = Skins.install(this, prefs, uri)
+                if (skin != null) {
+                    toast(t("Skin on: ", "انلبس السكن: ") + skin)
+                    if (CapriService.running) { stopService(Intent(this, CapriService::class.java)); page.postDelayed({ startForegroundService(Intent(this, CapriService::class.java)) }, 700) }
+                    showTab(tab)
+                    return
+                }
                 val n = CustomLook.install(this, uri)
                 toast(t("Look loaded: ", "انحمّل الشكل: ") + n + t(" (restart her to see it)", " (أعد تشغيلها عشان يبان)"))
                 if (CapriService.running) { stopService(Intent(this, CapriService::class.java)); page.postDelayed({ startForegroundService(Intent(this, CapriService::class.java)) }, 700) }

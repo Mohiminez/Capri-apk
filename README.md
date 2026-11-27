@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **241**
+- Animation clips: **30**; unit tests: **245**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -236,6 +236,8 @@ Other source files (generated):
 | `Reminders.kt` | - |
 | `ScamCheck.kt` | A local scam / phishing check for text you share to Capri or paste ("هل هذي رسالة نصب؟", "is this a scam?"). |
 | `Skills.kt` | Custom commands you write yourself, one per line:   phrase => what she does or says |
+| `SkinStack.kt` | Stacking skins, the rules (pure, unit tested). A ".capri-skin" from capri-desktop is a zip with skin.json a... |
+| `Skins.kt` | Stacking ".capri-skin" files from capri-desktop. Data only: skin.json and PNG strips are read, nothing else... |
 | `Sse.kt` | Server-sent events of an OpenAI-compatible chat stream ("data: {...}" lines). Pure parsing, unit tested. |
 | `Tags.kt` | The actions inside a reply: [[name:argument]]. Models are sloppy, so this reads what they really write: spa... |
 | `TextTargets.kt` | What to do with the words a game's screen shows. The game surface has no accessibility buttons, so a model... |

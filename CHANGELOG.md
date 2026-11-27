@@ -2,6 +2,21 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Newest: stacking skins from capri-desktop
+
+- Import a `.capri-skin` (a zip with skin.json and PNG strips named like her animations) from MODS > "Import a mod, look or skin". Several skins **stack**: the bottom one is drawn whole, an accessory skin (`"accessory": true`, like cat ears or a hat) goes on top of whatever is under it. The list shows each skin's place in the stack ([1], [2]...). Tap a skin to turn it on or off (on puts it on top), hold it to remove it. Restart her to see changes.
+- A strip is used only when it is exactly as tall as her frame (384 px) and a whole number of 116 px frames wide, with the same number of frames as her own strip; anything else is skipped. The strips are drawn onto her sheets once when a sheet loads, before her colours, so there is no extra cost while she animates and hair-coloured parts follow My Colors. Data only: only skin.json and plain PNG strips are read; folders, odd names and oversized files are refused (SkinStack.kt, Skins.kt, unit tested).
+- Not done from the desktop spec: skins with a different number of frames than hers, moves of their own, per-strip speeds, and `_flipped` strips (she mirrors the normal strip).
+
+## Newest: tap her and the pencil and voice pill appears (like capri-desktop)
+
+- On the desktop app, clicking her shows a small dark pill with a pencil (write to her) and a sound wave (talk to her). Here, tapping her opened the type bar at once. Now a pill appears under her (above her near the bottom of the screen) with the same two icons in the same cyan on dark, drawn in code (CapriPill.kt). Pencil opens the type bar, wave starts listening. Tap her again, tap outside, or wait 7 seconds to close it. HER LOOK > "Tap her to get the pencil and voice pill": turn it off to get the type bar at once like before.
+- Checked skins: the app already imports the desktop's ".capri" looks (CustomLook) and has mods. Desktop's stacking accessory skins (a cat-ears layer on top of an outfit) are not here yet.
+
+## Newest: no more merge conflicts when uploading
+
+- CI no longer commits the refreshed README back to GitHub (that made GitSync report merge conflicts on every upload). The README is refreshed inside the zip instead. The zip now has the project files at its root (no extra "proj" folder).
+
 ## Newest: native tool calls (experimental) and a first slice out of CapriService
 
 - **Native tool calls**, off by default (HOME > MODE): the request carries one function, act(name, arg), and the provider returns her actions as structured data instead of her writing [[open:spotify]] in the middle of a sentence. Each call is converted back into the same tag, so permissions, confirmations and the 6-per-reply cap are the same code as before. Settings and system names (security, set, chaos, dictate) are never offered to a model, and an argument can't break out of its tag. If a provider answers 400 to tools, that provider falls back to the normal way by itself for the rest of the session. Only your own chat uses it (the game player and background lookups do not), and the answer then appears at once instead of streaming. ToolCalls.kt.

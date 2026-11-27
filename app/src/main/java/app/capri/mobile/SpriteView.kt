@@ -53,6 +53,8 @@ object SpriteBank {
                 val custom = CustomLook.active(ctx)
                 val bmp = (if (custom) CustomLook.file(ctx, name)?.inputStream()?.use { BitmapFactory.decodeStream(it, null, opts) }
                     else ctx.assets.open("sprites/$name.webp").use { BitmapFactory.decodeStream(it, null, opts) }) ?: return null
+                // skins go on first, her colours after (so anything drawn in her hair colour follows My Colors)
+                if (!custom) try { Skins.bake(ctx, prefs, name, bmp, o.getInt("frames"), o.getInt("w"), o.getInt("h"), o.getInt("cols")) } catch (e: Throwable) { }
                 if (!custom) Recolor.apply(prefs, bmp)
                 val c = SpriteClip(o.getInt("frames"), o.getInt("fps"), o.getInt("w"), o.getInt("h"), o.getInt("cols"), o.optDouble("sx", 0.0).toFloat(), bmp)
                 clips[name] = c

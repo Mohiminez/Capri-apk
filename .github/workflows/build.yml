@@ -84,12 +84,5 @@ jobs:
             --target "${{ github.sha }}" \
             --latest
 
-      # Commit the refreshed README back. Pushes made with the built-in token do not start another run, and *.md changes are ignored anyway.
-      - name: Commit the refreshed README
-        continue-on-error: true
-        if: github.event_name != 'pull_request' && (github.ref_name == 'main' || github.ref_name == 'master')
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
-          git add README.md
-          git diff --cached --quiet || (git commit -m "README: refresh generated blocks [skip ci]" && git push)
+      # The README is refreshed inside the zip you upload (tools/update_readme.py), not committed back by CI: a commit made on GitHub made your phone
+      # app report merge conflicts on every upload.
