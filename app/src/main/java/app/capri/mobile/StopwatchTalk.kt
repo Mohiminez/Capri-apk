@@ -8,7 +8,7 @@ object StopwatchTalk {
     fun request(raw: String, running: Boolean): String? {
         val t = raw.lowercase().replace(Regex("[\\u064B-\\u0652\\u0640]"), "").replace('أ', 'ا').replace('إ', 'ا').replace('ة', 'ه')
             .replace(Regex("[.,!?؟،]"), " ").replace(Regex("\\s+"), " ").trim()
-        val word = Regex("stop ?watch|ستوب ?واتش|ساعه ?(?:ال)?توقيت|كرونو|كرونومتر")
+        val word = Regex("\\bstop ?watch\\b|ستوب ?واتش|ساعه ?(?:ال)?توقيت|كرونو|كرونومتر")
         if (word.containsMatchIn(t)) {
             return when {
                 Regex("\\b(?:start|begin|run)\\b|ابدا|شغل|ابدي|دور").containsMatchIn(t) -> "start"

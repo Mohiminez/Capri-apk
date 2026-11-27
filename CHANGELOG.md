@@ -312,3 +312,5 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 - **Action log** never keeps URL paths/queries, emails, phone numbers, card numbers or codes, and reminder/note/call text is not logged.
 - **Plain http** is only used for this phone or a private network (keys or not); public addresses need https. The manifest still allows cleartext so a home server works; the app is the gate.
 - Still not built: multi-agent, a voice-conversation mode, a companion room, splitting `MainActivity`/`CapriService`.
+
+- Fixed: "stop watching" was caught by the stopwatch matcher (CI failure); matcher now needs whole word.

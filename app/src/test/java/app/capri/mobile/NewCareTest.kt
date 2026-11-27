@@ -77,6 +77,7 @@ class NewCareTest {
         assertEquals("start", StopwatchTalk.request("شغل ساعة التوقيت", false)); assertEquals("stop", StopwatchTalk.request("وقف الستوب واتش", true))
         assertEquals("check", StopwatchTalk.request("how long has it been", true)); assertNull(StopwatchTalk.request("how long has it been", false))
         assertNull(StopwatchTalk.request("what time is it", false))
+        assertNull(StopwatchTalk.request("stop watching", false)); assertNull(StopwatchTalk.request("stop watching", true))
         assertEquals("4 minutes 12 seconds", StopwatchTalk.words(252_000, false)); assertEquals("0 seconds", StopwatchTalk.words(0, false)); assertEquals("2 hours", StopwatchTalk.words(7_200_000, false))
         val o = StopwatchTalk.run("start", 0, 5000, false); assertEquals(5000L, o.startedAt)
         assertEquals(0L, StopwatchTalk.run("stop", 5000, 65000, false).startedAt); assertTrue(StopwatchTalk.run("check", 5000, 65000, false).say.contains("1 minute"))
