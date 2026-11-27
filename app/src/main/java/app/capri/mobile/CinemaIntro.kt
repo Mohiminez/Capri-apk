@@ -37,14 +37,14 @@ class CinemaIntro(private val ctx: Context, private val name: String, private va
             WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS,
             PixelFormat.TRANSLUCENT).apply { gravity = Gravity.TOP or Gravity.START }
-        try { wm.addView(view, lp) } catch (e: Throwable) { done(); return }
+        try { wm.addView(view, lp); Leftovers.add(view) } catch (e: Throwable) { done(); return }
         var i = 0
         val step = object : Runnable {
             override fun run() {
-                if (i >= files.size) { try { wm.removeView(view) } catch (e: Throwable) { }; done(); return }
+                if (i >= files.size) { Leftovers.done(view); try { wm.removeView(view) } catch (e: Throwable) { }; done(); return }
                 try {
                     ctx.assets.open("intros/$name/${files[i]}").use { view.setImageBitmap(BitmapFactory.decodeStream(it)) }
-                } catch (e: Throwable) { try { wm.removeView(view) } catch (e2: Throwable) { }; done(); return }
+                } catch (e: Throwable) { Leftovers.done(view); try { wm.removeView(view) } catch (e2: Throwable) { }; done(); return }
                 i++
                 h.postDelayed(this, 1000L / fps)
             }

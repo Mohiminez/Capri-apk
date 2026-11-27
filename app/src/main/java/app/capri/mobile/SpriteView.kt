@@ -31,7 +31,9 @@ class SpriteClip(val frames: Int, val fps: Int, val w: Int, val h: Int, val cols
 object SpriteBank {
     private var meta: JSONObject? = null
     private val clips = LinkedHashMap<String, SpriteClip>(8, 0.75f, true)
-    private const val LIMIT = 34_000_000L
+    // Her sitting and lying sheets are now the desktop's full 60 frames at 30 fps (24 MB each when decoded), so the cache is bigger,
+    // and stays small on phones that say they are low on RAM.
+    private var LIMIT = 64_000_000L
 
     @Synchronized
     fun info(ctx: Context, name: String): JSONObject? {
@@ -46,6 +48,7 @@ object SpriteBank {
     @Synchronized
     fun get(ctx: Context, prefs: Prefs, name: String, keep: SpriteClip? = null): SpriteClip? {
         clips[name]?.let { return it }
+        try { if ((ctx.getSystemService(Context.ACTIVITY_SERVICE) as android.app.ActivityManager).isLowRamDevice) LIMIT = 34_000_000L } catch (e: Throwable) { }
         val o = try { info(ctx, name) } catch (e: Exception) { null } ?: return null
         for (attempt in 0..1) {
             try {

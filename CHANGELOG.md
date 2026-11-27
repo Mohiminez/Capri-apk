@@ -2,6 +2,17 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Graphics and settings
+- perch/laydown clips (and their talk/music/sleep variants) rebuilt as 60 frames at 30 fps like the desktop; sprite cache enlarged (smaller on low-RAM phones).
+- New settings under HER TONE: reply length (Short/Normal/Long/No limit), chat memory (8/20/32 messages), bubble time (Quick/Normal/Long). Logic in Limits.kt (tested).
+
+## Newest: full audit pass
+
+- All 96 unit tests that run without Android pass together; every source file compiles against a real android.jar (API 34), the only errors left are the third-party libraries and the Gradle-generated `R`.
+- Manifest checked: every declared class exists, every component class is declared, every permission the code uses is declared. All `R.*` and `@res` references resolve. All 30 sprite sheets in sprites.json fit their frame grid, every asset path used in code exists, intros have their frames.
+- Fixed: the short full-screen effects (startup glitch, cinematic intros, tendrils) could stay on screen if the service was stopped while one played; stopping her now sweeps them (`Leftovers`).
+- Checked and fine: pref defaults are consistent, foreground-service types match the manifest, page and file text is never run through the safety-line check or the stop/status shortcut (only what the user types or says).
+
 ## Newest: the pill and the startup glitch, like the desktop
 
 - **The tap pill is redrawn from capri-desktop's TalkPill (Talk.cs):** a black plate with cut corners, a soft glow, faint scan lines and a pink-to-cyan neon edge; left half a pencil with **TYPE**, right half the five-bar wave with **TALK**, a slanted seam between them, the pressed half washed cyan. It glitches in for four frames (slivers of the edge torn loose, the plate sliced sideways). Pencil opens the chat bar, wave starts listening.

@@ -112,16 +112,16 @@
   "sx": 0
  },
  "laydown_sleep": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 372,
   "h": 250,
   "cols": 11,
   "sx": 0
  },
  "perch": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 196,
   "h": 384,
   "cols": 20,
@@ -168,8 +168,8 @@
   "sx": 12.0
  },
  "perch_music": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 196,
   "h": 384,
   "cols": 20,
@@ -184,8 +184,8 @@
   "sx": 12.2
  },
  "laydown": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 372,
   "h": 250,
   "cols": 11,
@@ -216,16 +216,16 @@
   "sx": 0
  },
  "perch_talk": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 196,
   "h": 384,
   "cols": 20,
   "sx": 12.0
  },
  "laydown_talk": {
-  "frames": 30,
-  "fps": 15,
+  "frames": 60,
+  "fps": 30,
   "w": 372,
   "h": 250,
   "cols": 11,

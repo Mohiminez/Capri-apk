@@ -49,11 +49,11 @@ class Tendrils(ctx: Context) : View(ctx) {
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_NO_LIMITS, PixelFormat.TRANSLUCENT)
         lp.gravity = android.view.Gravity.TOP or android.view.Gravity.START
         lp.x = cx - size / 2; lp.y = cy - size / 2
-        try { wm.addView(this, lp) } catch (e: Throwable) { return }
+        try { wm.addView(this, lp); Leftovers.add(this) } catch (e: Throwable) { return }
         val step = object : Runnable {
             override fun run() {
                 frame++
-                if (frame >= FRAMES) { try { wm.removeView(this@Tendrils) } catch (e: Throwable) { }; return }
+                if (frame >= FRAMES) { Leftovers.done(this@Tendrils); try { wm.removeView(this@Tendrils) } catch (e: Throwable) { }; return }
                 invalidate(); h.postDelayed(this, 45)
             }
         }
@@ -61,4 +61,18 @@ class Tendrils(ctx: Context) : View(ctx) {
     }
 
     companion object { const val FRAMES = 14 }
+}
+
+/**
+ * Short-lived full overlays (the startup glitch, the cinematic intros, the tendrils) remove themselves when they finish, but their timer
+ * dies with the service. This keeps a list so that stopping her always sweeps any that are still up.
+ */
+object Leftovers {
+    private val live = java.util.Collections.synchronizedSet(HashSet<View>())
+    fun add(v: View) { live.add(v) }
+    fun done(v: View) { live.remove(v) }
+    fun sweep(wm: WindowManager) {
+        val all = synchronized(live) { ArrayList(live).also { live.clear() } }
+        for (v in all) try { wm.removeView(v) } catch (e: Throwable) { }
+    }
 }

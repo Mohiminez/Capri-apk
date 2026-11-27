@@ -1464,6 +1464,12 @@ class MainActivity : Activity() {
             Opt(t("WILD", "جامح"), t("Cheekier, never cruel", "أجرأ وأكثر فوضى، بدون قسوة")),
             Opt(t("ROMANTIC", "رومانسي"), t("Warmer and flirty, tasteful", "أدفأ وأقرب، بذوق"))
         ), prefs.getI("tone", 0)) { prefs.putI("tone", it) }
+        note(tone, t("How long her replies run", "طول ردودها"))
+        spin(tone, listOf(t("Short", "قصيرة"), t("Normal", "عادية"), t("Long", "طويلة"), t("No limit", "بدون حد")), prefs.getI("replyLen", 1)) { prefs.putI("replyLen", it) }
+        note(tone, t("How much of the chat she keeps in mind", "قد إيش تتذكر من المحادثة"))
+        spin(tone, listOf(t("Short (8 messages)", "قصيرة (٨ رسائل)"), t("Normal (20)", "عادية (٢٠)"), t("Long (32)", "طويلة (٣٢)")), prefs.getI("memoryLen", 1)) { prefs.putI("memoryLen", it) }
+        note(tone, t("How long her bubbles stay up", "كم تبقى فقاعتها ظاهرة"))
+        spin(tone, listOf(t("Quick", "سريعة"), t("Normal", "عادية"), t("Long", "طويلة")), prefs.getI("bubbleTime", 1)) { prefs.putI("bubbleTime", it) }
         edit(tone, t("Always reply in this language (optional, e.g. Arabic, French)", "ترد دايماً بهذه اللغة (اختياري، مثلاً: العربية، الفرنسية)"), prefs.getS("replyLang", "")) { prefs.putS("replyLang", it.trim()) }
 
         val life = section(t("HER LIFE", "حياتها"))

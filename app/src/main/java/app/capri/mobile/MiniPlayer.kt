@@ -202,12 +202,12 @@ class IntroView(ctx: Context, private val accent: Int) : View(ctx) {
     fun play(wm: WindowManager, h: Handler) {
         val lp = WindowManager.LayoutParams(WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.MATCH_PARENT, WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
             WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN, PixelFormat.TRANSLUCENT)
-        try { wm.addView(this, lp) } catch (e: Throwable) { return }
+        try { wm.addView(this, lp); Leftovers.add(this) } catch (e: Throwable) { return }
         val start = android.os.SystemClock.uptimeMillis()
         val step = object : Runnable {
             override fun run() {
                 t = ((android.os.SystemClock.uptimeMillis() - start) / 1500f)
-                if (t >= 1f) { try { wm.removeView(this@IntroView) } catch (e: Throwable) { }; return }
+                if (t >= 1f) { Leftovers.done(this@IntroView); try { wm.removeView(this@IntroView) } catch (e: Throwable) { }; return }
                 invalidate()
                 h.postDelayed(this, 40)
             }

@@ -103,6 +103,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             4 -> sb.append("\nTone: openly affectionate and a little flirty, still teasing, still you; keep it tasteful, never explicit, and drop it the moment the user seems uncomfortable.")
             3 -> sb.append("\nTone: wilder and cheekier than usual, with more chaotic energy, but never cruel and never crossing your safety rules.")
         }
+        Limits.replyHint(prefs.getI("replyLen", 1)).let { if (it.isNotEmpty()) sb.append("\n").append(it) }
         if (prefs.getB("deep", false)) sb.append("\nDeep thinking is on: for anything with several steps, maths, code, planning or a decision, reason it through carefully first, check your work, then give the answer clearly. Stay short unless they ask for detail.")
         val nick = prefs.getS("nick", "")
         if (nick.isNotBlank()) sb.append("\nThe user wants to be called ").append(nick).append(".")
@@ -126,7 +127,7 @@ class Brain(private val ctx: Context, private val prefs: Prefs) {
             return
         }
         if (!hidden) history.add(Msg("user", text, System.currentTimeMillis()))
-        val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(if (isLocal()) 6 else 20)
+        val past = (if (hidden) history.toList() else history.dropLast(1)).takeLast(Limits.memory(prefs.getI("memoryLen", 1), isLocal()))
         Thread {
             try {
                 val stamp = longArrayOf(0L)

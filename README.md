@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **260**
+- Animation clips: **30**; unit tests: **263**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -225,6 +225,7 @@ Other source files (generated):
 | `Husk.kt` | "Husk mode" from the desktop: she becomes the body of Claude Code while it works. A coding agent (Claude Co... |
 | `Info.kt` | Plain answers about the phone that need no AI and no internet. |
 | `L.kt` | Tiny two-language helper: t("English", "العربية"). |
+| `Limits.kt` | - |
 | `Local.kt` | - |
 | `Memory.kt` | Her notes about you, as a list you can search, pin, edit and delete. The file format is the old one (one "-... |
 | `MiniPlayer.kt` | The desktop's cyberpunk mini player: title, artist, progress and controls, shown while music plays. |

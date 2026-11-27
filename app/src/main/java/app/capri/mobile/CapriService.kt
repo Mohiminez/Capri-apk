@@ -247,6 +247,7 @@ class CapriService : Service(), Actions.Hooks {
         try { unregisterReceiver(events) } catch (e: Exception) { }
         Ears.cancel()
         hideMenu(); hidePill()
+        Leftovers.sweep(wm)
         clearClones()
         hideRing()
         stopWake()
@@ -1443,7 +1444,7 @@ class CapriService : Service(), Actions.Hooks {
         h.removeCallbacks(typeTask)
         if (typingPos < typingFull.length) h.postDelayed(typeTask, 26)
         h.removeCallbacks(hideBubbleTask)
-        h.postDelayed(hideBubbleTask, (typingFull.length * 90L).coerceIn(7000L, 22000L))
+        h.postDelayed(hideBubbleTask, Limits.holdMs(typingFull.length, prefs.getI("bubbleTime", 1)))
     }
 
     private fun splitPages(text: String): List<String> = BubbleText.pages(text)
