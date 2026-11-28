@@ -39,6 +39,7 @@ import org.json.JSONObject
 // The settings screen, styled like the desktop "Mainframe": dark, mono labels, a red edge, cyan outlines.
 class MainActivity : Activity() {
     private lateinit var prefs: Prefs
+    private var freshInstall = false
     private lateinit var page: LinearLayout
     private lateinit var tabBar: LinearLayout
     private var tab = 0
@@ -98,6 +99,7 @@ class MainActivity : Activity() {
         super.onCreate(savedInstanceState)
         Stockfish.prepare(this)
         prefs = Prefs(this)
+        freshInstall = prefs.isEmpty()
         L.init(prefs)
         tfTitle = font("CapriMainframe-Bold.ttf", Typeface.DEFAULT_BOLD)
         if (L.ar) {
@@ -127,7 +129,7 @@ class MainActivity : Activity() {
         title.typeface = tfTitle
         title.textSize = 28f
         title.letterSpacing = 0.12f
-        title.setTextColor(Color.WHITE)
+        title.setTextColor(Night.white)
         head.addView(title)
         val pill = TextView(this)
         pill.text = t("Settings", "الإعدادات")
@@ -162,7 +164,7 @@ class MainActivity : Activity() {
         searchBar.hint = t("Search settings...", "ابحث في الإعدادات...")
         searchBar.typeface = tfMono
         searchBar.textSize = 14f
-        searchBar.setTextColor(Color.WHITE)
+        searchBar.setTextColor(Night.white)
         searchBar.setHintTextColor(muted)
         searchBar.setSingleLine(true)
         searchBar.setPadding(dp(14), dp(8), dp(14), dp(8))
@@ -211,7 +213,7 @@ class MainActivity : Activity() {
             g.gravity = Gravity.CENTER
             g.setTextColor(if (n == i) Night.cyan else muted)
             g.setPadding(dp(14), dp(2), dp(14), dp(2))
-            if (n == i) g.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Color.argb(70, 40, 120, 132)) }
+            if (n == i) g.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.alpha(Night.rule, 70)) }
             col.addView(g, LinearLayout.LayoutParams(-2, -2).apply { bottomMargin = dp(2) })
             val v = TextView(this)
             v.text = name
@@ -219,9 +221,9 @@ class MainActivity : Activity() {
             v.textSize = 9.5f
             v.maxLines = 1
             v.gravity = Gravity.CENTER
-            v.setTextColor(if (n == i) Color.WHITE else muted)
+            v.setTextColor(if (n == i) Night.white else muted)
             col.addView(v)
-            col.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(50, 255, 255, 255)), null, null)
+            col.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Night.alpha(Night.white, 50)), null, null)
             col.setOnClickListener { if (n != tab) showTab(n) }
             tabBar.addView(col, LinearLayout.LayoutParams(0, ViewGroup.LayoutParams.WRAP_CONTENT, 1f))
         }
@@ -380,7 +382,7 @@ class MainActivity : Activity() {
     private fun section(title: String?, open: Boolean = true): LinearLayout {
         val outer = LinearLayout(this)
         outer.orientation = LinearLayout.HORIZONTAL
-        outer.background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(Color.argb(150, 17, 16, 28)); setStroke(dp(1), Color.argb(90, 40, 120, 132)) }
+        outer.background = GradientDrawable().apply { cornerRadius = dp(16).toFloat(); setColor(Night.alpha(Night.field, 150)); setStroke(dp(1), Night.alpha(Night.rule, 90)) }
         val bar = View(this)
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
@@ -425,8 +427,8 @@ class MainActivity : Activity() {
             tile.orientation = LinearLayout.VERTICAL
             tile.gravity = Gravity.CENTER
             tile.setPadding(dp(8), dp(14), dp(8), dp(12))
-            tile.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.hover); setStroke(dp(1), Color.argb(110, 40, 120, 132)) }
-            tile.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 94, 240, 246)), null, null)
+            tile.background = GradientDrawable().apply { cornerRadius = dp(14).toFloat(); setColor(Night.hover); setStroke(dp(1), Night.alpha(Night.rule, 110)) }
+            tile.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Night.alpha(Night.cyan, 60)), null, null)
             val g = TextView(this)
             g.text = it.first; g.textSize = 26f; g.gravity = Gravity.CENTER; g.setTextColor(Night.cyan)
             tile.addView(g)
@@ -487,7 +489,7 @@ class MainActivity : Activity() {
             setStroke(dp(if (primary) 2 else 1), if (primary) Night.cyan else Night.deepEdge)
         }
         v.minHeight = dp(48)
-        v.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
+        v.foreground = android.graphics.drawable.RippleDrawable(ColorStateList.valueOf(Night.alpha(Night.white, 60)), null, null)
         v.setOnClickListener { click() }
         val lp = LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT)
         lp.setMargins(0, dp(5), 0, dp(5))
@@ -500,7 +502,7 @@ class MainActivity : Activity() {
         e.hint = hint
         e.setText(value)
         e.typeface = tfMono
-        e.setTextColor(Color.WHITE)
+        e.setTextColor(Night.white)
         e.setHintTextColor(muted)
         e.textSize = 14f
         e.setPadding(dp(12), dp(10), dp(12), dp(10))
@@ -534,7 +536,7 @@ class MainActivity : Activity() {
         sw.setTextColor(text)
         sw.isChecked = prefs.getB(k, default)
         sw.thumbTintList = ColorStateList.valueOf(cyan)
-        sw.trackTintList = ColorStateList.valueOf(Color.argb(120, 94, 240, 246))
+        sw.trackTintList = ColorStateList.valueOf(Night.alpha(Night.cyan, 120))
         sw.minHeight = dp(48)
         sw.setOnCheckedChangeListener { v, on -> v.performHapticFeedback(android.view.HapticFeedbackConstants.CLOCK_TICK); prefs.putB(k, on); extra?.invoke(on) }
         sw.setPadding(0, dp(8), 0, dp(8))
@@ -713,7 +715,7 @@ class MainActivity : Activity() {
         val col = LinearLayout(this)
         col.orientation = LinearLayout.VERTICAL
         col.setPadding(dp(12), 0, 0, 0)
-        val status = body(col, "", 16f, Color.WHITE, true)
+        val status = body(col, "", 16f, Night.white, true)
         val charmLabel = body(col, "", 14f, muted)
         val spendLabel = body(col, "", 12f, muted)
         val pb = ProgressBar(this, null, android.R.attr.progressBarStyleHorizontal)
@@ -752,7 +754,7 @@ class MainActivity : Activity() {
         // a live card: greeting, her rotating thoughts, a box to talk to her, one-tap things to say
         val live = section(null)
         val streak = Streak.touch(prefs)
-        val greet = body(live, Streak.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), streak, L.ar), 17f, Color.WHITE, true)
+        val greet = body(live, Streak.greeting(java.util.Calendar.getInstance().get(java.util.Calendar.HOUR_OF_DAY), streak, L.ar), 17f, Night.white, true)
         if (streak >= 2) body(live, t("STREAK  $streak DAYS", "السلسلة  $streak يوم"), 13f, Night.amber)
         Modes.current(prefs).let { m ->
             val auto = prefs.getB("autoModes", false) && prefs.getS("autoBy", "") == m.id
@@ -862,7 +864,7 @@ class MainActivity : Activity() {
             for ((i, s) in steps.withIndex()) {
                 val done = s.ok()
                 stepViews[i].text = (if (done) "\u2713 " else "${i + 1} ") + s.name()
-                stepViews[i].setTextColor(if (done) cyan else if (i == firstTodo) Color.WHITE else muted)
+                stepViews[i].setTextColor(if (done) cyan else if (i == firstTodo) Night.white else muted)
                 stepViews[i].typeface = if (i == firstTodo) tfBold else tfBody
             }
             if (firstTodo < 0) {
@@ -1313,7 +1315,7 @@ class MainActivity : Activity() {
         val d = TextView(this)
         d.text = t("A personality construct: dozens of digitized human minds rolled into one. Arasaka built her, King's Crew stole her, Kyoko got her back, and she slipped out. Now she lives on your phone as a small glitchy companion. She teases you, gets bored fast, loves explosions and big plays, hates corpos, and never talks like an assistant.",
             "كيان شخصية: عشرات العقول البشرية الرقمية في عقل واحد. أراساكا بنتها، وكينغز كرو سرقتها، وكيوكو رجّعتها، وهربت. الحين تعيش في جوالك كرفيقة صغيرة فيها قلتش. تمزح معك وتمل بسرعة وتحب الانفجارات واللقطات الكبيرة، وتكره الشركات، وما تتكلم أبداً مثل المساعد.")
-        d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Color.WHITE); d.setLineSpacing(0f, 1.15f)
+        d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Night.white); d.setLineSpacing(0f, 1.15f)
         card.addView(d)
         val chips = LinearLayout(this); chips.orientation = LinearLayout.HORIZONTAL
         val chips2 = LinearLayout(this); chips2.orientation = LinearLayout.HORIZONTAL
@@ -1354,7 +1356,7 @@ class MainActivity : Activity() {
         who.typeface = tfMono; who.textSize = 10f; who.setTextColor(muted)
         card.addView(who)
         if (m.about(L.ar).isNotEmpty()) {
-            val d = TextView(this); d.text = m.about(L.ar); d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Color.WHITE); d.setPadding(0, dp(6), 0, dp(4))
+            val d = TextView(this); d.text = m.about(L.ar); d.typeface = tfBody; d.textSize = 13f; d.setTextColor(Night.white); d.setPadding(0, dp(6), 0, dp(4))
             card.addView(d)
         }
         if (m.colors.isNotEmpty() || m.accent.isNotEmpty()) {
@@ -1385,6 +1387,85 @@ class MainActivity : Activity() {
         box.addView(card, LinearLayout.LayoutParams(ViewGroup.LayoutParams.MATCH_PARENT, ViewGroup.LayoutParams.WRAP_CONTENT).apply { setMargins(0, dp(6), 0, dp(6)) })
     }
 
+    // The mod directory, like the browser in capri-desktop's Mods window: the capri-mods repository, searchable, with one-press install.
+    private var dirList: ModDirectory.Parsed? = null
+    private var dirSearch = ""
+    private var dirKind = ""
+    private var dirBusy: String? = null
+    private var dirError: String? = null
+
+    private fun modBrowser() {
+        val box = section(t("MOD BROWSER (capri-mods)", "متصفح المودات (capri-mods)"), dirList != null)
+        note(box, t("The same community mod list the PC version browses. Skins and settings mods work here; code mods, tools and companions need the PC, so they are hidden. Nothing installs until you press Install.",
+            "نفس قائمة مودات الناس اللي في نسخة البيسي. السكنات ومودات الإعدادات تشتغل هنا، ومودات الكود والأدوات تحتاج البيسي فمخفية. ما ينزل شي إلا لما تضغط تثبيت."))
+        val list = dirList
+        if (list == null) {
+            dirError?.let { note(box, t("Couldn't load the list: ", "ما قدرت أحمّل القائمة: ") + it) }
+            btn(box, if (dirBusy == "list") t("LOADING...", "جاري التحميل...") else t("LOAD THE MOD LIST", "حمّل قائمة المودات"), true) {
+                if (dirBusy != null) return@btn
+                dirBusy = "list"; dirError = null; showTab(tab)
+                Thread {
+                    var got: ModDirectory.Parsed? = null; var err: String? = null
+                    try { got = ModDirectory.fetchIndex() } catch (e: Throwable) { err = e.message ?: e.javaClass.simpleName }
+                    runOnUiThread { dirBusy = null; dirList = got; dirError = err; showTab(tab) }
+                }.start()
+            }
+            return
+        }
+        edit(box, t("Search mods", "ابحث عن مود"), dirSearch) { dirSearch = it }
+        spin(box, listOf(t("All", "الكل"), t("Skins", "سكنات"), t("Settings mods", "مودات إعدادات")), when (dirKind) { "skin" -> 1; "settings" -> 2; else -> 0 }) {
+            val k = when (it) { 1 -> "skin"; 2 -> "settings"; else -> "" }
+            if (k != dirKind) { dirKind = k; showTab(tab) }
+        }
+        btn(box, t("SEARCH", "بحث")) { showTab(tab) }
+        val shown = ModDirectory.filter(list.usable, dirSearch, dirKind)
+        note(box, t("${shown.size} of ${list.usable.size} shown", "${shown.size} من ${list.usable.size}") +
+            (if (list.hidden > 0) t("  \u00B7  ${list.hidden} PC-only hidden", "  \u00B7  ${list.hidden} للبيسي فقط مخفية") else ""))
+        val have = Skins.installed(this).map { it.id }.toSet() + Mods.installed(this).map { it.id }.toSet()
+        for (l in shown.take(40)) {
+            val id = Mods.slug(l.file.substringBeforeLast('.'))
+            val installed = id in have || l.folder in have
+            val busy = dirBusy == l.folder
+            val label = l.name + "  \u00B7  " + ModDirectory.kindLabel(l.kind, L.ar) + (if (l.author.isNotEmpty()) "  \u00B7  " + l.author else "")
+            body(box, label, 14f, Night.white, true)
+            if (l.about.isNotEmpty()) note(box, l.about.take(160))
+            btn(box, if (busy) t("INSTALLING...", "جاري التثبيت...") else if (installed) t("REINSTALL", "إعادة تثبيت") else t("INSTALL", "تثبيت"), !installed) { installFromDirectory(l) }
+        }
+        if (shown.size > 40) note(box, t("Showing the first 40. Search to narrow it down.", "يعرض أول ٤٠. استخدم البحث للتضييق."))
+        btn(box, t("OPEN THE REPOSITORY (previews and readmes)", "افتح المستودع (صور وشرح)")) {
+            try { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(ModDirectory.PAGE))) } catch (e: Exception) { toast(ModDirectory.PAGE) }
+        }
+    }
+
+    private fun installFromDirectory(l: ModDirectory.Listing) {
+        if (dirBusy != null) { toast(t("One install at a time.", "تثبيت واحد كل مرة.")); return }
+        dirBusy = l.folder; showTab(tab)
+        Thread {
+            var msg: String; var restart = false
+            val file = java.io.File(cacheDir, "dl/" + l.file)
+            try {
+                ModDirectory.download(l, file) { }
+                if (l.kind == "skin") {
+                    val name = file.inputStream().use { Skins.install(this, prefs, it) }
+                    msg = if (name != null) { restart = true; t("Skin on: ", "انلبس السكن: ") + name } else t("That skin has no skin.json.", "السكن ما فيه skin.json.")
+                } else {
+                    val txt = file.readText().take(20_000)
+                    val mod = Mods.parse(txt)
+                    msg = if (mod != null && Mods.save(this, mod, txt)) t("Mod added: ", "انضاف المود: ") + mod.name + t(". Turn it on in the list.", ". فعّله من القائمة.") else t("That isn't a valid mod file.", "هذا مو ملف مود صحيح.")
+                }
+            } catch (e: Throwable) {
+                msg = t("Install failed: ", "فشل التثبيت: ") + (e.message ?: e.javaClass.simpleName)
+            }
+            file.delete()
+            runOnUiThread {
+                dirBusy = null
+                toast(msg)
+                if (restart && CapriService.running) { stopService(Intent(this, CapriService::class.java)); page.postDelayed({ startForegroundService(Intent(this, CapriService::class.java)) }, 700) }
+                showTab(tab)
+            }
+        }.start()
+    }
+
     private fun modsGallery() {
         val box = section(t("MODS", "المودات"))
         note(box, t("A mod changes how she looks, sounds and talks, and turning it off puts your old settings back. Mods are data only: they can never carry code, keys or permissions. One mod is on at a time.",
@@ -1396,6 +1477,7 @@ class MainActivity : Activity() {
             startActivityForResult(Intent(Intent.ACTION_OPEN_DOCUMENT).addCategory(Intent.CATEGORY_OPENABLE).setType("*/*"), 7)
         }
         btn(box, t("COPY A MOD TEMPLATE TO MAKE MY OWN", "انسخ قالب مود أسوي مودي")) { clip(Mods.template()); toast(t("Copied. Edit it, save it as a .json file, then import it.", "تم النسخ. عدّله واحفظه ملف .json وبعدين استورده.")) }
+        modBrowser()
         val skins = Skins.installed(this)
         if (skins.isNotEmpty()) {
             val onList = Skins.on(prefs)
@@ -1421,6 +1503,8 @@ class MainActivity : Activity() {
         slider(look, t("Size (applies next start)", "الحجم (يتطبّق عند التشغيل الجاي)"), "size", 80, 220, 140)
         body(look, t("Theme", "الثيم"), 14f, muted)
         spin(look, Themes.names, prefs.getI("theme", 0)) { prefs.putI("theme", it); prefs.putS("modAccent", ""); showTab(3) }
+        body(look, t("App colours (Mainframe look)", "ألوان التطبيق (مثل المين فريم)"), 14f, muted)
+        spin(look, Night.looks, prefs.getI("mainframeLook", 0)) { if (it != Night.look) { prefs.putI("mainframeLook", it); Night.use(it); recreate() } }
         toggle(look, t("She dances when music is playing", "ترقص لما تشتغل موسيقى"), "dance", true)
         toggle(look, t("Mini music player (needs notification access)", "مشغّل موسيقى صغير (يحتاج صلاحية الإشعارات)"), "miniPlayer", true)
         toggle(look, t("Glitch-in intro when she wakes up", "مقدمة قلتش لما تصحى"), "intro", true)
@@ -1430,7 +1514,19 @@ class MainActivity : Activity() {
             val names = listOf(t("Random", "عشوائي"), t("Peek (from capri-desktop)", "تطل (من capri-desktop)"), t("Up close (from capri-desktop)", "قريبة (من capri-desktop)"), t("Glitch-in", "قلتش"), t("None", "بدون"))
             spin(look, names, IntroPlan.styles.indexOf(prefs.getS("introStyle", "random")).coerceAtLeast(0)) { prefs.putS("introStyle", IntroPlan.styles[it]) }
         }
-        toggle(look, t("A small blip sound when she speaks", "صوت تنبيه صغير لما تتكلم"), "chimes", false)
+        val snd = section(t("SOUNDS", "الأصوات"), false)
+        note(snd, t("The desktop's chimes: a soft sound when your message is sent, when she has heard you, and when she starts listening.", "أصوات البيسي: صوت خفيف لما ترسل رسالتك، ولما تسمعك، ولما تبدأ تسمع."))
+        toggle(snd, t("Chimes", "أصوات التنبيه"), "chimes", false)
+        toggle(snd, t("Message sent", "إرسال الرسالة"), "chimeSent", true)
+        toggle(snd, t("Heard you", "سمعتك"), "chimeHeard", true)
+        toggle(snd, t("Listening", "بدأت تسمع"), "chimeListen", true)
+        body(snd, t("Sound set (plays when you pick it)", "مجموعة الأصوات (تشتغل لما تختارها)"), 14f, muted)
+        spin(snd, Chimes.picked.map { Chimes.sets[it] }, Chimes.picked.indexOf(prefs.getI("chimeSet", 0)).coerceAtLeast(0)) {
+            val set = Chimes.picked[it]
+            if (set != prefs.getI("chimeSet", 0)) { prefs.putI("chimeSet", set); ChimePlayer.play(Chimes.HEARD, set, prefs.getI("chimeVol", Chimes.DEFAULT_VOLUME), true) }
+        }
+        slider(snd, t("Chime volume", "مستوى صوت التنبيه"), "chimeVol", 10, 100, Chimes.DEFAULT_VOLUME)
+        btn(snd, t("PLAY A CHIME", "جرّب الصوت")) { ChimePlayer.play(Chimes.HEARD, prefs.getI("chimeSet", 0), prefs.getI("chimeVol", Chimes.DEFAULT_VOLUME), true) }
         toggle(look, t("Low-power mode: fewer frames, no floating, no glow", "وضع توفير الطاقة: إطارات أقل وبدون طفو وبدون هالة"), "lowPower", false)
 
         val cols = section(t("HER COLORS", "ألوانها"), false)
@@ -1474,6 +1570,12 @@ class MainActivity : Activity() {
 
         val life = section(t("HER LIFE", "حياتها"))
         slider(life, t("Falls asleep after (minutes, 0 = never)", "تنام بعد (دقائق، ٠ = ما تنام)"), "sleepMin", 0, 30, 3)
+        body(life, t("Pop-ins (how often she comes over to say hi)", "الإطلالات (كم مرة تجيك تسلم)"), 14f, muted)
+        spin(life, listOf(t("Use the slider below", "حسب المنزلق تحت"), t("Rarely (20 to 40 min)", "نادراً (٢٠ إلى ٤٠ دقيقة)"), t("Sometimes (8 to 20 min)", "أحياناً (٨ إلى ٢٠ دقيقة)"), t("Often (3 to 8 min)", "كثير (٣ إلى ٨ دقايق)")), prefs.getI("popPreset", 0)) { prefs.putI("popPreset", it); prefs.putI("popLo", 0); prefs.putI("popHi", 0) }
+        slider(life, t("Exact pop-in: shortest wait, minutes (0 = use the above)", "أقصر انتظار بالدقايق (٠ = حسب الاختيار)"), "popLo", 0, 120, 0)
+        slider(life, t("Exact pop-in: longest wait, minutes", "أطول انتظار بالدقايق"), "popHi", 0, 180, 0)
+        body(life, t("Game comments (GAMES > Comments on the PC)", "تعليقها على الألعاب"), 14f, muted)
+        spin(life, listOf(t("Off", "طافي"), t("Events only", "الأحداث بس"), t("Chatty", "كثيرة الكلام")), prefs.getI("gameTalk", 1)) { prefs.putI("gameTalk", it) }
         slider(life, t("How often she pops in (minutes)", "كل كم دقيقة تطلّ عليك"), "popMin", 10, 120, 30)
         slider(life, t("How much she wanders (0 = stays put)", "قد إيش تتمشى (٠ = تثبت مكانها)"), "wanderPace", 0, 3, 1)
         toggle(life, t("Desktop-style movement: arrive/leave, lying down, hanging, glitch blinks, dizzy when shaken (off = classic movement; restart her)", "حركات سطح المكتب: وصول ومغادرة واستلقاء وتعلّق ورمشات تشويش ودوخة بالهز (طفّها للحركة الكلاسيكية ثم أعد تشغيلها)"), "pcMoves", true)
@@ -1542,7 +1644,7 @@ class MainActivity : Activity() {
 
     private fun buildHands() {
         val a = section(t("ACCESSIBILITY", "صلاحية الوصول"))
-        val st = body(a, "", 16f, Color.WHITE, true)
+        val st = body(a, "", 16f, Night.white, true)
         refreshers.add {
             st.text = when {
                 CapriAccess.instance != null -> "\u25CF " + t("ON: she can see and use your phone", "شغّال: تقدر تشوف وتستخدم جوالك")
@@ -1691,7 +1793,7 @@ class MainActivity : Activity() {
                 runOnUiThread {
                     if (info == null) toast(t("You have the latest version.", "عندك آخر نسخة."))
                     else android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("New version ", "نسخة جديدة ") + info.version)
-                        .setMessage(t("Download it and install over the old one. Your settings stay.", "نزّلها وثبّتها فوق القديمة. إعداداتك تبقى."))
+                        .setMessage((if (info.notes.isNotEmpty()) info.notes + "\n\n" else "") + t("Download it and install over the old one. Your settings stay.", "نزّلها وثبّتها فوق القديمة. إعداداتك تبقى."))
                         .setPositiveButton(t("Download", "تنزيل")) { _, _ -> startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(info.apk ?: info.page))) }
                         .setNegativeButton(t("Later", "لاحقاً"), null).show()
                 }
@@ -1699,8 +1801,7 @@ class MainActivity : Activity() {
         }
 
         val news = section(t("WHAT'S NEW", "الجديد"), false)
-        note(news, t("\u2022 Fixed the crash on start\n\u2022 She can watch your screen and tell you when something finishes (\"tell me when the download is done\")\n\u2022 She can circle things on your screen, and spawn glitchy clones\n\u2022 Share pictures, PDFs and text files to her\n\u2022 Error reports you can copy, and an update checker\n\u2022 Dances, pats, doomscroll guard, no-AI mode, setup report",
-            "\u2022 إصلاح الكراش عند التشغيل\n\u2022 تراقب شاشتك وتقول لك إذا خلص شي (\"قولي إذا خلص التنزيل\")\n\u2022 تأشّر على أشياء في الشاشة، وتسوّي نسخ مشوّشة منها\n\u2022 شارك لها صور وPDF وملفات نصية\n\u2022 تقارير أخطاء تنسخها، ومدقّق تحديثات\n\u2022 رقص، مسح على الراس، حارس التصفّح، وضع بدون ذكاء اصطناعي، تقرير الإعدادات"))
+        note(news, WhatsNew.text(L.ar))
 
         val c = section(t("CREDITS", "الشكر"), false)
         val tv = body(c, "Unofficial fan project, free for non-commercial use only. Based on Capri by Lachy: https://github.com/lachydotmcg/capri-desktop " +
@@ -1739,9 +1840,25 @@ class MainActivity : Activity() {
 
     private var autoRebindTried = false
 
+    // Once after an update: what is new, in a dialog (the same text lives under Settings > WHAT'S NEW).
+    private fun showNewsOnce() {
+        val seen = prefs.getI("newsSeen", 0)
+        val due = WhatsNew.due(seen, freshInstall)
+        if (seen < WhatsNew.VERSION) prefs.putI("newsSeen", WhatsNew.VERSION)
+        if (!due || isFinishing) return
+        val tv = TextView(this); tv.text = WhatsNew.text(L.ar); tv.typeface = tfBody; tv.textSize = 14f; tv.setTextColor(text)
+        tv.setPadding(dp(20), dp(8), dp(20), dp(8)); tv.setLineSpacing(0f, 1.15f)
+        val sv = ScrollView(this); sv.addView(tv)
+        try {
+            android.app.AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("What's new", "الجديد في التحديث"))
+                .setView(sv).setPositiveButton(t("Got it", "تمام"), null).show()
+        } catch (e: Exception) { }
+    }
+
     override fun onResume() {
         super.onResume()
         refresh()
+        page.post { showNewsOnce() }
         // switched on in settings but never connected (after an update, or a stopped service): reconnect by itself
         if (!autoRebindTried && CapriAccess.instance == null && CapriAccess.enabledInSettings(this)) {
             autoRebindTried = true   // once per launch, and only after giving Android a few seconds to connect it on its own

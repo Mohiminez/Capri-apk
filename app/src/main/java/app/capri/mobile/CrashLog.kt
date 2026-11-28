@@ -14,6 +14,7 @@ class CapriApp : Application() {
     override fun onCreate() {
         super.onCreate()
         CrashLog.install(this)
+        try { Night.use(Prefs(this).getI("mainframeLook", 0)) } catch (e: Throwable) { }
     }
 }
 

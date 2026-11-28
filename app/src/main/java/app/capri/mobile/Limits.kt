@@ -22,4 +22,19 @@ object Limits {
         3 -> "There is no length limit on your replies: answer fully and in detail whenever they ask something that deserves it."
         else -> ""
     }
+
+    /**
+     * How long she waits between pop-ins, in ms: a range. Exact times (both > 0 minutes) win; then the desktop's presets
+     * 1 Rarely (20 to 40 min), 2 Sometimes (8 to 20), 3 Often (3 to 8); preset 0 is the old "every N minutes" slider.
+     */
+    fun popRangeMs(preset: Int, lo: Int, hi: Int, slider: Int): Pair<Long, Long> {
+        val min = 60_000L
+        if (lo > 0 && hi > 0) { val a = minOf(lo, hi); val b = maxOf(lo, hi); return Pair(a * min, b * min) }
+        return when (preset) {
+            1 -> Pair(20 * min, 40 * min)
+            2 -> Pair(8 * min, 20 * min)
+            3 -> Pair(3 * min, 8 * min)
+            else -> { val pop = slider.coerceAtLeast(5); Pair(pop * 40_000L, pop * 90_000L) }
+        }
+    }
 }

@@ -27,3 +27,7 @@ Tendrils, CapriPill (now the desktop TalkPill look), Asides/Crisis/Care/Stopwatc
 
 ## Known gaps
 ML Kit reads Latin letters only (no Arabic game menus). No trained detector model (YOLO) was added: nothing to ship offline. Chair emote frame-hold while replying, LAN Husk token is cleartext, DocText parses on UI thread (OOM risk on huge files).
+
+
+## Latest round
+Chimes.kt/ChimePlayer.kt (chime sets), Night palettes in Ui.kt (Night.use(look), applied in CapriApp.onCreate), ModDirectory/ModJson (mod browser), Limits (bubble/memory/replies/pop-ins), tap = desktop React in CapriService.tapped(). Not verified on a device.

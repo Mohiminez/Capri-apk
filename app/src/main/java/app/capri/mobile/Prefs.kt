@@ -54,6 +54,7 @@ class Prefs(ctx: Context) {
     fun getL(k: String, d: Long): Long = try { p.getLong(k, d) } catch (e: ClassCastException) { d }
     fun putL(k: String, v: Long) { p.edit().putLong(k, v).apply() }
 
+    fun isEmpty(): Boolean = p.all.isEmpty()
     fun raw(k: String): Any? = p.all[k]
     fun remove(k: String) { p.edit().remove(k).apply() }
 

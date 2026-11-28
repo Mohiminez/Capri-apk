@@ -770,8 +770,8 @@ class CapriService : Service(), Actions.Hooks {
             if (prefs.getB("checkin", false) && idleOk()) {
                 ask("(They haven't spoken to you in a while. Pop in with one short line of your own. Don't ask what's up.)", true)
             }
-            val pop = prefs.getI("popMin", 30).coerceAtLeast(5)
-            h.postDelayed(this, Random.nextLong(pop * 40_000L, pop * 90_000L))
+            val r = Limits.popRangeMs(prefs.getI("popPreset", 0), prefs.getI("popLo", 0), prefs.getI("popHi", 0), prefs.getI("popMin", 30))
+            h.postDelayed(this, Random.nextLong(r.first, r.second + 1))
         }
     }
 
@@ -873,19 +873,22 @@ class CapriService : Service(), Actions.Hooks {
         override fun run() {
             val acc = CapriAccess.instance
             val game = prefs.getB("gameMode", false)
-            val allowed = prefs.getB("watch", false) || (game && acc?.foregroundIsGame() == true)
+            val inGame = acc?.foregroundIsGame() == true
+            val gameTalk = prefs.getI("gameTalk", 1)   // the desktop's GAMES > Comments: 0 Off, 1 Events only, 2 Chatty
+            val allowed = if (inGame && gameTalk == 0) false else prefs.getB("watch", false) || (game && inGame)
             if (acc != null && allowed && screenOn && !hidden && !busy && !asleep && !panelShown && !quiet && !agent.running) {
                 bg("job", this@CapriService) {
                     val txt = acc.dump(if (brain.isLocal()) 2000 else 3000)
                     val img = if (prefs.getB("vision", false) && !brain.isLocal()) acc.shotBlocking() else null
                     h.post {
                         if (!busy && (img != null || txt.lines().size > 3)) {
-                            ask("(You glance at their screen. What's on it:\n$txt\nIf something stands out, like a big play, a funny moment or something they're stuck on, react in one short line. If nothing stands out, reply with just NOTHING.)", true, img, true)
+                            ask("(You glance at their screen. What's on it:\n$txt\nIf something stands out, like a big play, a funny moment or something they're stuck on, react in one short line. " + (if (inGame && gameTalk == 2) "You are chatty about games: comment on most of what you see. Reply NOTHING only if the screen shows nothing happening." else "If nothing stands out, reply with just NOTHING.") + ")", true, img, true)
                         }
                     }
                 }
             }
-            h.postDelayed(this, prefs.getI("watchSecs", 60) * 1000L)
+            val secs = prefs.getI("watchSecs", 60)
+            h.postDelayed(this, (if (inGame && gameTalk == 2) (secs / 2).coerceAtLeast(20) else secs) * 1000L)
         }
     }
 
@@ -1192,17 +1195,24 @@ class CapriService : Service(), Actions.Hooks {
             return
         }
         convoActive = false
-        sprite?.let { s ->
-            s.animate().scaleX(1.07f).scaleY(0.93f).setDuration(70).withEndAction {
-                s.animate().scaleX(1f).scaleY(1f).setDuration(140).start()
-            }.start()
-            if (Random.nextInt(3) == 0) { sprite?.emote("glitch"); clip("glitch", false) { settle() } } else clip("grin", false) { settle() }
-        }
+        // The desktop's click (React): a sleeping Capri wakes and nothing else; one hanging from the "cursor" lets go; otherwise she
+        // glitches, in her lying or sitting version when she is lying or perched. No squash, no random grin.
+        if (asleep) { poke(); return }
+        if (hanging) { h.removeCallbacks(hangDrop); hangDrop.run(); return }
+        val g = when { lying && has("laydown_glitch") -> "laydown_glitch"; (perched || perchPending) && has("perch_glitch") -> "perch_glitch"; else -> "glitch" }
+        if (has(g)) { sprite?.emote("glitch"); clip(g, false) { settle() } }
         if (panelShown) hidePanel()
-        else if (pill != null) hidePill()
-        else if (prefs.getB("tapPill", true)) showPill()
+        else if (prefs.getB("tapPill", true)) { if (pill == null) showPill() else keepPill() }
         else showPanel()
     }
+
+    // The pill stays up while she is being touched (the desktop keeps it up while the cursor is on her or on it).
+    private fun keepPill() {
+        if (pill == null) return
+        h.removeCallbacks(pillHide)
+        h.postDelayed(pillHide, 7000L)
+    }
+    private val pillHide = Runnable { hidePill() }
 
     // The pencil and wave pill under her (like capri-desktop). Pencil opens the type bar, wave starts listening.
     // Crimson glitch tendrils behind her when she beams in (the desktop's startup glitch); Settings > "Glitch in" turns it off.
@@ -1216,6 +1226,7 @@ class CapriService : Service(), Actions.Hooks {
 
     private var pill: View? = null
     private fun hidePill() {
+        h.removeCallbacks(pillHide)
         pill?.let { try { wm.removeView(it) } catch (e: Exception) { } }
         pill = null
     }
@@ -1234,8 +1245,10 @@ class CapriService : Service(), Actions.Hooks {
         v.setOnTouchListener { _, e -> if (e.action == MotionEvent.ACTION_OUTSIDE) hidePill(); false }
         try { wm.addView(v, lp) } catch (e: Exception) { return }
         pill = v
+        v.lit = convoActive
         v.glitchIn()
-        h.postDelayed({ if (pill === v) hidePill() }, 7000L)
+        h.removeCallbacks(pillHide)
+        h.postDelayed(pillHide, 7000L)
     }
 
     private fun moveTo(x: Int, y: Int) {
@@ -1526,19 +1539,14 @@ class CapriService : Service(), Actions.Hooks {
         }
     }
 
-    // Little sounds like the desktop's chimes (off by default).
+    // Her chimes, the desktop's six synthesized sets (Chimes.kt). Settings: master switch, set, volume, and which of the three play.
     private fun chime(kind: String) {
         if (!prefs.getB("chimes", false) || quiet) return
-        try {
-            if (tone == null) tone = android.media.ToneGenerator(AudioManager.STREAM_NOTIFICATION, 45)
-            when (kind) {
-                "sent" -> tone?.startTone(android.media.ToneGenerator.TONE_PROP_ACK, 90)
-                "heard" -> tone?.startTone(android.media.ToneGenerator.TONE_PROP_PROMPT, 90)
-                "listen" -> tone?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP, 70)
-                else -> tone?.startTone(android.media.ToneGenerator.TONE_PROP_BEEP2, 40)
-            }
-        } catch (e: Throwable) { }
+        val which = when (kind) { "sent" -> Chimes.SENT; "heard" -> Chimes.HEARD; "listen" -> Chimes.LISTENING; else -> return }
+        if (!prefs.getB(when (which) { Chimes.SENT -> "chimeSent"; Chimes.HEARD -> "chimeHeard"; else -> "chimeListen" }, true)) return
+        ChimePlayer.play(which, prefs.getI("chimeSet", 0), prefs.getI("chimeVol", Chimes.DEFAULT_VOLUME))
     }
+
 
     // ---- talking ----
 
@@ -2761,6 +2769,7 @@ class CapriService : Service(), Actions.Hooks {
         userListening = true
         userListeningAt = System.currentTimeMillis()
         poke()
+        if (!dictate) chime("listen")
         if (checkSelfPermission(Manifest.permission.RECORD_AUDIO) != PackageManager.PERMISSION_GRANTED) {
             say(L.t("I need the microphone permission. Open the Capri app.", "أحتاج صلاحية المايك. افتح تطبيق كابري."), false)
             return

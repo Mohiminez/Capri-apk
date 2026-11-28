@@ -60,6 +60,7 @@ object Modes {
 
     fun apply(prefs: Prefs, m: Mode) {
         for ((k, v) in m.set) when (v) { is Boolean -> prefs.putB(k, v); is Int -> prefs.putI(k, v) }
+        if (m.set.containsKey("popMin")) { prefs.putI("popPreset", 0); prefs.putI("popLo", 0); prefs.putI("popHi", 0) }
         prefs.putS("mode", m.id)
     }
 

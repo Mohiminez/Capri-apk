@@ -9,7 +9,7 @@ import java.net.URL
 object Updater {
     const val REPO = "Mohiminez/Capri-apk"
 
-    class Info(val version: String, val page: String, val apk: String?)
+    class Info(val version: String, val page: String, val apk: String?, val notes: String = "")
 
     fun current(ctx: Context): String =
         try { ctx.packageManager.getPackageInfo(ctx.packageName, 0).versionName ?: "0" } catch (e: Exception) { "0" }
@@ -47,7 +47,7 @@ object Updater {
                 val want64 = android.os.Build.SUPPORTED_ABIS.firstOrNull() == "arm64-v8a"
                 if (apk == null || (want64 && nm.contains("arm64")) || (!want64 && nm.contains("arm32"))) apk = a.optString("browser_download_url")
             }
-            Info(tag.trimStart('v'), j.optString("html_url", "https://github.com/$REPO/releases"), apk)
+            Info(tag.trimStart('v'), j.optString("html_url", "https://github.com/$REPO/releases"), apk, j.optString("body", "").trim().take(1500))
         } catch (e: Exception) { null }
     }
 }

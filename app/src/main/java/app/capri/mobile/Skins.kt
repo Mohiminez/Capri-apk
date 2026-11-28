@@ -38,10 +38,13 @@ object Skins {
     }
 
     /** Installs a .capri-skin zip. Returns the skin's name, or null when the zip has no skin.json (it may be a .capri look instead). */
-    fun install(ctx: Context, prefs: Prefs, uri: Uri): String? {
+    fun install(ctx: Context, prefs: Prefs, uri: Uri): String? =
+        ctx.contentResolver.openInputStream(uri)?.use { install(ctx, prefs, it) }
+
+    fun install(ctx: Context, prefs: Prefs, input: java.io.InputStream): String? {
         val tmp = File(ctx.cacheDir, "skin_new"); tmp.deleteRecursively(); tmp.mkdirs()
         var json: String? = null; var total = 0L; var files = 0
-        ctx.contentResolver.openInputStream(uri)?.use { raw ->
+        input.let { raw ->
             ZipInputStream(raw).use { z ->
                 while (true) {
                     val e = z.nextEntry ?: break

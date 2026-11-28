@@ -13,4 +13,9 @@ class LimitsTest {
     @Test fun replies() {
         assertEquals("", Limits.replyHint(1)); assertTrue(Limits.replyHint(0).contains("single short")); assertTrue(Limits.replyHint(3).contains("no length limit"))
     }
+    @Test fun popIns() {
+        assertEquals(Pair(20 * 60000L, 40 * 60000L), Limits.popRangeMs(1, 0, 0, 30)); assertEquals(Pair(8 * 60000L, 20 * 60000L), Limits.popRangeMs(2, 0, 0, 30))
+        assertEquals(Pair(3 * 60000L, 8 * 60000L), Limits.popRangeMs(3, 0, 0, 30)); assertEquals(Pair(1200000L, 2700000L), Limits.popRangeMs(0, 0, 0, 30))
+        assertEquals(Pair(12 * 60000L, 25 * 60000L), Limits.popRangeMs(3, 25, 12, 30)); assertEquals(Pair(12 * 60000L, 12 * 60000L), Limits.popRangeMs(0, 12, 12, 30))
+    }
 }

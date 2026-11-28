@@ -314,3 +314,20 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 - Still not built: multi-agent, a voice-conversation mode, a companion room, splitting `MainActivity`/`CapriService`.
 
 - Fixed: "stop watching" was caught by the stopwatch matcher (CI failure); matcher now needs whole word.
+
+## Mod browser
+- New "MOD BROWSER (capri-mods)" in the Mods tab: loads the same capri-mods index the desktop browses, search + filter, one-press Install/Reinstall (skins stack on her, settings mods are added to the list). Code mods, skills, tools and companions are hidden (PC only). The file extension decides the kind because the index's own "kind" is unreliable.
+- ModDirectory.kt (pure parse/filter + download), ModJson.kt (JSON reader moved out of Mods.kt), ModDirectoryTest.
+
+## Copied from the desktop
+- Tap on her is the desktop's React: asleep -> wakes (nothing else); hanging -> lets go; otherwise the glitch clip, in the lying/perched versions when she is lying/perched. No squash, no random grin. The pill stays up while she is touched.
+- Mainframe looks: Night City, Black, White, Grey (the desktop's 30-colour palettes, Neon.cs) for the whole app, her pill and her bubble. Settings > HER LOOK > App colours (restarts the screen).
+- Chimes: the desktop's six synthesized sets (Glass, Pulse, Air, Shard, Burst, Crush) x sent/heard/listening, volume curve, 300/700 ms gaps (Chimes.kt, ChimePlayer.kt). Settings > SOUNDS: master switch, each chime, set, volume, play.
+- Pop-ins: Rarely 20-40 / Sometimes 8-20 / Often 3-8 minutes, plus exact shortest/longest wait (Limits.popRangeMs). Modes that set popMin reset the preset.
+- Game comments: Off / Events only / Chatty (pref gameTalk): Off silences screen comments while a game is in front; Chatty comments on most of it and checks twice as often.
+- Blink clips: she already blinks with idle/perch/laydown blink strips (+ glitch blinks); the desktop's blink.png/blink_glitch.png are the Quest build's, not the PC's.
+- Pill redrawn from Talk.cs line by line: square-cut pencil at 45 degrees with two gaps, the wave is five rounded bars (not square segments), labels placed by their ink bounds in the ShareTechMono font at 8.5 px x scale, the two edge slivers always drawn, and the glitch-in is the desktop's tear (bands slip sideways and take a pink/cyan tint). Follows the Mainframe look. Wave and TALK light in voice chat.
+
+## What's new + theme-aware UI
+- WhatsNew.kt: after an update a "What's new" dialog shows once (bump WhatsNew.VERSION by hand when there is news; never on a fresh install). Same text under Settings > WHAT'S NEW (replaces the old hard-coded list). The update check now shows the GitHub release notes in its dialog.
+- Settings screen, speech bubble and neon frame colours now come from Night, so the White/Grey/Black looks no longer show white text on a white background.
