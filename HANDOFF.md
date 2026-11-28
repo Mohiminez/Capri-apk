@@ -31,3 +31,8 @@ ML Kit reads Latin letters only (no Arabic game menus). No trained detector mode
 
 ## Latest round
 Chimes.kt/ChimePlayer.kt (chime sets), Night palettes in Ui.kt (Night.use(look), applied in CapriApp.onCreate), ModDirectory/ModJson (mod browser), Limits (bubble/memory/replies/pop-ins), tap = desktop React in CapriService.tapped(). Not verified on a device.
+
+
+## Chess screen
+ChessActivity layout rewritten (see CHANGELOG "Chess screen redesign"). ChessLook.kt = BoardThemes + Captured (pure, ChessLookTest). Not verified on a device (layout/colours only compile-checked).
+Test flake note: Engine can choose a non-promoting winning move in K+P endings (depth/time dependent); tests must not depend on it.

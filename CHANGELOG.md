@@ -2,6 +2,12 @@
 
 Newest first. Older notes were moved here from the README. / الأحدث أولاً؛ الملاحظات القديمة انتقلت من الـREADME لهنا.
 
+## Chess screen redesign + CI fix
+- ChessActivity relaid out: header (back, level chip, side chip), Capri card (face, level, captured, speech), rounded eval bar, board with rounded corners/check glow/coordinates, "you" bar with captured pieces and material lead, colour-changing status pill, scrolling move strip with opening name, 5 big tool buttons (NEW/UNDO/REDO/HINT/PLAY), REVIEW/EXPLAIN/MORE. MORE: voice, comments, auto, board look, flip board, copy PGN, FEN, resign, draw.
+- ChessLook.kt (pure): 5 board themes (Neon, Classic, Wood, Ice, Midnight) with contrast tests, and Captured (lost pieces, material lead). Pref `chessBoard`.
+- CI: `promotionTakesTheExtraTap` was flaky because the engine sometimes plays Kb2 before promoting (both win). The test now uses a position where a8=Q is mate in one and prints full diagnostics on failure.
+- What's new: VERSION 7.
+
 ## Graphics and settings
 - perch/laydown clips (and their talk/music/sleep variants) rebuilt as 60 frames at 30 fps like the desktop; sprite cache enlarged (smaller on low-RAM phones).
 - New settings under HER TONE: reply length (Short/Normal/Long/No limit), chat memory (8/20/32 messages), bubble time (Quick/Normal/Long). Logic in Limits.kt (tested).

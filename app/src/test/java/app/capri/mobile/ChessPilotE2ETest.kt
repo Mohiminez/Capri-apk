@@ -232,12 +232,15 @@ class ChessPilotE2ETest {
     }
 
     @Test fun promotionTakesTheExtraTap() {
-        val start = Fen.parse("8/P6k/8/8/8/8/8/K7 b - - 0 1")!!
-        val app = FakeChessApp(start, true, flipped = false, opponentDepth = 1)
-        val r = Run(app, seed = start, maxMoves = 1, level = 3)   // a slower level: on a busy CI machine the quick one can run out of time before it sees the promotion
+        // White to move, and a8=Q is mate in one: the only sensible move IS the promotion, so the test cannot depend on how deep she got to look
+        // (an earlier version used a won ending where "Kb2 first, promote later" is a fair engine choice, and failed now and then on a slow machine)
+        val start = Fen.parse("7k/P7/6K1/8/8/8/8/8 w - - 0 1")!!
+        val app = FakeChessApp(start, true, flipped = false)
+        val r = Run(app, seed = start, maxMoves = 1, level = 3)
         r.go()
-        assertEquals(r.said.toString(), 0, app.badTaps)
-        assertTrue("moves=${app.myMoves}", app.myMoves.any { it.startsWith("a7a8") && it.length == 5 })
+        val why = "moves=${app.myMoves} said=${r.said} status=${r.statuses.takeLast(4)} naps=${r.naps} err=${r.pilot.lastError} pos=${Fen.write(app.pos)}"
+        assertEquals(why, 0, app.badTaps)
+        assertTrue(why, app.myMoves.any { it.startsWith("a7a8") && it.length == 5 })
     }
 
     @Test fun boardDisappearsAndSheStops() {

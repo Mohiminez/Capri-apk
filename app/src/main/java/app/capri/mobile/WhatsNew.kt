@@ -6,11 +6,13 @@ package app.capri.mobile
  * Pure, so it is unit tested.
  */
 object WhatsNew {
-    const val VERSION = 6
+    const val VERSION = 7
 
     class Item(val en: String, val ar: String)
 
     val items = listOf(
+        Item("Chess screen redesigned: Capri has her own card (face, level, what she has taken, what she says), your bar sits under the board with captured pieces and the material lead, a status pill changes colour for check / her turn / game over, the moves scroll along a strip with the opening's name, and the five main buttons are in one row. Five board looks (Neon, Classic, Wood, Ice, Midnight) under MORE, plus flip the board and copy the game as PGN.",
+            "شاشة الشطرنج انعاد تصميمها: كابري لها بطاقتها (وجهها، مستواها، اللي أكلته، وكلامها)، وشريطك تحت الرقعة فيه القطع اللي أكلتها والفرق بالمادة، وشريط حالة يتغير لونه (كش / دورها / نهاية اللعبة)، والنقلات تمر بشريط مع اسم الافتتاحية، والأزرار الخمسة الأساسية بصف واحد. وخمس أشكال للرقعة (نيون، كلاسيك، خشب، جليد، منتصف الليل) تحت «المزيد»، مع قلب الرقعة ونسخ اللعبة بصيغة PGN."),
         Item("Chess coach: the review now has an eval graph and a \"Train my mistakes\" button that replays your worst positions as puzzles. Hint is gentler (first press names the piece, second shows the move). You can resign or offer a draw (she accepts only when she is not better).",
             "مدرّب الشطرنج: المراجعة فيها رسم بياني للتقييم وزر \"تدرّب على أخطائي\" يعيد أسوأ مواقفك كتمارين. التلميح صار ألطف (أول ضغطة تسمّي القطعة وتاني ضغطة تبيّن النقلة). وتقدر تستسلم أو تعرض تعادل (تقبل بس إذا ما هي أحسن)."),
         Item("Chess: REVIEW THE GAME grades every move (best, good, inaccuracy, mistake, blunder), gives you and Capri an accuracy percentage and lists the moves that cost the most with the better move. The board also names the opening (Ruy Lopez, Sicilian Najdorf, Queen's Gambit...).",

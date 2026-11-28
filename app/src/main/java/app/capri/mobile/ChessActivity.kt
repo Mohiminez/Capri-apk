@@ -26,6 +26,7 @@ class BoardView(ctx: Context) : View(ctx) {
     var targets: List<Int> = emptyList()
     var last: Move? = null
     var accent = Color.parseColor("#FF2A6D")
+    var theme: BoardTheme = BoardThemes.at(0)
     var onTap: (Int) -> Unit = {}
     var hint: Move? = null
     var canDrag: (Int) -> Boolean = { false }
@@ -51,9 +52,8 @@ class BoardView(ctx: Context) : View(ctx) {
 
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val glyph = Paint(Paint.ANTI_ALIAS_FLAG).apply { textAlign = Paint.Align.CENTER; typeface = Typeface.DEFAULT }
-    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; color = Color.parseColor("#92828C") }
-    private val light = Color.parseColor("#3A3050")
-    private val dark = Color.parseColor("#1B1428")
+    private val label = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.DEFAULT_BOLD }
+    private val clip = Path()
 
     override fun onMeasure(w: Int, h: Int) {
         val s = MeasureSpec.getSize(w)
@@ -63,14 +63,22 @@ class BoardView(ctx: Context) : View(ctx) {
     private fun sqOf(r: Int, c: Int) = if (flipped) (7 - r) * 8 + (7 - c) else r * 8 + c
 
     override fun onDraw(canvas: Canvas) {
+        val rad = resources.displayMetrics.density * 10f
+        clip.rewind(); clip.addRoundRect(RectF(0f, 0f, width.toFloat(), height.toFloat()), rad, rad, Path.Direction.CW)
+        canvas.save(); canvas.clipPath(clip)
         drawBoard(canvas)
+        drawHint(canvas)
+        canvas.restore()
+    }
+
+    private fun drawHint(canvas: Canvas) {
         val h = hint ?: return
         val cell = width / 8f
         fun cx(sq: Int): Float { var c = sq % 8; if (flipped) c = 7 - c; return (c + 0.5f) * cell }
         fun cy(sq: Int): Float { var r = sq / 8; if (flipped) r = 7 - r; return (r + 0.5f) * cell }
         val x1 = cx(h.from); val y1 = cy(h.from); val x2 = cx(h.to); val y2 = cy(h.to)
         p.style = Paint.Style.STROKE; p.strokeWidth = cell * 0.16f; p.strokeCap = Paint.Cap.ROUND
-        p.color = Color.argb(200, 94, 240, 246)
+        p.color = alphaOf(theme.mark, 210)
         val dx = x2 - x1; val dy = y2 - y1; val len = Math.hypot(dx.toDouble(), dy.toDouble()).toFloat().coerceAtLeast(1f)
         val ux = dx / len; val uy = dy / len
         canvas.drawLine(x1, y1, x2 - ux * cell * 0.25f, y2 - uy * cell * 0.25f, p)
@@ -93,14 +101,20 @@ class BoardView(ctx: Context) : View(ctx) {
             val sq = sqOf(r, c)
             val rect = RectF(c * cell, r * cell, (c + 1) * cell, (r + 1) * cell)
             p.style = Paint.Style.FILL
-            p.color = if ((r + c) % 2 == 0) light else dark
+            val isLight = (r + c) % 2 == 0
+            p.color = if (isLight) theme.light else theme.dark
             canvas.drawRect(rect, p)
             val lm = last
-            if (lm != null && (sq == lm.from || sq == lm.to)) { p.color = Color.argb(70, Color.red(accent), Color.green(accent), Color.blue(accent)); canvas.drawRect(rect, p) }
-            if (sq == checkSq) { p.color = Color.argb(150, 232, 36, 64); canvas.drawRect(rect, p) }
-            if (sq == selected) { p.color = Color.argb(110, 94, 240, 246); canvas.drawRect(rect, p) }
-            if (c == 0) canvas.drawText("" + (8 - sq / 8), rect.left + cell * 0.05f, rect.top + cell * 0.22f, label)
-            if (r == 7) canvas.drawText("" + ('a' + sq % 8), rect.right - cell * 0.2f, rect.bottom - cell * 0.06f, label)
+            if (lm != null && (sq == lm.from || sq == lm.to)) { p.color = alphaOf(theme.last, 105); canvas.drawRect(rect, p) }
+            if (sq == checkSq) {
+                p.shader = android.graphics.RadialGradient(rect.centerX(), rect.centerY(), cell * 0.62f, intArrayOf(Color.argb(235, 255, 40, 70), Color.argb(150, 232, 36, 64), Color.argb(0, 232, 36, 64)), floatArrayOf(0f, 0.45f, 1f), android.graphics.Shader.TileMode.CLAMP)
+                canvas.drawRect(rect, p); p.shader = null
+            }
+            if (sq == selected) { p.color = alphaOf(theme.mark, 105); canvas.drawRect(rect, p) }
+            // the board's own coordinates, small, in the colour of the other square so they never fight the pieces
+            label.color = if (isLight) theme.dark else theme.light
+            if (c == 0) canvas.drawText("" + (8 - sq / 8), rect.left + cell * 0.06f, rect.top + cell * 0.23f, label)
+            if (r == 7) canvas.drawText("" + ('a' + sq % 8), rect.right - cell * 0.2f, rect.bottom - cell * 0.07f, label)
         }
         // pieces: both sides use the solid glyphs, tinted, with a dark edge so they read on any square
         val prog = progress()
@@ -124,7 +138,7 @@ class BoardView(ctx: Context) : View(ctx) {
             val c = if (flipped) 7 - t % 8 else t % 8
             p.style = if (pos.b[t] != 0) Paint.Style.STROKE else Paint.Style.FILL
             p.strokeWidth = cell * 0.07f
-            p.color = Color.argb(200, 94, 240, 246)
+            p.color = alphaOf(theme.mark, 190)
             canvas.drawCircle((c + 0.5f) * cell, (r + 0.5f) * cell, if (pos.b[t] != 0) cell * 0.42f else cell * 0.12f, p)
         }
     }
@@ -135,13 +149,15 @@ class BoardView(ctx: Context) : View(ctx) {
         val cy = cy0 + cell * 0.28f
         glyph.style = Paint.Style.FILL; glyph.color = Color.argb(alpha / 3, 0, 0, 0)
         canvas.drawText(ch, cx + cell * 0.03f, cy + cell * 0.04f, glyph)     // soft shadow
-        glyph.style = Paint.Style.STROKE; glyph.strokeWidth = cell * 0.06f
-        glyph.color = if (pc > 0) Color.argb(alpha, 10, 10, 16) else Color.argb(alpha, 242, 242, 242)
+        glyph.style = Paint.Style.STROKE; glyph.strokeWidth = cell * 0.06f; glyph.strokeJoin = Paint.Join.ROUND
+        glyph.color = alphaOf(if (pc > 0) theme.outWhite else theme.outBlack, alpha)
         canvas.drawText(ch, cx, cy, glyph)
         glyph.style = Paint.Style.FILL
-        glyph.color = if (pc > 0) Color.argb(alpha, 244, 240, 242) else Color.argb(alpha, 232, 66, 70)
+        glyph.color = alphaOf(if (pc > 0) theme.white else theme.black, alpha)
         canvas.drawText(ch, cx, cy, glyph)
     }
+
+    private fun alphaOf(c: Int, a: Int) = (c and 0x00FFFFFF) or (a.coerceIn(0, 255) shl 24)
 
     private fun sqAt(x: Float, y: Float): Int {
         val cell = width / 8f
@@ -150,7 +166,7 @@ class BoardView(ctx: Context) : View(ctx) {
 
     override fun onTouchEvent(e: MotionEvent): Boolean {
         when (e.action) {
-            MotionEvent.ACTION_DOWN -> { downSq = sqAt(e.x, e.y); downX = e.x; downY = e.y; return true }
+            MotionEvent.ACTION_DOWN -> { downSq = sqAt(e.x, e.y); downX = e.x; downY = e.y; parent?.requestDisallowInterceptTouchEvent(true); return true }
             MotionEvent.ACTION_MOVE -> {
                 if (dragSq < 0 && downSq >= 0 && Math.hypot((e.x - downX).toDouble(), (e.y - downY).toDouble()) > width / 40.0 && canDrag(downSq)) {
                     onTap(downSq)            // picks it up: shows where it can go
@@ -196,7 +212,13 @@ class ChessActivity : Activity() {
     private var suggestKey = 0L
     private var auto = false
     private var pendingJudge: Triple<Analysis, Pos, Move>? = null
-    private var hintLabel: TextView? = null
+    private lateinit var capMe: TextView
+    private lateinit var capHer: TextView
+    private lateinit var herLevel: TextView
+    private lateinit var opening: TextView
+    private lateinit var strip: TextView
+    private lateinit var stripScroll: android.widget.HorizontalScrollView
+    private var themeNo = 0
     private var thinking = false
     private var over = false
     private lateinit var talk: ChessTalk
@@ -217,90 +239,114 @@ class ChessActivity : Activity() {
         spoken = prefs.getB("chessVoice", false)
         val accent = Themes.accent(prefs)
 
+        themeNo = BoardThemes.saved(prefs.getI("chessBoard", 0))
         val root = LinearLayout(this)
         root.orientation = LinearLayout.VERTICAL
         root.setBackgroundColor(Night.ground)
-        root.setPadding(dp(12), dp(28), dp(12), dp(12))
+        root.setPadding(dp(12), dp(28), dp(12), dp(16))
 
+        // top line: back, and the two things you change most (her level, your colour)
+        val head = LinearLayout(this); head.orientation = LinearLayout.HORIZONTAL; head.gravity = Gravity.CENTER_VERTICAL
         val bar = TextView(this)
-        bar.text = "\u2039  CHESS >"
+        bar.text = "\u2039  " + t("CHESS", "الشطرنج")
         bar.typeface = Typeface.DEFAULT_BOLD
-        bar.textSize = 15f
+        bar.textSize = 16f
         bar.setTextColor(Night.amber)
-        bar.setPadding(dp(6), 0, 0, dp(8))
+        bar.setPadding(dp(4), dp(6), dp(10), dp(6))
         bar.setOnClickListener { finish() }
-        root.addView(bar)
-        val top = LinearLayout(this)
-        top.orientation = LinearLayout.HORIZONTAL
-        top.gravity = Gravity.CENTER_VERTICAL
-        sprite = SpriteView(this)
-        sprite.glowColor = accent
-        sprite.unit = dp(104) / 384f
-        top.addView(sprite, LinearLayout.LayoutParams(dp(70), dp(104)))
-        says = TextView(this)
-        says.setTextColor(Night.cyan)
-        says.textSize = 15f
-        says.typeface = Typeface.MONOSPACE
-        says.setPadding(dp(14), dp(10), dp(14), dp(10))
-        says.background = NeonPanel(resources.displayMetrics.density)
-        top.addView(says, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { leftMargin = dp(8) })
-        root.addView(top)
-
-        status = TextView(this)
-        status.setTextColor(Night.white)
-        status.textSize = 14f
-        status.gravity = Gravity.CENTER
-        status.setPadding(0, dp(8), 0, dp(8))
-        root.addView(status)
-
-        evalBar = EvalBar(this)
-        root.addView(evalBar, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(18)).apply { bottomMargin = dp(6) })
-
-        board = BoardView(this)
-        board.accent = accent
-        board.onTap = { tap(it) }
-        board.canDrag = { sq -> !over && !thinking && pos.white == playerWhite && pos.b[sq] != 0 && (pos.b[sq] > 0) == playerWhite }
-        root.addView(board, LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.WRAP_CONTENT))
-
-        val row1 = LinearLayout(this); row1.orientation = LinearLayout.HORIZONTAL
-        val row2 = LinearLayout(this); row2.orientation = LinearLayout.HORIZONTAL
-        row1.addView(button(t("NEW GAME", "لعبة جديدة")) { newGame() }, weight())
-        row1.addView(button(t("UNDO", "تراجع")) { undo() }, weight())
-        row1.addView(button(t("REDO", "إعادة")) { redoMove() }, weight())
-        val lvl = button("") { level = level % 5 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
+        head.addView(bar, LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f))
+        val lvl = chip("") { level = level % 5 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
         levelLabel(lvl)
-        row2.addView(lvl, weight())
-        val side = button("") {
+        head.addView(lvl, LinearLayout.LayoutParams(-2, -2).apply { rightMargin = dp(6) })
+        val side = chip(if (playerWhite) t("YOU: WHITE", "أنت: الأبيض") else t("YOU: BLACK", "أنت: الأسود")) {
             playerWhite = !playerWhite
             (it as TextView).text = if (playerWhite) t("YOU: WHITE", "أنت: الأبيض") else t("YOU: BLACK", "أنت: الأسود")
             newGame()
         }
-        side.text = t("YOU: WHITE", "أنت: الأبيض")
-        row2.addView(side, weight())
-        val row3 = LinearLayout(this); row3.orientation = LinearLayout.HORIZONTAL
-        val vb = button("") { spoken = !spoken; prefs.putB("chessVoice", spoken); (it as TextView).text = voiceLabel() }
-        vb.text = voiceLabel()
-        row3.addView(vb, weight())
-        row3.addView(button(t("COMMENTS", "التعليقات")) { talkDialog() }, weight())
-        row3.addView(button(t("EXPLAIN", "اشرح")) { explain() }, weight())
-        val row4 = LinearLayout(this); row4.orientation = LinearLayout.HORIZONTAL
-        row4.addView(button(t("HINT", "تلميح")) { showHint() }, weight())
-        row4.addView(button(t("PLAY FOR ME", "العب عني")) { playForMe() }, weight())
-        val ab = button("") { auto = !auto; (it as TextView).text = autoLabel(); if (auto) playForMe() }
-        ab.text = autoLabel(); row4.addView(ab, weight())
-        row4.addView(button("FEN") { fenDialog() }, weight())
-        val row5 = LinearLayout(this); row5.orientation = LinearLayout.HORIZONTAL
-        row5.addView(button(t("REVIEW THE GAME", "راجع اللعبة")) { review() }, weight())
-        val row6 = LinearLayout(this); row6.orientation = LinearLayout.HORIZONTAL
-        row6.addView(button(t("RESIGN", "استسلام")) { resign() }, weight())
-        row6.addView(button(t("OFFER A DRAW", "اعرض تعادل")) { offerDraw() }, weight())
-        root.addView(row1)
-        root.addView(row2)
-        root.addView(row3)
-        root.addView(row4)
-        root.addView(row5)
-        root.addView(row6)
-        setContentView(neonWrap(this, root))
+        head.addView(side)
+        root.addView(head)
+
+        // her: a card with her face, her name, what she has taken, and what she says
+        sprite = SpriteView(this)
+        sprite.glowColor = accent
+        sprite.unit = dp(92) / 384f
+        says = TextView(this)
+        says.setTextColor(Night.cyan)
+        says.textSize = 14f
+        says.typeface = Typeface.MONOSPACE
+        says.setPadding(dp(12), dp(8), dp(12), dp(8))
+        says.background = NeonPanel(resources.displayMetrics.density)
+        capHer = TextView(this); capHer.setTextColor(Night.faint); capHer.textSize = 15f; capHer.setPadding(dp(8), 0, 0, 0)
+        val herName = TextView(this); herName.text = "CAPRI"; herName.setTextColor(Night.white); herName.typeface = Typeface.DEFAULT_BOLD; herName.textSize = 14f
+        herLevel = TextView(this); herLevel.setTextColor(Night.faint); herLevel.textSize = 11f; herLevel.typeface = Typeface.MONOSPACE; herLevel.setPadding(dp(8), 0, 0, 0)
+        val herLine = LinearLayout(this); herLine.orientation = LinearLayout.HORIZONTAL; herLine.gravity = Gravity.CENTER_VERTICAL
+        herLine.addView(herName); herLine.addView(herLevel); herLine.addView(capHer)
+        val herCol = LinearLayout(this); herCol.orientation = LinearLayout.VERTICAL
+        herCol.addView(herLine)
+        herCol.addView(says, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(4) })
+        val card = LinearLayout(this); card.orientation = LinearLayout.HORIZONTAL; card.gravity = Gravity.CENTER_VERTICAL
+        card.setPadding(dp(8), dp(8), dp(10), dp(8))
+        card.background = GradientDrawable().apply { setColor(Night.alpha(Night.panel, 255)); setStroke(dp(1), Night.deepEdge); cornerRadius = dp(16).toFloat() }
+        card.addView(sprite, LinearLayout.LayoutParams(dp(62), dp(92)))
+        card.addView(herCol, LinearLayout.LayoutParams(0, -2, 1f).apply { leftMargin = dp(8) })
+        root.addView(card, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(6) })
+        levelLabel(lvl)
+
+        evalBar = EvalBar(this)
+        root.addView(evalBar, LinearLayout.LayoutParams(-1, dp(12)).apply { topMargin = dp(10); bottomMargin = dp(8) })
+
+        board = BoardView(this)
+        board.accent = accent
+        board.theme = BoardThemes.at(themeNo)
+        board.onTap = { tap(it) }
+        board.canDrag = { sq -> !over && !thinking && pos.white == playerWhite && pos.b[sq] != 0 && (pos.b[sq] > 0) == playerWhite }
+        root.addView(board, LinearLayout.LayoutParams(-1, -2))
+
+        // you: under the board
+        val meName = TextView(this); meName.text = t("YOU", "أنت"); meName.setTextColor(Night.white); meName.typeface = Typeface.DEFAULT_BOLD; meName.textSize = 14f
+        capMe = TextView(this); capMe.setTextColor(Night.faint); capMe.textSize = 15f; capMe.setPadding(dp(8), 0, 0, 0)
+        val meLine = LinearLayout(this); meLine.orientation = LinearLayout.HORIZONTAL; meLine.gravity = Gravity.CENTER_VERTICAL
+        meLine.addView(meName); meLine.addView(capMe)
+        root.addView(meLine, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8); leftMargin = dp(4) })
+
+        status = TextView(this)
+        status.setTextColor(Night.white)
+        status.textSize = 14f
+        status.typeface = Typeface.DEFAULT_BOLD
+        status.gravity = Gravity.CENTER
+        status.setPadding(dp(14), dp(8), dp(14), dp(8))
+        root.addView(status, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+
+        // the game so far, scrolling sideways, with the opening's name when she knows it
+        opening = TextView(this); opening.setTextColor(Night.amber); opening.textSize = 12f; opening.typeface = Typeface.MONOSPACE
+        opening.setPadding(dp(4), dp(8), 0, 0)
+        root.addView(opening)
+        strip = TextView(this); strip.setTextColor(Night.faint); strip.textSize = 12f; strip.typeface = Typeface.MONOSPACE; strip.setSingleLine(true)
+        strip.setPadding(dp(4), dp(2), dp(4), dp(2))
+        stripScroll = android.widget.HorizontalScrollView(this)
+        stripScroll.isHorizontalScrollBarEnabled = false
+        stripScroll.addView(strip)
+        root.addView(stripScroll, LinearLayout.LayoutParams(-1, -2))
+
+        // the five things you use all game, big and in one row
+        val tools = LinearLayout(this); tools.orientation = LinearLayout.HORIZONTAL
+        tools.addView(tool("\u271A", t("NEW", "جديدة")) { newGame() }, weight())
+        tools.addView(tool("\u21B6", t("UNDO", "تراجع")) { undo() }, weight())
+        tools.addView(tool("\u21B7", t("REDO", "إعادة")) { redoMove() }, weight())
+        tools.addView(tool("\u2726", t("HINT", "تلميح")) { showHint() }, weight())
+        tools.addView(tool("\u25B6", t("PLAY", "العب عني")) { playForMe() }, weight())
+        root.addView(tools, LinearLayout.LayoutParams(-1, -2).apply { topMargin = dp(8) })
+        val more = LinearLayout(this); more.orientation = LinearLayout.HORIZONTAL
+        more.addView(button(t("REVIEW", "راجع")) { review() }, weight())
+        more.addView(button(t("EXPLAIN", "اشرح")) { explain() }, weight())
+        more.addView(button(t("MORE", "المزيد") + " \u22EF") { moreMenu() }, weight())
+        root.addView(more, LinearLayout.LayoutParams(-1, -2))
+
+        val scroll = android.widget.ScrollView(this)
+        scroll.isFillViewport = true
+        scroll.overScrollMode = View.OVER_SCROLL_NEVER
+        scroll.addView(root)
+        setContentView(neonWrap(this, scroll))
 
         sprite.play("idle")
         newGame()
@@ -310,6 +356,7 @@ class ChessActivity : Activity() {
 
     private fun levelLabel(v: TextView) {
         v.text = t("LEVEL: ", "المستوى: ") + when (level) { 1 -> t("EASY", "سهل"); 2 -> t("MEDIUM", "متوسط"); 3 -> t("CLUB", "نادي"); 4 -> t("HARD", "صعب"); else -> t("MASTER", "خبير") }
+        if (this::herLevel.isInitialized) herLevel.text = "\u2022 " + v.text.substring(t("LEVEL: ", "المستوى: ").length)
     }
 
     private fun button(s: String, click: (View) -> Unit): TextView {
@@ -327,14 +374,79 @@ class ChessActivity : Activity() {
         return b
     }
 
-    private fun say(en: String, ar: String) { says.text = "CAPRI: " + t(en, ar) }
+    // a small pill for the top line
+    private fun chip(s: String, click: (View) -> Unit): TextView {
+        val b = TextView(this)
+        b.text = s
+        b.setTextColor(Night.white)
+        b.textSize = 11f
+        b.typeface = Typeface.MONOSPACE
+        b.gravity = Gravity.CENTER
+        b.setPadding(dp(10), dp(7), dp(10), dp(7))
+        b.background = GradientDrawable().apply { setColor(Night.field); setStroke(dp(1), Night.deepEdge); cornerRadius = dp(16).toFloat() }
+        b.foreground = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
+        b.setOnClickListener(click)
+        return b
+    }
+
+    // a big round-ish button: a symbol over a short word
+    private fun tool(glyph: String, label: String, click: (View) -> Unit): TextView {
+        val b = TextView(this)
+        val sp = android.text.SpannableString(glyph + "\n" + label)
+        sp.setSpan(android.text.style.RelativeSizeSpan(1.7f), 0, glyph.length, 0)
+        b.text = sp
+        b.setTextColor(Night.white)
+        b.textSize = 10f
+        b.typeface = Typeface.MONOSPACE
+        b.gravity = Gravity.CENTER
+        b.setPadding(dp(2), dp(8), dp(2), dp(8))
+        b.background = GradientDrawable().apply { setColor(Night.field); setStroke(dp(1), Night.deepEdge); cornerRadius = dp(18).toFloat() }
+        b.foreground = android.graphics.drawable.RippleDrawable(android.content.res.ColorStateList.valueOf(Color.argb(60, 255, 255, 255)), null, null)
+        b.setOnClickListener(click)
+        return b
+    }
+
+    // everything else, in one list so the screen stays clean
+    private fun moreMenu() {
+        val names = listOf(voiceLabel(), t("COMMENTS", "التعليقات"), autoLabel(), boardLabel(), t("FLIP THE BOARD", "اقلب الرقعة"), t("COPY THE GAME (PGN)", "انسخ اللعبة (PGN)"), "FEN", t("RESIGN", "استسلام"), t("OFFER A DRAW", "اعرض تعادل"))
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("More", "المزيد"))
+            .setItems(names.toTypedArray()) { _, i ->
+                when (i) {
+                    0 -> { spoken = !spoken; prefs.putB("chessVoice", spoken) }
+                    1 -> talkDialog()
+                    2 -> { auto = !auto; if (auto) playForMe() }
+                    3 -> { themeNo = BoardThemes.next(themeNo); prefs.putI("chessBoard", themeNo); board.theme = BoardThemes.at(themeNo); board.invalidate() }
+                    4 -> { board.flipped = !board.flipped; board.invalidate() }
+                    5 -> copyPgn()
+                    6 -> fenDialog()
+                    7 -> resign()
+                    else -> offerDraw()
+                }
+            }.show()
+    }
+
+    // the game as text, so it can go to a chess site or a friend
+    private fun copyPgn() {
+        val sb = StringBuilder()
+        val res = when { !over -> "*"; endReason == "mate" -> if (pos.white) "0-1" else "1-0"; endReason == "resigned" -> if (playerWhite) "0-1" else "1-0"; else -> "1/2-1/2" }
+        sb.append("[Event \"Capri\"]\n[White \"").append(if (playerWhite) "Me" else "Capri").append("\"]\n[Black \"").append(if (playerWhite) "Capri" else "Me").append("\"]\n[Result \"").append(res).append("\"]\n\n")
+        for (i in moves.indices) { val m = moves[i] ?: continue; val b = history[i]; if (b.white) sb.append(i / 2 + 1).append(". "); sb.append(San.of(b, m)).append(' ') }
+        sb.append(res)
+        val cm = getSystemService(Context.CLIPBOARD_SERVICE) as android.content.ClipboardManager
+        cm.setPrimaryClip(android.content.ClipData.newPlainText("PGN", sb.toString()))
+        say("Copied the game.", "نسخت اللعبة.")
+    }
+
+    private fun boardLabel() = t("BOARD: ", "الرقعة: ") + BoardThemes.at(themeNo).let { if (L.ar) it.nameAr else it.name }
+
+    private fun say(en: String, ar: String) { says.text = t(en, ar) }
 
     private fun voiceLabel() = t("VOICE: ", "الصوت: ") + if (spoken) t("ON", "شغال") else t("OFF", "مطفي")
 
     // Shows her remark and, if you switched her voice on, has the pet speak it too.
     private fun remark(line: String?) {
         if (line.isNullOrBlank()) return
-        says.text = "CAPRI: $line"
+        says.text = line
         if (spoken) ChessBridge.speaker?.invoke(line)
     }
 
@@ -459,20 +571,6 @@ class ChessActivity : Activity() {
             }.show()
     }
 
-    // "1. e4 e5 2. Nf3 ..." for the last few moves
-    private fun moveText(): String {
-        if (moves.isEmpty()) return ""
-        val sb = StringBuilder()
-        val from = maxOf(0, moves.size - 8)
-        for (i in from until moves.size) {
-            val m = moves[i] ?: continue
-            val before = history[i]
-            if (before.white) sb.append(i / 2 + 1).append(". ") else if (i == from) sb.append("… ")
-            sb.append(San.of(before, m)).append(' ')
-        }
-        return "\n" + sb.toString().trim()
-    }
-
     private fun newGame() {
         puzzleAt = -1; puzzles = emptyList(); puzzleWait = false
         pos = Chess.start()
@@ -488,7 +586,7 @@ class ChessActivity : Activity() {
         refresh()
         talk.reset()
         remark(talk.start(playerWhite) ?: "")
-        if (says.text.isEmpty() || says.text == "CAPRI: ") says.text = "CAPRI: ..."
+        if (says.text.isEmpty()) says.text = "..."
         if (!playerWhite) aiMove() else think()
     }
 
@@ -584,7 +682,7 @@ class ChessActivity : Activity() {
         over = true
         endReason = st
         if (st == "mate") sprite.play(if (playerJustMoved) "glitch" else "grin", false) { sprite.play("idle") }
-        if ("mate" !in talk.enabled && st == "mate" || "draw" !in talk.enabled && st != "mate") says.text = "CAPRI: " + (if (st == "mate") t("Checkmate.", "كش مات.") else t("A draw.", "تعادل."))
+        if ("mate" !in talk.enabled && st == "mate" || "draw" !in talk.enabled && st != "mate") says.text = (if (st == "mate") t("Checkmate.", "كش مات.") else t("A draw.", "تعادل."))
         refresh()
         return true
     }
@@ -609,8 +707,8 @@ class ChessActivity : Activity() {
             ui.post {
                 if (isFinishing) return@post
                 val ex = ChessBridge.explainer
-                if (ex == null) { says.text = "CAPRI: $plain" }
-                else ex(prompt) { r -> ui.post { if (!isFinishing) { if (r.isNullOrBlank() || r.trim() == "NOTHING") says.text = "CAPRI: $plain" else remark(r) } } }
+                if (ex == null) { says.text = plain }
+                else ex(prompt) { r -> ui.post { if (!isFinishing) { if (r.isNullOrBlank() || r.trim() == "NOTHING") says.text = plain else remark(r) } } }
             }
         }
     }
@@ -640,39 +738,49 @@ class ChessActivity : Activity() {
         say("Okay, take it back.", "ماشي، رجّعها.")
     }
 
-    // Pieces each side has lost, as small glyphs, plus the material lead (pawn = 1).
-    private fun capturedLine(): String {
-        val start = mapOf(1 to 8, 2 to 2, 3 to 2, 4 to 2, 5 to 1)
-        val worth = mapOf(1 to 1, 2 to 3, 3 to 3, 4 to 5, 5 to 9)
-        fun lost(white: Boolean): String {
-            val sb = StringBuilder()
-            for (code in intArrayOf(5, 4, 3, 2, 1)) {
-                val have = pos.b.count { it == (if (white) code else -code) }
-                repeat(maxOf(0, start.getValue(code) - have)) { sb.append('\u265A' + when (code) { 5 -> 1; 4 -> 2; 3 -> 3; 2 -> 4; else -> 5 }) }
-            }
-            return sb.toString()
+    private fun glyphs(codes: List<Int>): String = codes.joinToString("") { "" + ('\u265A' + when (it) { 5 -> 1; 4 -> 2; 3 -> 3; 2 -> 4; else -> 5 }) + "\uFE0E" }
+
+    // "1. e4 e5 2. Nf3 ..." for the whole game
+    private fun movesLine(): String {
+        val sb = StringBuilder()
+        for (i in moves.indices) {
+            val m = moves[i] ?: continue
+            val before = history[i]
+            if (before.white) sb.append(i / 2 + 1).append(". ") else if (i == 0) sb.append("1\u2026 ")
+            sb.append(San.of(before, m)).append("  ")
         }
-        var lead = 0
-        for (v in pos.b) if (v != 0 && kotlin.math.abs(v) != 6) lead += (if (v > 0) 1 else -1) * worth.getValue(kotlin.math.abs(v))
-        if (!playerWhite) lead = -lead
-        val mine = lost(!playerWhite); val hers = lost(playerWhite)
-        if (mine.isEmpty() && hers.isEmpty()) return ""
-        return "\n$mine  |  $hers  " + (if (lead > 0) "+$lead" else if (lead < 0) "$lead" else "=")
+        return sb.toString().trim()
     }
 
     private fun refresh() {
         board.pos = pos
         board.invalidate()
+        val check = !over && Chess.inCheck(pos, pos.white)
+        val mine = pos.white == playerWhite
         status.text = when {
             over -> when (endReason) {
                 "mate" -> t("Checkmate", "كش مات"); "stalemate" -> t("Draw (stalemate)", "تعادل (جمود)")
                 "repetition" -> t("Draw (same position 3 times)", "تعادل (تكرار 3 مرات)"); "fifty" -> t("Draw (50 moves, no capture or pawn move)", "تعادل (50 نقلة بدون أكل أو بيدق)")
                 "insufficient" -> t("Draw (not enough pieces)", "تعادل (قطع غير كافية)"); "resigned" -> t("You resigned", "استسلمت"); "agreed" -> t("Draw (agreed)", "تعادل (باتفاق)"); else -> t("Draw", "تعادل") }
             thinking -> t("She is thinking...", "تفكر...")
-            Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
-            pos.white == playerWhite -> t("Your move", "دورك")
+            check -> t("Check! ", "كش! ") + (if (mine) t("Your move", "دورك") else t("Her move", "دورها"))
+            mine -> t("Your move", "دورك")
             else -> t("Her move", "دورها")
-        } + capturedLine() + moveText() + openingLine()
+        }
+        // the pill takes the colour of the moment: red for check or the end, her colour while she thinks, yours when it is you
+        val edge = when { over || check -> Night.sRed; thinking || !mine -> Night.hot; else -> Night.sCyan }
+        status.background = GradientDrawable().apply { setColor(Night.alpha(edge, 38)); setStroke(dp(1), edge); cornerRadius = dp(18).toFloat() }
+        // what each side has taken, and who is ahead
+        val lead = Captured.lead(pos.b) * (if (playerWhite) 1 else -1)
+        val takenByMe = glyphs(Captured.lost(pos.b, !playerWhite))
+        val takenByHer = glyphs(Captured.lost(pos.b, playerWhite))
+        capMe.text = takenByMe + (if (lead > 0) "  +$lead" else "")
+        capHer.text = takenByHer + (if (lead < 0) "  +${-lead}" else "")
+        openingLine()
+        opening.text = openingName?.let { "\u265E " + it } ?: ""
+        opening.visibility = if (openingName == null) View.GONE else View.VISIBLE
+        strip.text = movesLine().ifEmpty { t("No moves yet", "ما فيه نقلات للحين") }
+        stripScroll.post { stripScroll.fullScroll(View.FOCUS_RIGHT) }
     }
 
     private fun resign() {
@@ -859,16 +967,21 @@ class EvalBar(ctx: Context) : View(ctx) {
     var mate: Int? = null    // mate in N for White (positive) or Black (negative)
     private val p = Paint(Paint.ANTI_ALIAS_FLAG)
     private val txt = Paint(Paint.ANTI_ALIAS_FLAG).apply { typeface = Typeface.MONOSPACE; textSize = 24f }
+    private val clip = Path()
 
     override fun onDraw(canvas: Canvas) {
         val w = width.toFloat(); val h = height.toFloat()
         val share = if (mate != null) (if (mate!! > 0) 1f else 0f) else (0.5f + Math.atan(cp / 400.0).toFloat() / Math.PI.toFloat()).coerceIn(0.03f, 0.97f)
+        clip.rewind(); clip.addRoundRect(RectF(0f, 0f, w, h), h / 2, h / 2, Path.Direction.CW)
+        canvas.save(); canvas.clipPath(clip)
         p.color = Color.parseColor("#15101C"); canvas.drawRect(0f, 0f, w, h, p)
         p.color = Color.parseColor("#E8E2EC"); canvas.drawRect(0f, 0f, w * share, h, p)
-        txt.textSize = h * 0.8f
+        p.color = Color.argb(90, 128, 128, 128); canvas.drawRect(w / 2 - 1f, 0f, w / 2 + 1f, h, p)   // the even line
+        canvas.restore()
+        txt.textSize = h * 0.78f
         val label = if (mate != null) "M" + kotlin.math.abs(mate!!) else (if (cp >= 0) "+" else "") + String.format(java.util.Locale.US, "%.1f", cp / 100f)
         txt.color = if (share > 0.5f) Color.parseColor("#15101C") else Color.parseColor("#E8E2EC")
-        if (share > 0.5f) canvas.drawText(label, 6f, h * 0.82f, txt) else canvas.drawText(label, w - txt.measureText(label) - 6f, h * 0.82f, txt)
+        if (share > 0.5f) canvas.drawText(label, h * 0.6f, h * 0.8f, txt) else canvas.drawText(label, w - txt.measureText(label) - h * 0.6f, h * 0.8f, txt)
     }
 }
 
