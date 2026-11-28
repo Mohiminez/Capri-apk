@@ -339,3 +339,4 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 - Engine.analyse takes a skill; her own search (no Stockfish) looks less far ahead at a lower skill.
 - Game review (Review.kt + ChessActivity.review): the engine (220 ms a position) grades every move by how much it lost against its best, lichess-style win-chance accuracy per side, the worst moves with the better move; copyable. Forced moves are skipped.
 - Opening names (Openings.kt, ~90 lines: Ruy Lopez, Italian, Sicilian with Najdorf/Dragon, French, Caro-Kann, Queen's Gambit, Indian defences, London, English...) shown under the board's status.
+- Chess coach: eval graph in the review (EvalGraph), "Train my mistakes" (your worst five mistakes replayed as puzzles: two tries, then the move is shown), two-step hint (piece first), RESIGN, OFFER A DRAW (she accepts when her score is <= +0.3 and 10+ moves were played). Coach.kt is pure and tested.

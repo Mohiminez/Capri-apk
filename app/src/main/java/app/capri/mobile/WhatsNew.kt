@@ -6,11 +6,13 @@ package app.capri.mobile
  * Pure, so it is unit tested.
  */
 object WhatsNew {
-    const val VERSION = 5
+    const val VERSION = 6
 
     class Item(val en: String, val ar: String)
 
     val items = listOf(
+        Item("Chess coach: the review now has an eval graph and a \"Train my mistakes\" button that replays your worst positions as puzzles. Hint is gentler (first press names the piece, second shows the move). You can resign or offer a draw (she accepts only when she is not better).",
+            "مدرّب الشطرنج: المراجعة فيها رسم بياني للتقييم وزر \"تدرّب على أخطائي\" يعيد أسوأ مواقفك كتمارين. التلميح صار ألطف (أول ضغطة تسمّي القطعة وتاني ضغطة تبيّن النقلة). وتقدر تستسلم أو تعرض تعادل (تقبل بس إذا ما هي أحسن)."),
         Item("Chess: REVIEW THE GAME grades every move (best, good, inaccuracy, mistake, blunder), gives you and Capri an accuracy percentage and lists the moves that cost the most with the better move. The board also names the opening (Ruy Lopez, Sicilian Najdorf, Queen's Gambit...).",
             "الشطرنج: زر \"راجع اللعبة\" يقيّم كل نقلة (ممتازة، كويسة، دقة ناقصة، غلطة، فادحة)، ويعطيك ولكابري نسبة دقة، ويعرض النقلات اللي كلّفت أكثر مع الأفضل. واللوحة تسمّي الافتتاحية (روي لوبيز، سيسيليان ناجدورف، قمبيت الملكة...)."),
         Item("Chess: five levels now (Easy, Medium, Club, Hard, Master). Hard used to be full strength, so the jump from Medium was huge; Club fills the gap and Hard is about 2000.",

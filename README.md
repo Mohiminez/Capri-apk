@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **285**
+- Animation clips: **30**; unit tests: **289**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -215,6 +215,7 @@ Other source files (generated):
 | `Chimes.kt` | - |
 | `CinemaIntro.kt` | Which start-up intro to play. Pure and unit tested. The two cinematic ones ("peek" and "close") are the ful... |
 | `ClipRecorder.kt` | "Clip my games", from the desktop: she keeps recording the last half minute of your screen, and "clip that"... |
+| `Coach.kt` | - |
 | `CrashLog.kt` | - |
 | `Crisis.kt` | - |
 | `CustomLook.kt` | A ".capri" look: a zip made by the desktop app's look editor, with one PNG sheet per animation (sprites/idl... |

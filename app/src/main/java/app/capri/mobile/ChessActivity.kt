@@ -6,6 +6,7 @@ import android.content.Context
 import android.graphics.Canvas
 import android.graphics.Color
 import android.graphics.Paint
+import android.graphics.Path
 import android.graphics.RectF
 import android.graphics.Typeface
 import android.graphics.drawable.GradientDrawable
@@ -290,11 +291,15 @@ class ChessActivity : Activity() {
         row4.addView(button("FEN") { fenDialog() }, weight())
         val row5 = LinearLayout(this); row5.orientation = LinearLayout.HORIZONTAL
         row5.addView(button(t("REVIEW THE GAME", "راجع اللعبة")) { review() }, weight())
+        val row6 = LinearLayout(this); row6.orientation = LinearLayout.HORIZONTAL
+        row6.addView(button(t("RESIGN", "استسلام")) { resign() }, weight())
+        row6.addView(button(t("OFFER A DRAW", "اعرض تعادل")) { offerDraw() }, weight())
         root.addView(row1)
         root.addView(row2)
         root.addView(row3)
         root.addView(row4)
         root.addView(row5)
+        root.addView(row6)
         setContentView(neonWrap(this, root))
 
         sprite.play("idle")
@@ -378,14 +383,22 @@ class ChessActivity : Activity() {
     private fun showHint() {
         if (over || thinking || pos.white != playerWhite) return
         val have = suggestionFor(pos)
-        if (have != null) { announceHint(have); return }
+        if (have != null) { nudgeOrHint(have); return }
         say("Let me look...", "خلني أشوف...")
         val snap = pos
         val keys = keysNow()
         bg("chess", this) {
             val a = Engine.analyse(snap, 3000, 30, keys)
-            ui.post { if (!isFinishing && pos === snap && a != null) { suggest = a; suggestKey = Engine.key(snap); setEval(a, snap.white); announceHint(a) } }
+            ui.post { if (!isFinishing && pos === snap && a != null) { suggest = a; suggestKey = Engine.key(snap); setEval(a, snap.white); nudgeOrHint(a) } }
         }
+    }
+
+    // The first press only says which piece to look at; the second shows the move (a coach, not an answer sheet).
+    private var hintStageKey = 0L
+    private fun nudgeOrHint(a: Analysis) {
+        val k = Engine.key(pos)
+        if (hintStageKey != k) { hintStageKey = k; remark(Coach.nudge(pos.b[a.move.from], a.move.from, L.ar)); return }
+        announceHint(a)
     }
 
     private fun announceHint(a: Analysis) {
@@ -461,6 +474,7 @@ class ChessActivity : Activity() {
     }
 
     private fun newGame() {
+        puzzleAt = -1; puzzles = emptyList(); puzzleWait = false
         pos = Chess.start()
         history.clear(); moves.clear(); redo.clear()
         over = false; endReason = "playing"
@@ -481,7 +495,7 @@ class ChessActivity : Activity() {
     private fun clearSel() { board.selected = -1; board.targets = emptyList() }
 
     private fun tap(sq: Int) {
-        if (over || thinking || pos.white != playerWhite) return
+        if (over || thinking || puzzleWait || pos.white != playerWhite) return
         val pc = pos.b[sq]
         if (board.selected >= 0) {
             val cands = Chess.legalFrom(pos, board.selected).filter { it.to == sq }
@@ -504,6 +518,7 @@ class ChessActivity : Activity() {
     }
 
     private fun play(m: Move) {
+        if (training) { trainMove(m); return }
         val before = pos
         board.hint = null
         pendingJudge = suggestionFor(before)?.let { Triple(it, before, m) }
@@ -602,7 +617,7 @@ class ChessActivity : Activity() {
 
     // Steps forward again after UNDO (one move at a time), so an imported game can be walked through.
     private fun redoMove() {
-        if (thinking || redo.isEmpty()) return
+        if (thinking || training || redo.isEmpty()) return
         val (after, m) = redo.removeAt(redo.size - 1)
         history.add(pos); moves.add(m); pos = after
         board.last = m; board.hint = null; suggest = null; suggestKey = 0L; pendingJudge = null
@@ -612,7 +627,7 @@ class ChessActivity : Activity() {
     }
 
     private fun undo() {
-        if (thinking || history.isEmpty()) return
+        if (thinking || training || history.isEmpty()) return
         // take back her move and yours, so it is your turn again
         var n = if (pos.white == playerWhite) 2 else 1
         while (n-- > 0 && history.isNotEmpty()) { val m = moves.removeAt(moves.size - 1); redo.add(Pair(pos, m)); pos = history.removeAt(history.size - 1) }
@@ -652,12 +667,92 @@ class ChessActivity : Activity() {
             over -> when (endReason) {
                 "mate" -> t("Checkmate", "كش مات"); "stalemate" -> t("Draw (stalemate)", "تعادل (جمود)")
                 "repetition" -> t("Draw (same position 3 times)", "تعادل (تكرار 3 مرات)"); "fifty" -> t("Draw (50 moves, no capture or pawn move)", "تعادل (50 نقلة بدون أكل أو بيدق)")
-                "insufficient" -> t("Draw (not enough pieces)", "تعادل (قطع غير كافية)"); else -> t("Draw", "تعادل") }
+                "insufficient" -> t("Draw (not enough pieces)", "تعادل (قطع غير كافية)"); "resigned" -> t("You resigned", "استسلمت"); "agreed" -> t("Draw (agreed)", "تعادل (باتفاق)"); else -> t("Draw", "تعادل") }
             thinking -> t("She is thinking...", "تفكر...")
             Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
             pos.white == playerWhite -> t("Your move", "دورك")
             else -> t("Her move", "دورها")
         } + capturedLine() + moveText() + openingLine()
+    }
+
+    private fun resign() {
+        if (over || thinking || training) return
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Resign?", "تستسلم؟"))
+            .setPositiveButton(t("Resign", "استسلام")) { _, _ ->
+                over = true; endReason = "resigned"; refresh()
+                remark(t("Good game. Want a review? Press REVIEW THE GAME.", "لعبة حلوة. تبي مراجعة؟ اضغط راجع اللعبة."))
+            }.setNegativeButton(t("Keep playing", "أكمل"), null).show()
+    }
+
+    // She takes the draw only when she is not better (and the game is not just starting).
+    private fun offerDraw() {
+        if (over || thinking || training || pos.white != playerWhite || moves.isEmpty()) return
+        say("Let me think about it...", "خلني أفكر...")
+        val snap = pos
+        bg("chess", this) {
+            val a = Engine.analyse(snap, 800, 14)
+            val her = -(a?.score ?: 0)          // the score is for the side to move, which is you
+            ui.post {
+                if (isFinishing || pos !== snap || over) return@post
+                val yes = Coach.acceptsDraw(her, moves.size)
+                remark(Coach.drawReply(yes, L.ar))
+                if (yes) { over = true; endReason = "agreed"; refresh() }
+            }
+        }
+    }
+
+    // ---- training on your own mistakes: the positions where the review found you losing the most, one by one ----
+    class Puzzle(val pos: Pos, val best: Move, val bestSan: String, val playedSan: String)
+    private var puzzles: List<Puzzle> = emptyList()
+    private var puzzleAt = -1
+    private var puzzleTries = 0
+    private var puzzleSolved = 0
+    private var puzzleWait = false
+    private val training get() = puzzleAt >= 0
+
+    private var trainSide = true
+    private fun startTraining(list: List<Puzzle>) {
+        trainSide = playerWhite
+        puzzles = list; puzzleAt = -1; puzzleSolved = 0
+        nextPuzzle()
+    }
+
+    private fun nextPuzzle() {
+        puzzleAt++; puzzleWait = false
+        if (puzzleAt >= puzzles.size) {
+            val n = puzzles.size; val ok = puzzleSolved
+            puzzles = emptyList(); puzzleAt = -1
+            playerWhite = trainSide
+            newGame()
+            remark(Coach.puzzleDone(ok, n, L.ar))
+            return
+        }
+        val z = puzzles[puzzleAt]
+        puzzleTries = 0
+        pos = z.pos; history.clear(); moves.clear(); redo.clear()
+        over = false; endReason = "playing"; thinking = false
+        playerWhite = z.pos.white; board.flipped = !playerWhite; board.last = null; board.hint = null
+        suggest = null; suggestKey = 0L; pendingJudge = null; hintStageKey = 0L
+        clearSel(); refresh()
+        remark(Coach.puzzleIntro(puzzleAt + 1, puzzles.size, z.playedSan, L.ar))
+    }
+
+    private fun trainMove(m: Move) {
+        val z = puzzles[puzzleAt]
+        clearSel()
+        if (m.from == z.best.from && m.to == z.best.to && m.promo == z.best.promo) {
+            puzzleSolved++; puzzleWait = true
+            pos = Chess.make(z.pos, m); board.last = m; board.animate(m, z.pos.b[m.to]); refresh()
+            remark(Coach.puzzleRight(L.ar))
+            ui.postDelayed({ if (!isFinishing && training) nextPuzzle() }, 1500)
+        } else {
+            puzzleTries++
+            if (puzzleTries >= 2) {
+                puzzleWait = true; board.hint = z.best; board.invalidate()
+                remark(Coach.puzzleShow(z.bestSan, L.ar))
+                ui.postDelayed({ if (!isFinishing && training) nextPuzzle() }, 2600)
+            } else remark(Coach.puzzleWrong(L.ar))
+        }
     }
 
     // The name of the opening, once the moves match one.
@@ -704,16 +799,20 @@ class ChessActivity : Activity() {
                 val best = bests[i]?.let { San.of(p, it) }
                 rows.add(Review.row(i, p.white, san, best, evals[i], -evals[i + 1], Chess.legal(p).size == 1))
             }
+            val whiteCp = Coach.whiteView(evals, BooleanArray(positions.size) { positions[it].white })
+            val list = rows.filter { it.white == whiteIsYou && (it.grade == Review.Grade.MISTAKE || it.grade == Review.Grade.BLUNDER) && bests[it.ply] != null }
+                .sortedByDescending { it.loss }.take(5).sortedBy { it.ply }
+                .map { Puzzle(positions[it.ply], bests[it.ply]!!, it.best ?: it.san, it.san) }
             ui.post {
                 reviewing = false
                 try { dlg.dismiss() } catch (e: Exception) { }
                 if (cancelled || isFinishing) return@post
-                showReview(rows, whiteIsYou, opening)
+                showReview(rows, whiteIsYou, opening, whiteCp, list)
             }
         }
     }
 
-    private fun showReview(rows: List<Review.Row>, youWhite: Boolean, opening: String) {
+    private fun showReview(rows: List<Review.Row>, youWhite: Boolean, opening: String, graph: IntArray, list: List<Puzzle>) {
         val sb = StringBuilder()
         if (opening.isNotEmpty()) sb.append(opening).append("\n\n")
         fun side(white: Boolean, who: String) {
@@ -736,12 +835,18 @@ class ChessActivity : Activity() {
         }
         val tv = TextView(this); tv.text = sb.toString().trimEnd(); tv.textSize = 14f; tv.setTextColor(Night.white); tv.typeface = Typeface.MONOSPACE
         tv.setPadding(dp(20), dp(10), dp(20), dp(10))
-        val sv = android.widget.ScrollView(this); sv.addView(tv)
-        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Game review", "مراجعة اللعبة")).setView(sv)
+        val col = LinearLayout(this); col.orientation = LinearLayout.VERTICAL
+        val bad = rows.filter { it.grade == Review.Grade.MISTAKE || it.grade == Review.Grade.BLUNDER }.map { it.ply + 1 }.toSet()
+        if (graph.size >= 3) col.addView(EvalGraph(this, graph, bad), LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, dp(96)).apply { setMargins(dp(20), dp(8), dp(20), 0) })
+        col.addView(tv)
+        val sv = android.widget.ScrollView(this); sv.addView(col)
+        val b = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Game review", "مراجعة اللعبة")).setView(sv)
             .setPositiveButton(t("OK", "تمام"), null)
             .setNeutralButton(t("Copy", "نسخ")) { _, _ ->
                 (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Capri", sb.toString()))
-            }.show()
+            }
+        if (list.isNotEmpty()) b.setNegativeButton(t("Train my mistakes", "تدرّب على أخطائي")) { _, _ -> startTraining(list) }
+        b.show()
     }
 
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
@@ -764,5 +869,23 @@ class EvalBar(ctx: Context) : View(ctx) {
         val label = if (mate != null) "M" + kotlin.math.abs(mate!!) else (if (cp >= 0) "+" else "") + String.format(java.util.Locale.US, "%.1f", cp / 100f)
         txt.color = if (share > 0.5f) Color.parseColor("#15101C") else Color.parseColor("#E8E2EC")
         if (share > 0.5f) canvas.drawText(label, 6f, h * 0.82f, txt) else canvas.drawText(label, w - txt.measureText(label) - 6f, h * 0.82f, txt)
+    }
+}
+
+
+// The game at a glance: the engine's score at each position, from White's side (above the line is better for White). Red dots mark mistakes.
+class EvalGraph(ctx: Context, private val cp: IntArray, private val bad: Set<Int>) : View(ctx) {
+    private val p = Paint(Paint.ANTI_ALIAS_FLAG)
+    override fun onDraw(c: Canvas) {
+        val w = width.toFloat(); val h = height.toFloat(); val d = resources.displayMetrics.density
+        p.style = Paint.Style.FILL; p.color = Night.alpha(Night.field, 255); c.drawRoundRect(0f, 0f, w, h, 8 * d, 8 * d, p)
+        p.style = Paint.Style.STROKE; p.strokeWidth = d; p.color = Night.alpha(Night.rule, 160); c.drawLine(0f, h / 2, w, h / 2, p)
+        val n = cp.size; if (n < 2) return
+        fun x(i: Int) = 6 * d + (w - 12 * d) * i / (n - 1)
+        fun y(i: Int) = h / 2 - (cp[i].coerceIn(-600, 600) / 600f) * (h / 2 - 6 * d)
+        val path = Path(); path.moveTo(x(0), y(0)); for (i in 1 until n) path.lineTo(x(i), y(i))
+        p.strokeWidth = 2 * d; p.color = Night.cyan; c.drawPath(path, p)
+        p.style = Paint.Style.FILL; p.color = Night.sRed
+        for (i in bad) if (i in 0 until n) c.drawCircle(x(i), y(i), 3.5f * d, p)
     }
 }
