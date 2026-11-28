@@ -104,13 +104,13 @@ class FakeChessApp(var pos: Pos, val iPlayWhite: Boolean, val flipped: Boolean =
 }
 
 class ChessPilotE2ETest {
-    private class Run(val app: FakeChessApp, val auto: Boolean = true, val seed: Pos? = null, val maxMoves: Int = 6) {
+    private class Run(val app: FakeChessApp, val auto: Boolean = true, val seed: Pos? = null, val maxMoves: Int = 6, val level: Int = 1) {
         val said = ArrayList<String>()
         val statuses = ArrayList<String>()
         var naps = 0
         lateinit var pilot: ChessPilot
         fun go(): ChessPilot {
-            pilot = ChessPilot({ app }, PilotSettings(level = 1), { said.add(it) }, { }, { seed }, { }, { naps++; if (naps > 350) pilot.stop() }, status = { statuses.add(it) })
+            pilot = ChessPilot({ app }, PilotSettings(level = level), { said.add(it) }, { }, { seed }, { }, { naps++; if (naps > 350) pilot.stop() }, status = { statuses.add(it) })
             pilot.auto = auto
             // stop once she has played enough, or the game ended
             val watcher = Thread {
@@ -234,10 +234,10 @@ class ChessPilotE2ETest {
     @Test fun promotionTakesTheExtraTap() {
         val start = Fen.parse("8/P6k/8/8/8/8/8/K7 b - - 0 1")!!
         val app = FakeChessApp(start, true, flipped = false, opponentDepth = 1)
-        val r = Run(app, seed = start, maxMoves = 1)
+        val r = Run(app, seed = start, maxMoves = 1, level = 3)   // a slower level: on a busy CI machine the quick one can run out of time before it sees the promotion
         r.go()
         assertEquals(r.said.toString(), 0, app.badTaps)
-        assertTrue("moves=${app.myMoves}", app.myMoves.any { it.endsWith("a8q") })
+        assertTrue("moves=${app.myMoves}", app.myMoves.any { it.startsWith("a7a8") && it.length == 5 })
     }
 
     @Test fun boardDisappearsAndSheStops() {

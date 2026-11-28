@@ -173,7 +173,7 @@ GitHub → *Settings → Secrets and variables → Actions* → add `CAPRI_KEYST
 
 <!-- AUTO:facts -->
 - Latest build: **0.5.$run** (see [Releases](../../releases/latest) and the [Changelog](CHANGELOG.md))
-- Animation clips: **30**; unit tests: **273**
+- Animation clips: **30**; unit tests: **285**
 - Game skill packs: Fortnite (survival play) (Fortnite, Fortnite Battle Royale, فورت نايت), 2048 and number slides (2048, 2048 Puzzle, Threes, 1024), Idle and clicker games (Cookie Clicker, AdVenture Capitalist, Idle Miner Tycoon, Egg Inc, Tap Titans, Hay Day, Idle Heroes), Match-3 puzzles (Candy Crush, Candy Crush Saga, Gardenscapes, Homescapes, Bejeweled, Toon Blast, Royal Match, Toy Blast), Fighting, shooting and action games (Fortnite, PUBG Mobile, Call of Duty Mobile, Free Fire, Brawl Stars, Mobile Legends, Genshin Impact, Minecraft, Roblox, Among Us, Stumble Guys), Endless runners (Subway Surfers, Temple Run, Minion Rush, Sonic Dash, Crossy Road, Alto's Adventure, Jetpack Joyride, Geometry Dash), Tower defense (Bloons TD 6, BTD6, Kingdom Rush, Plants vs Zombies, Plants vs Zombies 2, Clash Royale, Bloons Tower Defense, Clash of Clans)
 - Music apps she can play in: Spotify, Anghami, Deezer, YouTube Music, Apple Music, SoundCloud, YouTube
 <!-- /AUTO:facts -->
@@ -235,6 +235,7 @@ Other source files (generated):
 | `ModJson.kt` | - |
 | `Mods.kt` | A mod is a small .json file of look-and-feel settings: colours, a few extra personality lines, a nickname,... |
 | `MusicApps.kt` | "play Blinding Lights on Spotify", "شغل لي اغنية على انغامي": the song AND the app it should play in. |
+| `Openings.kt` | - |
 | `Overlays.kt` | "Circle the send button": a glowing frame that pulses around something on the screen for a few seconds. It... |
 | `PhoneHealth.kt` | "Why is my phone slow?": a plain verdict from numbers the phone already has. Pure (no Android), unit tested... |
 | `Prefs.kt` | - |
@@ -242,6 +243,7 @@ Other source files (generated):
 | `Recolor.kt` | "Her colors": remaps her hair, accents, eyes, edges and body to colours you pick. Ported from the desktop's... |
 | `Reflex.kt` | The fast half of her game playing. A model is too slow to steer a game (seconds per look), so, like the new... |
 | `Reminders.kt` | - |
+| `Review.kt` | - |
 | `ScamCheck.kt` | A local scam / phishing check for text you share to Capri or paste ("هل هذي رسالة نصب؟", "is this a scam?"). |
 | `Skills.kt` | Custom commands you write yourself, one per line:   phrase => what she does or says |
 | `SkinStack.kt` | Stacking skins, the rules (pure, unit tested). A ".capri-skin" from capri-desktop is a zip with skin.json a... |

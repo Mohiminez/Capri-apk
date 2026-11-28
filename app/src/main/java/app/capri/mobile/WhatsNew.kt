@@ -6,11 +6,15 @@ package app.capri.mobile
  * Pure, so it is unit tested.
  */
 object WhatsNew {
-    const val VERSION = 3
+    const val VERSION = 5
 
     class Item(val en: String, val ar: String)
 
     val items = listOf(
+        Item("Chess: REVIEW THE GAME grades every move (best, good, inaccuracy, mistake, blunder), gives you and Capri an accuracy percentage and lists the moves that cost the most with the better move. The board also names the opening (Ruy Lopez, Sicilian Najdorf, Queen's Gambit...).",
+            "الشطرنج: زر \"راجع اللعبة\" يقيّم كل نقلة (ممتازة، كويسة، دقة ناقصة، غلطة، فادحة)، ويعطيك ولكابري نسبة دقة، ويعرض النقلات اللي كلّفت أكثر مع الأفضل. واللوحة تسمّي الافتتاحية (روي لوبيز، سيسيليان ناجدورف، قمبيت الملكة...)."),
+        Item("Chess: five levels now (Easy, Medium, Club, Hard, Master). Hard used to be full strength, so the jump from Medium was huge; Club fills the gap and Hard is about 2000.",
+            "الشطرنج: خمس مستويات (سهل، متوسط، نادي، صعب، خبير). الصعب كان بكامل قوة المحرك فكان فيه قفزة كبيرة من المتوسط، فالنادي يسدّ الفجوة والصعب صار تقريباً ٢٠٠٠."),
         Item("Mod browser: browse the community capri-mods list inside the app, search it, and install skins and settings mods with one press (Mods tab).",
             "متصفح المودات: تتصفح قائمة مودات الناس داخل التطبيق، تبحث، وتثبّت السكنات ومودات الإعدادات بضغطة وحدة (تبويب المودات)."),
         Item("Her tap pill (TYPE | TALK) is now drawn exactly like the PC version, with the same glitch-in, and tapping her reacts like the PC: she wakes if asleep, lets go if hanging, otherwise she glitches.",

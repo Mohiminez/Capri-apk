@@ -98,7 +98,7 @@ class ChessPilot(
         var lastChange = System.currentTimeMillis()
         val talk = ChessTalk(settings.ar)
         talk.enabled = settings.talk
-        val millis = when (settings.level) { 1 -> 500L; 2 -> 1200L; 3 -> 2500L; else -> 5000L }
+        val millis = when (settings.level) { 1 -> 500L; 2 -> 1200L; 3 -> 2000L; 4 -> 2500L; else -> 5000L }
         val keys = ArrayList<Long>()
         var unstable = 0
         var freshFails = 0

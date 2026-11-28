@@ -2279,7 +2279,7 @@ class CapriService : Service(), Actions.Hooks {
         val go = {
             boardRect = null
             val screen = chessScreenImpl
-            val settings = PilotSettings(prefs.getI("chessLevel", 3), ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar, pieceStore, prefs.getB("chessFrame", false))
+            val settings = PilotSettings(Engine.migrateLevel(prefs.getI("chessLevel", 3), prefs.getB("chessLv5", false)).also { prefs.putI("chessLevel", it); prefs.putB("chessLv5", true) }, ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet(), L.ar, pieceStore, prefs.getB("chessFrame", false))
             val pl = ChessPilot({ if (CapriAccess.instance != null) screen else null }, settings, { t -> say(t, false) }, { ActionLog.add(prefs, "chess", it) }, { seedFromScreen() }, { pilot = null; chessChip(null) },
                 status = { chessChip(it) })
             pilot = pl

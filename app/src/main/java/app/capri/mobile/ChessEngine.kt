@@ -218,17 +218,22 @@ object Engine {
         return alpha
     }
 
-    // 1 easy (shallow and careless), 2 medium, 3 hard, 4 master (thinks as long as it can in a few seconds).
+    // 1 easy (shallow and careless), 2 medium, 3 club (Stockfish at skill 8, roughly a club player), 4 hard (skill 15, about 2000),
+    // 5 master (full strength, thinks as long as it can in a few seconds).
     fun forLevel(p: Pos, level: Int, history: List<Long> = emptyList()): Analysis? {
         val ms = Chess.legal(p)
         if (ms.isEmpty()) return null
         return when (level) {
             1 -> weak(p, 2, 140, history)
             2 -> weak(p, 3, 45, history)
-            3 -> analyse(p, 1800, 12, history, true)
+            3 -> analyse(p, 900, 12, history, true, 8)
+            4 -> analyse(p, 1800, 14, history, true, 15)
             else -> analyse(p, 5000, 30, history, true)
         }
     }
+
+    /** Levels used to be four (3 = hard at full strength, 4 = master). Five now, so an old saved 3 or 4 moves up one and keeps meaning what it meant. */
+    fun migrateLevel(saved: Int, already: Boolean): Int = if (already) saved.coerceIn(1, 5) else (if (saved >= 3) saved + 1 else saved).coerceIn(1, 5)
 
     // Easy levels: score every move at a fixed shallow depth, then let some noise pick - so she plays sensible but human mistakes.
     @Synchronized private fun weak(p: Pos, depth: Int, noise: Int, history: List<Long>): Analysis? {
@@ -266,13 +271,14 @@ object Engine {
     }
 
     // Best move by thinking up to `millis`, no deeper than `maxDepth`. `history` = Engine.key of the positions played so far (for repetition).
-    @Synchronized fun analyse(p: Pos, millis: Long, maxDepth: Int = 10, history: List<Long> = emptyList(), book: Boolean = false): Analysis? {
+    @Synchronized fun analyse(p: Pos, millis: Long, maxDepth: Int = 10, history: List<Long> = emptyList(), book: Boolean = false, skill: Int = 20): Analysis? {
         val legalMoves = Chess.legal(p)
         if (legalMoves.isEmpty()) return null
         if (legalMoves.size == 1) return Analysis(legalMoves[0], 0, 1, listOf(legalMoves[0]))
         if (book) Book.pick(p)?.let { return Analysis(it, 0, 0, listOf(it)) }
-        if (useStockfish && millis >= 300) Stockfish.analyse(p, millis, maxOf(maxDepth, 24))?.let { return it }
+        if (useStockfish && millis >= 300) Stockfish.analyse(p, millis, maxOf(maxDepth, 24), skill)?.let { return it }
         val bd = Board(p, history)
+        val maxDepth = if (skill >= 20) maxDepth else minOf(maxDepth, 2 + skill / 3)   // her own search, when Stockfish is not there: a lower skill looks less far ahead
         for (a in killers) { a[0] = 0; a[1] = 0 }
         for (i in hist.indices) hist[i] = hist[i] / 4
         nodes = 0; stop = false

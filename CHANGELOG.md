@@ -331,3 +331,11 @@ Say **"play chess for me"** (or العبي عني) with a chess app open, **"coa
 ## What's new + theme-aware UI
 - WhatsNew.kt: after an update a "What's new" dialog shows once (bump WhatsNew.VERSION by hand when there is news; never on a fresh install). Same text under Settings > WHAT'S NEW (replaces the old hard-coded list). The update check now shows the GitHub release notes in its dialog.
 - Settings screen, speech bubble and neon frame colours now come from Night, so the White/Grey/Black looks no longer show white text on a white background.
+
+- Test fix: ChessPilotE2ETest.promotionTakesTheExtraTap failed once on CI (timing: the quick level ran out of time on a busy runner); it now uses a slower level and checks any a7a8 promotion.
+
+## Chess
+- Five levels instead of four: EASY, MEDIUM, CLUB (new, Stockfish skill 8, about a club player), HARD (skill 15, about 2000 instead of full strength) and MASTER (full). Before, "Hard" was already superhuman, so there was a huge jump from Medium. A saved level moves up one so its meaning stays (Hard -> Hard, Master -> Master); the pilot keeps its think times.
+- Engine.analyse takes a skill; her own search (no Stockfish) looks less far ahead at a lower skill.
+- Game review (Review.kt + ChessActivity.review): the engine (220 ms a position) grades every move by how much it lost against its best, lichess-style win-chance accuracy per side, the worst moves with the better move; copyable. Forced moves are skipped.
+- Opening names (Openings.kt, ~90 lines: Ruy Lopez, Italian, Sicilian with Najdorf/Dragon, French, Caro-Kann, Queen's Gambit, Indian defences, London, English...) shown under the board's status.

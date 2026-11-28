@@ -210,7 +210,7 @@ class ChessActivity : Activity() {
         Stockfish.prepare(this)
         prefs = Prefs(this)
         L.init(prefs)
-        level = prefs.getI("chessLevel", 3).clampTo(1, 4)
+        level = Engine.migrateLevel(prefs.getI("chessLevel", 3), prefs.getB("chessLv5", false)).also { prefs.putI("chessLevel", it); prefs.putB("chessLv5", true) }
         talk = ChessTalk(L.ar)
         talk.enabled = ChessEvents.all.filter { prefs.getB("chessTalk_$it", true) }.toSet()
         spoken = prefs.getB("chessVoice", false)
@@ -266,7 +266,7 @@ class ChessActivity : Activity() {
         row1.addView(button(t("NEW GAME", "لعبة جديدة")) { newGame() }, weight())
         row1.addView(button(t("UNDO", "تراجع")) { undo() }, weight())
         row1.addView(button(t("REDO", "إعادة")) { redoMove() }, weight())
-        val lvl = button("") { level = level % 4 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
+        val lvl = button("") { level = level % 5 + 1; prefs.putI("chessLevel", level); levelLabel(it as TextView) }
         levelLabel(lvl)
         row2.addView(lvl, weight())
         val side = button("") {
@@ -288,10 +288,13 @@ class ChessActivity : Activity() {
         val ab = button("") { auto = !auto; (it as TextView).text = autoLabel(); if (auto) playForMe() }
         ab.text = autoLabel(); row4.addView(ab, weight())
         row4.addView(button("FEN") { fenDialog() }, weight())
+        val row5 = LinearLayout(this); row5.orientation = LinearLayout.HORIZONTAL
+        row5.addView(button(t("REVIEW THE GAME", "راجع اللعبة")) { review() }, weight())
         root.addView(row1)
         root.addView(row2)
         root.addView(row3)
         root.addView(row4)
+        root.addView(row5)
         setContentView(neonWrap(this, root))
 
         sprite.play("idle")
@@ -301,7 +304,7 @@ class ChessActivity : Activity() {
     private fun weight() = LinearLayout.LayoutParams(0, LinearLayout.LayoutParams.WRAP_CONTENT, 1f).apply { setMargins(dp(3), dp(6), dp(3), 0) }
 
     private fun levelLabel(v: TextView) {
-        v.text = t("LEVEL: ", "المستوى: ") + when (level) { 1 -> t("EASY", "سهل"); 2 -> t("MEDIUM", "متوسط"); 3 -> t("HARD", "صعب"); else -> t("MASTER", "خبير") }
+        v.text = t("LEVEL: ", "المستوى: ") + when (level) { 1 -> t("EASY", "سهل"); 2 -> t("MEDIUM", "متوسط"); 3 -> t("CLUB", "نادي"); 4 -> t("HARD", "صعب"); else -> t("MASTER", "خبير") }
     }
 
     private fun button(s: String, click: (View) -> Unit): TextView {
@@ -358,7 +361,7 @@ class ChessActivity : Activity() {
         val snap = pos
         val k = Engine.key(snap)
         if (suggestKey == k) return
-        val ms = if (level >= 4) 4000L else 2200L
+        val ms = if (level >= 5) 4000L else 2200L
         val keys = keysNow()
         bg("chess", this) {
             val a = Engine.analyse(snap, ms, 30, keys)
@@ -402,7 +405,7 @@ class ChessActivity : Activity() {
         val keys = keysNow()
         say("On it.", "على طول.")
         bg("chess", this) {
-            val a = Engine.analyse(snap, if (level >= 4) 6000L else 3500L, 30, keys, true)
+            val a = Engine.analyse(snap, if (level >= 5) 6000L else 3500L, 30, keys, true)
             ui.post { if (!isFinishing && pos === snap && a != null && !over) play(a.move) }
         }
     }
@@ -654,7 +657,91 @@ class ChessActivity : Activity() {
             Chess.inCheck(pos, pos.white) -> t("Check! ", "كش! ") + t("Your move", "دورك")
             pos.white == playerWhite -> t("Your move", "دورك")
             else -> t("Her move", "دورها")
-        } + capturedLine() + moveText()
+        } + capturedLine() + moveText() + openingLine()
+    }
+
+    // The name of the opening, once the moves match one.
+    private var openingFor = -1
+    private var openingName: String? = null
+    private fun openingLine(): String {
+        if (openingFor != moves.size) {
+            openingFor = moves.size
+            openingName = try {
+                if (moves.isEmpty() || moves.any { it == null }) null
+                else Openings.name(moves.indices.map { San.of(history[it], moves[it]!!) })
+            } catch (e: Exception) { null }
+        }
+        return openingName?.let { "\n" + t("Opening: ", "الافتتاحية: ") + it } ?: ""
+    }
+
+    // A look back at the game: the engine grades every move, then she shows accuracy and the moves that cost the most.
+    private var reviewing = false
+    private fun review() {
+        if (reviewing || thinking) return
+        if (moves.size < 2 || moves.any { it == null }) { say("Play a few moves first.", "العب كم نقلة أول."); return }
+        reviewing = true
+        val positions = ArrayList<Pos>(history); positions.add(pos)
+        val played = ArrayList<Move>(moves.map { it!! })
+        val whiteIsYou = playerWhite
+        val opening = openingLine().trim()
+        var cancelled = false
+        val dlg = AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Reviewing the game", "أراجع اللعبة"))
+            .setMessage("0 / ${positions.size}").setNegativeButton(t("Cancel", "إلغاء")) { _, _ -> cancelled = true }.setCancelable(false).create()
+        dlg.show()
+        bg("chess", this) {
+            val evals = IntArray(positions.size); val bests = arrayOfNulls<Move>(positions.size)
+            for (i in positions.indices) {
+                if (cancelled || isFinishing) break
+                val p = positions[i]
+                if (Chess.legal(p).isEmpty()) evals[i] = if (Chess.inCheck(p, p.white)) -100000 else 0
+                else { val a = Engine.analyse(p, 220, 14); if (a != null) { evals[i] = a.score; bests[i] = a.move } }
+                ui.post { if (!isFinishing && dlg.isShowing) dlg.setMessage("${i + 1} / ${positions.size}") }
+            }
+            val rows = ArrayList<Review.Row>()
+            if (!cancelled && !isFinishing) for (i in played.indices) {
+                val p = positions[i]
+                val san = San.of(p, played[i])
+                val best = bests[i]?.let { San.of(p, it) }
+                rows.add(Review.row(i, p.white, san, best, evals[i], -evals[i + 1], Chess.legal(p).size == 1))
+            }
+            ui.post {
+                reviewing = false
+                try { dlg.dismiss() } catch (e: Exception) { }
+                if (cancelled || isFinishing) return@post
+                showReview(rows, whiteIsYou, opening)
+            }
+        }
+    }
+
+    private fun showReview(rows: List<Review.Row>, youWhite: Boolean, opening: String) {
+        val sb = StringBuilder()
+        if (opening.isNotEmpty()) sb.append(opening).append("\n\n")
+        fun side(white: Boolean, who: String) {
+            val x = Review.side(rows, white)
+            sb.append(who).append(": ").append(t("accuracy ", "الدقة ")).append(Math.round(x.accuracy)).append("%\n")
+            sb.append("   ").append(t("Best ", "ممتازة ")).append(x.best).append(" \u00B7 ").append(t("Good ", "كويسة ")).append(x.good).append(" \u00B7 ")
+                .append("?! ").append(x.inaccuracies).append(" \u00B7 ? ").append(x.mistakes).append(" \u00B7 ?? ").append(x.blunders).append("\n")
+        }
+        side(youWhite, t("You", "أنت")); side(!youWhite, "Capri")
+        val key = Review.keyMoments(rows)
+        sb.append("\n")
+        if (key.isEmpty()) sb.append(t("No big mistakes. Clean game.", "ما فيه أخطاء كبيرة. لعبة نظيفة."))
+        else {
+            sb.append(t("Moves that cost the most:", "النقلات اللي كلّفت أكثر:")).append("\n")
+            for (r in key) {
+                sb.append("\u2022 ").append(Review.moveText(r)).append(Review.mark(r.grade)).append("  ").append(Review.label(r.grade, L.ar))
+                if (r.best != null) sb.append(" \u2014 ").append(t("better: ", "الأفضل: ")).append(r.best)
+                sb.append("\n")
+            }
+        }
+        val tv = TextView(this); tv.text = sb.toString().trimEnd(); tv.textSize = 14f; tv.setTextColor(Night.white); tv.typeface = Typeface.MONOSPACE
+        tv.setPadding(dp(20), dp(10), dp(20), dp(10))
+        val sv = android.widget.ScrollView(this); sv.addView(tv)
+        AlertDialog.Builder(this, android.R.style.Theme_DeviceDefault_Dialog_Alert).setTitle(t("Game review", "مراجعة اللعبة")).setView(sv)
+            .setPositiveButton(t("OK", "تمام"), null)
+            .setNeutralButton(t("Copy", "نسخ")) { _, _ ->
+                (getSystemService(CLIPBOARD_SERVICE) as android.content.ClipboardManager).setPrimaryClip(android.content.ClipData.newPlainText("Capri", sb.toString()))
+            }.show()
     }
 
     override fun onDestroy() { ui.removeCallbacksAndMessages(null); super.onDestroy() }
